@@ -9,6 +9,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import interrupt, Command
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
+from langsmith import traceable
 
 load_dotenv()
 
@@ -51,6 +52,7 @@ class State(TypedDict):
     # add_messages is a reducer that ensures messages are appended
     messages: Annotated[list[AnyMessage],add_messages]
 
+@traceable(run_type="chain", name="chatbot_node")
 def chatbot(state: State) -> State:
     try:
         result = llm_with_tools.invoke(state["messages"])
@@ -58,6 +60,7 @@ def chatbot(state: State) -> State:
     except Exception as e:
         return {"messages": [AIMessage(content=f"Error: {str(e)}")]}
 
+@traceable(run_type="chain", name="logger")
 def logger(state: State) -> State:
     print("DEBUG:", state["messages"][-1].content)
     return state
@@ -79,6 +82,8 @@ builder.add_edge("logger", END)
 memory_saver = MemorySaver()
 
 graph = builder.compile(checkpointer=memory_saver)
+
+print(graph.get_graph().draw_mermaid())
 
 config = { "configurable": { "thread_id": "1" }}
 
