@@ -1,0 +1,327 @@
+Decade 1: 1–10
+Decade 2: 11–20
+Decade 3: 21–30
+Decade 4: 31–35
+
+=== RUN START ===
+Start time: 2025-12-25 19:04:27
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-11-20
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-11-20
+Actual main: [4, 11, 12, 13, 19, 27, 29]
+Actual H/W/C: H=1, W=4, C=2
+Actual decades: {1: 1, 2: 4, 3: 2, 4: 0}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r03  13  D2  W  log_score=+1.893300  P=0.05340885
+  r05  19  D2  W  log_score=+1.718360  P=0.04483712
+  r11  27  D3  W  log_score=+1.354093  P=0.03114861
+  r15  11  D2  W  log_score=+1.217384  P=0.02716854
+  r20   4  D1  H  log_score=+0.929736  P=0.02037711
+  r22  29  D3  C  log_score=+0.916239  P=0.02010393
+  r25  12  D2  C  log_score=+0.757692  P=0.01715635
+
+  P_sum=0.21420052  P_mean=0.03060007  P_min=0.01715635  P_max=0.05340885
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-11-27
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-11-27
+Actual main: [2, 9, 11, 17, 19, 24, 28]
+Actual H/W/C: H=1, W=0, C=6
+Actual decades: {1: 2, 2: 3, 3: 2, 4: 0}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r17  28  D3  C  log_score=+1.225033  P=0.02586868
+  r21  17  D2  H  log_score=+1.165706  P=0.02437861
+  r25   9  D1  C  log_score=+1.022942  P=0.02113524
+  r28  24  D3  C  log_score=+0.927990  P=0.01922073
+  r31   2  D1  C  log_score=+0.847333  P=0.01773132
+  r32  19  D2  C  log_score=+0.484122  P=0.01233107
+  r34  11  D2  C  log_score=+0.217229  P=0.00944258
+
+  P_sum=0.13010823  P_mean=0.01858689  P_min=0.00944258  P_max=0.02586868
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-04
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-12-04
+Actual main: [9, 11, 12, 15, 19, 23, 32]
+Actual H/W/C: H=1, W=2, C=4
+Actual decades: {1: 1, 2: 4, 3: 1, 4: 1}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r02  15  D2  W  log_score=+1.776531  P=0.04662779
+  r05  11  D2  H  log_score=+1.631230  P=0.04032191
+  r06  32  D4  C  log_score=+1.620566  P=0.03989420
+  r07  19  D2  W  log_score=+1.617758  P=0.03978236
+  r12  12  D2  C  log_score=+1.324772  P=0.02967892
+  r31   9  D1  C  log_score=+0.849850  P=0.01845832
+  r34  23  D3  C  log_score=+0.547660  P=0.01364434
+
+  P_sum=0.22840784  P_mean=0.03262969  P_min=0.01364434  P_max=0.04662779
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-11
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-12-11
+Actual main: [4, 5, 10, 12, 16, 23, 25]
+Actual H/W/C: H=2, W=5, C=0
+Actual decades: {1: 3, 2: 2, 3: 2, 4: 0}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r10  16  D2  W  log_score=+1.287269  P=0.03271826
+  r11  23  D3  W  log_score=+1.274022  P=0.03228772
+  r15  12  D2  W  log_score=+1.197911  P=0.02992144
+  r17   4  D1  W  log_score=+1.188364  P=0.02963716
+  r19   5  D1  W  log_score=+1.061212  P=0.02609848
+  r27  10  D1  H  log_score=+0.856017  P=0.02125690
+  r31  25  D3  H  log_score=+0.709187  P=0.01835407
+
+  P_sum=0.19027402  P_mean=0.02718200  P_min=0.01835407  P_max=0.03271826
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-18
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-12-18
+Actual main: [2, 15, 16, 19, 25, 31, 35]
+Actual H/W/C: H=0, W=6, C=1
+Actual decades: {1: 1, 2: 3, 3: 1, 4: 2}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r03  31  D4  W  log_score=+2.109634  P=0.05419299
+  r06  16  D2  W  log_score=+1.855581  P=0.04203487
+  r07  25  D3  W  log_score=+1.816365  P=0.04041833
+  r17  15  D2  W  log_score=+1.398593  P=0.02661595
+  r18   2  D1  W  log_score=+1.367902  P=0.02581149
+  r19  19  D2  W  log_score=+1.362187  P=0.02566440
+  r21  35  D4  C  log_score=+1.323859  P=0.02469934
+
+  P_sum=0.23943738  P_mean=0.03420534  P_min=0.02469934  P_max=0.05419299
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-25
+================================================================================
+
+=== FINAL PREDICTION ===
+Lottery:   Powerball
+Date:      2025-12-25
+Draw size: 7
+TRIALS:    9000, EXPLORE_FRAC=0.081
+  Category bias: avg_hot=0.306, avg_warm=0.644, avg_cold=0.050, bias=warm-heavy
+  Category weights: hot_w=0.786, warm_w=1.184, cold_w=1.030
+
+[DEBUG] Learned tape order:
+  2025-12-18  Powerball  {1: 1, 2: 3, 3: 1, 4: 2}
+  2025-12-19  Weekday Windfall  {1: 3, 2: 1, 3: 1, 4: 0}
+  2025-12-20  Saturday Lotto  {1: 1, 2: 1, 3: 0, 4: 2}
+  2025-12-22  Weekday Windfall  {1: 1, 2: 2, 3: 1, 4: 0}
+  2025-12-24  Weekday Windfall  {1: 0, 2: 2, 3: 1, 4: 0}
+
+Hot numbers:  [2, 14, 19, 20, 29]
+Warm numbers: [1, 3, 4, 5, 6, 7, 8, 9, 11, 13, 17, 22, 23, 25, 26, 27, 28, 30, 31, 32, 34, 35]
+Cold numbers: [10, 12, 15, 16, 18, 21, 24, 33]
+
+Hot numbers (scored)
+   2  log_score=+1.097022  P=0.02283310
+  14  log_score=+1.077506  P=0.02239181
+  19  log_score=+1.269015  P=0.02711816
+  20  log_score=+1.532030  P=0.03527657
+  29  log_score=+1.088842  P=0.02264708
+
+Warm numbers (scored)
+   1  log_score=+1.571108  P=0.03668241
+   3  log_score=+1.740083  P=0.04343529
+   4  log_score=+1.544494  P=0.03571901
+   5  log_score=+1.891389  P=0.05053055
+   6  log_score=+1.654402  P=0.03986867
+   7  log_score=+1.654685  P=0.03987994
+   8  log_score=+1.708537  P=0.04208646
+   9  log_score=+1.601975  P=0.03783231
+  11  log_score=+1.267439  P=0.02707545
+  13  log_score=+1.256307  P=0.02677574
+  17  log_score=+0.670340  P=0.01490250
+  22  log_score=+1.248788  P=0.02657515
+  23  log_score=+1.007199  P=0.02087156
+  25  log_score=+0.696646  P=0.01529972
+  26  log_score=+1.034629  P=0.02145199
+  27  log_score=+0.685505  P=0.01513022
+  28  log_score=+1.259194  P=0.02685315
+  30  log_score=+1.191122  P=0.02508601
+  31  log_score=+1.953782  P=0.05378371
+  32  log_score=+1.749477  P=0.04384522
+  34  log_score=+1.548945  P=0.03587836
+  35  log_score=+1.921196  P=0.05205939
+
+Cold numbers (scored)
+  33  log_score=+1.134700  P=0.02370981
+  10  log_score=+0.587814  P=0.01372203
+  12  log_score=+0.651668  P=0.01462681
+  15  log_score=+0.805402  P=0.01705751
+  16  log_score=+0.349680  P=0.01081429
+  18  log_score=+0.911055  P=0.01895834
+  21  log_score=+0.877547  P=0.01833361
+  24  log_score=+1.007988  P=0.02088804
+
+=== TOP P RANKS ===
+  r01  31  D4  W  log_score=+1.953782  P=0.05378371
+  r02  35  D4  W  log_score=+1.921196  P=0.05205939
+  r03   5  D1  W  log_score=+1.891389  P=0.05053055
+  r04  32  D4  W  log_score=+1.749477  P=0.04384522
+  r05   3  D1  W  log_score=+1.740083  P=0.04343529
+  r06   8  D1  W  log_score=+1.708537  P=0.04208646
+  r07   7  D1  W  log_score=+1.654685  P=0.03987994
+  r08   6  D1  W  log_score=+1.654402  P=0.03986867
+  r09   9  D1  W  log_score=+1.601975  P=0.03783231
+  r10   1  D1  W  log_score=+1.571108  P=0.03668241
+  r11  34  D4  W  log_score=+1.548945  P=0.03587836
+  r12   4  D1  W  log_score=+1.544494  P=0.03571901
+  r13  20  D2  H  log_score=+1.532030  P=0.03527657
+  r14  19  D2  H  log_score=+1.269015  P=0.02711816
+  r15  11  D2  W  log_score=+1.267439  P=0.02707545
+  r16  28  D3  W  log_score=+1.259194  P=0.02685315
+  r17  13  D2  W  log_score=+1.256307  P=0.02677574
+  r18  22  D3  W  log_score=+1.248788  P=0.02657515
+  r19  30  D3  W  log_score=+1.191122  P=0.02508601
+  r20  33  D4  C  log_score=+1.134700  P=0.02370981
+  r21   2  D1  H  log_score=+1.097022  P=0.02283310
+  r22  29  D3  H  log_score=+1.088842  P=0.02264708
+  r23  14  D2  H  log_score=+1.077506  P=0.02239181
+  r24  26  D3  W  log_score=+1.034629  P=0.02145199
+  r25  24  D3  C  log_score=+1.007988  P=0.02088804
+  r26  23  D3  W  log_score=+1.007199  P=0.02087156
+  r27  18  D2  C  log_score=+0.911055  P=0.01895834
+  r28  21  D3  C  log_score=+0.877547  P=0.01833361
+  r29  15  D2  C  log_score=+0.805402  P=0.01705751
+  r30  25  D3  W  log_score=+0.696646  P=0.01529972
+  r31  27  D3  W  log_score=+0.685505  P=0.01513022
+  r32  17  D2  W  log_score=+0.670340  P=0.01490250
+  r33  12  D2  C  log_score=+0.651668  P=0.01462681
+  r34  10  D1  C  log_score=+0.587814  P=0.01372203
+  r35  16  D2  C  log_score=+0.349680  P=0.01081429
+
+=== P-RANK WINDOWS (size=7) ===
+Top windows by sum(P) + decade_coverage bonus:
+  W#1 ranks[1..7]  sumP=0.326  decades=2  nums=[31, 35, 5, 32, 3, 8, 7]  dc={4: 3, 1: 4}  hwc={'H': 0, 'W': 7, 'C': 0}
+  W#2 ranks[2..8]  sumP=0.312  decades=2  nums=[35, 5, 32, 3, 8, 7, 6]  dc={4: 2, 1: 5}  hwc={'H': 0, 'W': 7, 'C': 0}
+  W#3 ranks[3..9]  sumP=0.297  decades=2  nums=[5, 32, 3, 8, 7, 6, 9]  dc={1: 6, 4: 1}  hwc={'H': 0, 'W': 7, 'C': 0}
+  W#4 ranks[4..10]  sumP=0.284  decades=2  nums=[32, 3, 8, 7, 6, 9, 1]  dc={4: 1, 1: 6}  hwc={'H': 0, 'W': 7, 'C': 0}
+  W#5 ranks[5..11]  sumP=0.276  decades=2  nums=[3, 8, 7, 6, 9, 1, 34]  dc={1: 6, 4: 1}  hwc={'H': 0, 'W': 7, 'C': 0}
+  W#6 ranks[7..13]  sumP=0.261  decades=3  nums=[7, 6, 9, 1, 34, 4, 20]  dc={1: 5, 4: 1, 2: 1}  hwc={'H': 1, 'W': 6, 'C': 0}
+  W#7 ranks[6..12]  sumP=0.268  decades=2  nums=[8, 7, 6, 9, 1, 34, 4]  dc={1: 6, 4: 1}  hwc={'H': 0, 'W': 7, 'C': 0}
+  W#8 ranks[8..14]  sumP=0.248  decades=3  nums=[6, 9, 1, 34, 4, 20, 19]  dc={1: 4, 4: 1, 2: 2}  hwc={'H': 2, 'W': 5, 'C': 0}
+  W#9 ranks[9..15]  sumP=0.236  decades=3  nums=[9, 1, 34, 4, 20, 19, 11]  dc={1: 3, 4: 1, 2: 3}  hwc={'H': 2, 'W': 5, 'C': 0}
+  W#10 ranks[10..16]  sumP=0.225  decades=4  nums=[1, 34, 4, 20, 19, 11, 28]  dc={1: 2, 4: 1, 2: 3, 3: 1}  hwc={'H': 2, 'W': 5, 'C': 0}
+  W#11 ranks[11..17]  sumP=0.215  decades=4  nums=[34, 4, 20, 19, 11, 28, 13]  dc={4: 1, 1: 1, 2: 4, 3: 1}  hwc={'H': 2, 'W': 5, 'C': 0}
+  W#12 ranks[12..18]  sumP=0.205  decades=3  nums=[4, 20, 19, 11, 28, 13, 22]  dc={1: 1, 2: 4, 3: 2}  hwc={'H': 2, 'W': 5, 'C': 0}
+  W#13 ranks[15..21]  sumP=0.179  decades=4  nums=[11, 28, 13, 22, 30, 33, 2]  dc={2: 2, 3: 3, 4: 1, 1: 1}  hwc={'H': 1, 'W': 5, 'C': 1}
+  W#14 ranks[13..19]  sumP=0.195  decades=2  nums=[20, 19, 11, 28, 13, 22, 30]  dc={2: 4, 3: 3}  hwc={'H': 2, 'W': 5, 'C': 0}
+  W#15 ranks[16..22]  sumP=0.174  decades=4  nums=[28, 13, 22, 30, 33, 2, 29]  dc={3: 4, 2: 1, 4: 1, 1: 1}  hwc={'H': 2, 'W': 4, 'C': 1}
+  W#16 ranks[14..20]  sumP=0.183  decades=3  nums=[19, 11, 28, 13, 22, 30, 33]  dc={2: 3, 3: 3, 4: 1}  hwc={'H': 1, 'W': 5, 'C': 1}
+  W#17 ranks[17..23]  sumP=0.170  decades=4  nums=[13, 22, 30, 33, 2, 29, 14]  dc={2: 2, 3: 3, 4: 1, 1: 1}  hwc={'H': 3, 'W': 3, 'C': 1}
+  W#18 ranks[18..24]  sumP=0.165  decades=4  nums=[22, 30, 33, 2, 29, 14, 26]  dc={3: 4, 4: 1, 1: 1, 2: 1}  hwc={'H': 3, 'W': 3, 'C': 1}
+  W#19 ranks[19..25]  sumP=0.159  decades=4  nums=[30, 33, 2, 29, 14, 26, 24]  dc={3: 4, 4: 1, 1: 1, 2: 1}  hwc={'H': 3, 'W': 2, 'C': 2}
+  W#20 ranks[20..26]  sumP=0.155  decades=4  nums=[33, 2, 29, 14, 26, 24, 23]  dc={4: 1, 1: 1, 3: 4, 2: 1}  hwc={'H': 3, 'W': 2, 'C': 2}
+  W#21 ranks[21..27]  sumP=0.150  decades=3  nums=[2, 29, 14, 26, 24, 23, 18]  dc={1: 1, 3: 4, 2: 2}  hwc={'H': 3, 'W': 2, 'C': 2}
+  W#22 ranks[22..28]  sumP=0.146  decades=2  nums=[29, 14, 26, 24, 23, 18, 21]  dc={3: 5, 2: 2}  hwc={'H': 2, 'W': 2, 'C': 3}
+  W#23 ranks[23..29]  sumP=0.140  decades=2  nums=[14, 26, 24, 23, 18, 21, 15]  dc={2: 3, 3: 4}  hwc={'H': 1, 'W': 2, 'C': 4}
+  W#24 ranks[24..30]  sumP=0.133  decades=2  nums=[26, 24, 23, 18, 21, 15, 25]  dc={3: 5, 2: 2}  hwc={'H': 0, 'W': 3, 'C': 4}
+  W#25 ranks[25..31]  sumP=0.127  decades=2  nums=[24, 23, 18, 21, 15, 25, 27]  dc={3: 5, 2: 2}  hwc={'H': 0, 'W': 3, 'C': 4}
+  W#26 ranks[26..32]  sumP=0.121  decades=2  nums=[23, 18, 21, 15, 25, 27, 17]  dc={3: 4, 2: 3}  hwc={'H': 0, 'W': 4, 'C': 3}
+  W#27 ranks[28..34]  sumP=0.109  decades=3  nums=[21, 15, 25, 27, 17, 12, 10]  dc={3: 3, 2: 3, 1: 1}  hwc={'H': 0, 'W': 3, 'C': 4}
+  W#28 ranks[27..33]  sumP=0.114  decades=2  nums=[18, 21, 15, 25, 27, 17, 12]  dc={2: 4, 3: 3}  hwc={'H': 0, 'W': 3, 'C': 4}
+  W#29 ranks[29..35]  sumP=0.102  decades=3  nums=[15, 25, 27, 17, 12, 10, 16]  dc={2: 4, 3: 2, 1: 1}  hwc={'H': 0, 'W': 3, 'C': 4}
+
+=== P-RANK WINDOWS (size=8) ===
+Top windows by sum(P) + decade_coverage bonus:
+  W#1 ranks[1..8]  sumP=0.365  decades=2  nums=[31, 35, 5, 32, 3, 8, 7, 6]  dc={4: 3, 1: 5}  hwc={'H': 0, 'W': 8, 'C': 0}
+  W#2 ranks[2..9]  sumP=0.350  decades=2  nums=[35, 5, 32, 3, 8, 7, 6, 9]  dc={4: 2, 1: 6}  hwc={'H': 0, 'W': 8, 'C': 0}
+  W#3 ranks[3..10]  sumP=0.334  decades=2  nums=[5, 32, 3, 8, 7, 6, 9, 1]  dc={1: 7, 4: 1}  hwc={'H': 0, 'W': 8, 'C': 0}
+  W#4 ranks[4..11]  sumP=0.320  decades=2  nums=[32, 3, 8, 7, 6, 9, 1, 34]  dc={4: 2, 1: 6}  hwc={'H': 0, 'W': 8, 'C': 0}
+  W#5 ranks[6..13]  sumP=0.303  decades=3  nums=[8, 7, 6, 9, 1, 34, 4, 20]  dc={1: 6, 4: 1, 2: 1}  hwc={'H': 1, 'W': 7, 'C': 0}
+  W#6 ranks[5..12]  sumP=0.311  decades=2  nums=[3, 8, 7, 6, 9, 1, 34, 4]  dc={1: 7, 4: 1}  hwc={'H': 0, 'W': 8, 'C': 0}
+  W#7 ranks[7..14]  sumP=0.288  decades=3  nums=[7, 6, 9, 1, 34, 4, 20, 19]  dc={1: 5, 4: 1, 2: 2}  hwc={'H': 2, 'W': 6, 'C': 0}
+  W#8 ranks[8..15]  sumP=0.275  decades=3  nums=[6, 9, 1, 34, 4, 20, 19, 11]  dc={1: 4, 4: 1, 2: 3}  hwc={'H': 2, 'W': 6, 'C': 0}
+  W#9 ranks[9..16]  sumP=0.262  decades=4  nums=[9, 1, 34, 4, 20, 19, 11, 28]  dc={1: 3, 4: 1, 2: 3, 3: 1}  hwc={'H': 2, 'W': 6, 'C': 0}
+  W#10 ranks[10..17]  sumP=0.251  decades=4  nums=[1, 34, 4, 20, 19, 11, 28, 13]  dc={1: 2, 4: 1, 2: 4, 3: 1}  hwc={'H': 2, 'W': 6, 'C': 0}
+  W#11 ranks[11..18]  sumP=0.241  decades=4  nums=[34, 4, 20, 19, 11, 28, 13, 22]  dc={4: 1, 1: 1, 2: 4, 3: 2}  hwc={'H': 2, 'W': 6, 'C': 0}
+  W#12 ranks[12..19]  sumP=0.230  decades=3  nums=[4, 20, 19, 11, 28, 13, 22, 30]  dc={1: 1, 2: 4, 3: 3}  hwc={'H': 2, 'W': 6, 'C': 0}
+  W#13 ranks[13..20]  sumP=0.218  decades=3  nums=[20, 19, 11, 28, 13, 22, 30, 33]  dc={2: 4, 3: 3, 4: 1}  hwc={'H': 2, 'W': 5, 'C': 1}
+  W#14 ranks[14..21]  sumP=0.206  decades=4  nums=[19, 11, 28, 13, 22, 30, 33, 2]  dc={2: 3, 3: 3, 4: 1, 1: 1}  hwc={'H': 2, 'W': 5, 'C': 1}
+  W#15 ranks[15..22]  sumP=0.202  decades=4  nums=[11, 28, 13, 22, 30, 33, 2, 29]  dc={2: 2, 3: 4, 4: 1, 1: 1}  hwc={'H': 2, 'W': 5, 'C': 1}
+  W#16 ranks[16..23]  sumP=0.197  decades=4  nums=[28, 13, 22, 30, 33, 2, 29, 14]  dc={3: 4, 2: 2, 4: 1, 1: 1}  hwc={'H': 3, 'W': 4, 'C': 1}
+  W#17 ranks[17..24]  sumP=0.191  decades=4  nums=[13, 22, 30, 33, 2, 29, 14, 26]  dc={2: 2, 3: 4, 4: 1, 1: 1}  hwc={'H': 3, 'W': 4, 'C': 1}
+  W#18 ranks[18..25]  sumP=0.186  decades=4  nums=[22, 30, 33, 2, 29, 14, 26, 24]  dc={3: 5, 4: 1, 1: 1, 2: 1}  hwc={'H': 3, 'W': 3, 'C': 2}
+  W#19 ranks[19..26]  sumP=0.180  decades=4  nums=[30, 33, 2, 29, 14, 26, 24, 23]  dc={3: 5, 4: 1, 1: 1, 2: 1}  hwc={'H': 3, 'W': 3, 'C': 2}
+  W#20 ranks[20..27]  sumP=0.174  decades=4  nums=[33, 2, 29, 14, 26, 24, 23, 18]  dc={4: 1, 1: 1, 3: 4, 2: 2}  hwc={'H': 3, 'W': 2, 'C': 3}
+  W#21 ranks[21..28]  sumP=0.168  decades=3  nums=[2, 29, 14, 26, 24, 23, 18, 21]  dc={1: 1, 3: 5, 2: 2}  hwc={'H': 3, 'W': 2, 'C': 3}
+  W#22 ranks[22..29]  sumP=0.163  decades=2  nums=[29, 14, 26, 24, 23, 18, 21, 15]  dc={3: 5, 2: 3}  hwc={'H': 2, 'W': 2, 'C': 4}
+  W#23 ranks[23..30]  sumP=0.155  decades=2  nums=[14, 26, 24, 23, 18, 21, 15, 25]  dc={2: 3, 3: 5}  hwc={'H': 1, 'W': 3, 'C': 4}
+  W#24 ranks[24..31]  sumP=0.148  decades=2  nums=[26, 24, 23, 18, 21, 15, 25, 27]  dc={3: 6, 2: 2}  hwc={'H': 0, 'W': 4, 'C': 4}
+  W#25 ranks[25..32]  sumP=0.141  decades=2  nums=[24, 23, 18, 21, 15, 25, 27, 17]  dc={3: 5, 2: 3}  hwc={'H': 0, 'W': 4, 'C': 4}
+  W#26 ranks[27..34]  sumP=0.128  decades=3  nums=[18, 21, 15, 25, 27, 17, 12, 10]  dc={2: 4, 3: 3, 1: 1}  hwc={'H': 0, 'W': 3, 'C': 5}
+  W#27 ranks[26..33]  sumP=0.135  decades=2  nums=[23, 18, 21, 15, 25, 27, 17, 12]  dc={3: 4, 2: 4}  hwc={'H': 0, 'W': 4, 'C': 4}
+  W#28 ranks[28..35]  sumP=0.120  decades=3  nums=[21, 15, 25, 27, 17, 12, 10, 16]  dc={3: 3, 2: 4, 1: 1}  hwc={'H': 0, 'W': 3, 'C': 5}
+
+=== P-RANK WINDOWS (size=9) ===
+Top windows by sum(P) + decade_coverage bonus:
+  W#1 ranks[1..9]  sumP=0.403  decades=2  nums=[31, 35, 5, 32, 3, 8, 7, 6, 9]  dc={4: 3, 1: 6}  hwc={'H': 0, 'W': 9, 'C': 0}
+  W#2 ranks[2..10]  sumP=0.386  decades=2  nums=[35, 5, 32, 3, 8, 7, 6, 9, 1]  dc={4: 2, 1: 7}  hwc={'H': 0, 'W': 9, 'C': 0}
+  W#3 ranks[3..11]  sumP=0.370  decades=2  nums=[5, 32, 3, 8, 7, 6, 9, 1, 34]  dc={1: 7, 4: 2}  hwc={'H': 0, 'W': 9, 'C': 0}
+  W#4 ranks[5..13]  sumP=0.347  decades=3  nums=[3, 8, 7, 6, 9, 1, 34, 4, 20]  dc={1: 7, 4: 1, 2: 1}  hwc={'H': 1, 'W': 8, 'C': 0}
+  W#5 ranks[4..12]  sumP=0.355  decades=2  nums=[32, 3, 8, 7, 6, 9, 1, 34, 4]  dc={4: 2, 1: 7}  hwc={'H': 0, 'W': 9, 'C': 0}
+  W#6 ranks[6..14]  sumP=0.330  decades=3  nums=[8, 7, 6, 9, 1, 34, 4, 20, 19]  dc={1: 6, 4: 1, 2: 2}  hwc={'H': 2, 'W': 7, 'C': 0}
+  W#7 ranks[7..15]  sumP=0.315  decades=3  nums=[7, 6, 9, 1, 34, 4, 20, 19, 11]  dc={1: 5, 4: 1, 2: 3}  hwc={'H': 2, 'W': 7, 'C': 0}
+  W#8 ranks[8..16]  sumP=0.302  decades=4  nums=[6, 9, 1, 34, 4, 20, 19, 11, 28]  dc={1: 4, 4: 1, 2: 3, 3: 1}  hwc={'H': 2, 'W': 7, 'C': 0}
+  W#9 ranks[9..17]  sumP=0.289  decades=4  nums=[9, 1, 34, 4, 20, 19, 11, 28, 13]  dc={1: 3, 4: 1, 2: 4, 3: 1}  hwc={'H': 2, 'W': 7, 'C': 0}
+  W#10 ranks[10..18]  sumP=0.278  decades=4  nums=[1, 34, 4, 20, 19, 11, 28, 13, 22]  dc={1: 2, 4: 1, 2: 4, 3: 2}  hwc={'H': 2, 'W': 7, 'C': 0}
+  W#11 ranks[11..19]  sumP=0.266  decades=4  nums=[34, 4, 20, 19, 11, 28, 13, 22, 30]  dc={4: 1, 1: 1, 2: 4, 3: 3}  hwc={'H': 2, 'W': 7, 'C': 0}
+  W#12 ranks[12..20]  sumP=0.254  decades=4  nums=[4, 20, 19, 11, 28, 13, 22, 30, 33]  dc={1: 1, 2: 4, 3: 3, 4: 1}  hwc={'H': 2, 'W': 6, 'C': 1}
+  W#13 ranks[13..21]  sumP=0.241  decades=4  nums=[20, 19, 11, 28, 13, 22, 30, 33, 2]  dc={2: 4, 3: 3, 4: 1, 1: 1}  hwc={'H': 3, 'W': 5, 'C': 1}
+  W#14 ranks[14..22]  sumP=0.229  decades=4  nums=[19, 11, 28, 13, 22, 30, 33, 2, 29]  dc={2: 3, 3: 4, 4: 1, 1: 1}  hwc={'H': 3, 'W': 5, 'C': 1}
+  W#15 ranks[15..23]  sumP=0.224  decades=4  nums=[11, 28, 13, 22, 30, 33, 2, 29, 14]  dc={2: 3, 3: 4, 4: 1, 1: 1}  hwc={'H': 3, 'W': 5, 'C': 1}
+  W#16 ranks[16..24]  sumP=0.218  decades=4  nums=[28, 13, 22, 30, 33, 2, 29, 14, 26]  dc={3: 5, 2: 2, 4: 1, 1: 1}  hwc={'H': 3, 'W': 5, 'C': 1}
+  W#17 ranks[17..25]  sumP=0.212  decades=4  nums=[13, 22, 30, 33, 2, 29, 14, 26, 24]  dc={2: 2, 3: 5, 4: 1, 1: 1}  hwc={'H': 3, 'W': 4, 'C': 2}
+  W#18 ranks[18..26]  sumP=0.206  decades=4  nums=[22, 30, 33, 2, 29, 14, 26, 24, 23]  dc={3: 6, 4: 1, 1: 1, 2: 1}  hwc={'H': 3, 'W': 4, 'C': 2}
+  W#19 ranks[19..27]  sumP=0.199  decades=4  nums=[30, 33, 2, 29, 14, 26, 24, 23, 18]  dc={3: 5, 4: 1, 1: 1, 2: 2}  hwc={'H': 3, 'W': 3, 'C': 3}
+  W#20 ranks[20..28]  sumP=0.192  decades=4  nums=[33, 2, 29, 14, 26, 24, 23, 18, 21]  dc={4: 1, 1: 1, 3: 5, 2: 2}  hwc={'H': 3, 'W': 2, 'C': 4}
+  W#21 ranks[21..29]  sumP=0.185  decades=3  nums=[2, 29, 14, 26, 24, 23, 18, 21, 15]  dc={1: 1, 3: 5, 2: 3}  hwc={'H': 3, 'W': 2, 'C': 4}
+  W#22 ranks[22..30]  sumP=0.178  decades=2  nums=[29, 14, 26, 24, 23, 18, 21, 15, 25]  dc={3: 6, 2: 3}  hwc={'H': 2, 'W': 3, 'C': 4}
+  W#23 ranks[23..31]  sumP=0.170  decades=2  nums=[14, 26, 24, 23, 18, 21, 15, 25, 27]  dc={2: 3, 3: 6}  hwc={'H': 1, 'W': 4, 'C': 4}
+  W#24 ranks[24..32]  sumP=0.163  decades=2  nums=[26, 24, 23, 18, 21, 15, 25, 27, 17]  dc={3: 6, 2: 3}  hwc={'H': 0, 'W': 5, 'C': 4}
+  W#25 ranks[26..34]  sumP=0.149  decades=3  nums=[23, 18, 21, 15, 25, 27, 17, 12, 10]  dc={3: 4, 2: 4, 1: 1}  hwc={'H': 0, 'W': 4, 'C': 5}
+  W#26 ranks[25..33]  sumP=0.156  decades=2  nums=[24, 23, 18, 21, 15, 25, 27, 17, 12]  dc={3: 5, 2: 4}  hwc={'H': 0, 'W': 4, 'C': 5}
+  W#27 ranks[27..35]  sumP=0.139  decades=3  nums=[18, 21, 15, 25, 27, 17, 12, 10, 16]  dc={2: 5, 3: 3, 1: 1}  hwc={'H': 0, 'W': 3, 'C': 6}
+
+[ACTUAL] No actual draw found in GLOBAL_DRAWS for this prediction date.
+
+=== RUN END ===
+End time:   2025-12-25 19:06:59
+Total run time: 152.34 seconds (2.54 minutes)

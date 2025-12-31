@@ -1,0 +1,324 @@
+Decade 1: 1–10
+Decade 2: 11–20
+Decade 3: 21–30
+Decade 4: 31–40
+Decade 5: 41–45
+
+=== RUN START ===
+Start time: 2026-01-03 19:53:37
+
+================================================================================
+PREDICTION RUN FOR Saturday Lotto on 2025-11-29
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Saturday Lotto
+Date:    2025-11-29
+Actual main: [5, 10, 17, 22, 36, 44]
+Actual H/W/C: H=2, W=3, C=1
+Actual decades: {1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r03  36  D4  W  log_score=+2.129578  P=0.04772246
+  r13  44  D5  W  log_score=+1.522220  P=0.02599865
+  r23   5  D1  H  log_score=+1.135718  P=0.01766425
+  r30  17  D2  H  log_score=+1.046288  P=0.01615311
+  r39  22  D3  C  log_score=+0.654355  P=0.01091545
+  r43  10  D1  W  log_score=+0.566837  P=0.01000076
+
+  P_sum=0.12845468  P_mean=0.02140911  P_min=0.01000076  P_max=0.04772246
+
+================================================================================
+PREDICTION RUN FOR Saturday Lotto on 2025-12-06
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Saturday Lotto
+Date:    2025-12-06
+Actual main: [5, 10, 17, 33, 42, 45]
+Actual H/W/C: H=0, W=4, C=2
+Actual decades: {1: 2, 2: 1, 3: 0, 4: 1, 5: 2}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r04  42  D5  W  log_score=+1.674032  P=0.03542802
+  r05  17  D2  W  log_score=+1.636328  P=0.03411714
+  r22  10  D1  W  log_score=+1.131319  P=0.02058969
+  r24   5  D1  W  log_score=+1.120234  P=0.02036271
+  r30  45  D5  C  log_score=+1.029825  P=0.01860252
+  r32  33  D4  C  log_score=+0.984149  P=0.01777194
+
+  P_sum=0.14687203  P_mean=0.02447867  P_min=0.01777194  P_max=0.03542802
+
+================================================================================
+PREDICTION RUN FOR Saturday Lotto on 2025-12-13
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Saturday Lotto
+Date:    2025-12-13
+Actual main: [6, 17, 20, 28, 32, 35]
+Actual H/W/C: H=0, W=1, C=5
+Actual decades: {1: 1, 2: 2, 3: 1, 4: 2, 5: 0}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r23  28  D3  C  log_score=+1.090071  P=0.01934546
+  r29  35  D4  C  log_score=+0.973867  P=0.01722315
+  r35   6  D1  W  log_score=+0.765362  P=0.01398169
+  r40  20  D2  C  log_score=+0.637239  P=0.01230033
+  r42  32  D4  C  log_score=+0.536729  P=0.01112412
+  r43  17  D2  C  log_score=+0.461970  P=0.01032282
+
+  P_sum=0.08429757  P_mean=0.01404960  P_min=0.01032282  P_max=0.01934546
+
+================================================================================
+PREDICTION RUN FOR Saturday Lotto on 2025-12-20
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Saturday Lotto
+Date:    2025-12-20
+Actual main: [8, 19, 31, 32, 41, 43]
+Actual H/W/C: H=0, W=6, C=0
+Actual decades: {1: 1, 2: 1, 3: 0, 4: 2, 5: 2}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r02  41  D5  W  log_score=+1.753281  P=0.03774274
+  r03  43  D5  W  log_score=+1.692495  P=0.03551684
+  r13  32  D4  W  log_score=+1.364927  P=0.02559607
+  r16  31  D4  W  log_score=+1.336359  P=0.02487519
+  r30   8  D1  W  log_score=+1.048621  P=0.01865536
+  r37  19  D2  W  log_score=+0.856061  P=0.01538778
+
+  P_sum=0.15777398  P_mean=0.02629566  P_min=0.01538778  P_max=0.03774274
+
+================================================================================
+PREDICTION RUN FOR Saturday Lotto on 2025-12-27
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Saturday Lotto
+Date:    2025-12-27
+Actual main: [3, 5, 20, 26, 28, 40]
+Actual H/W/C: H=1, W=4, C=1
+Actual decades: {1: 2, 2: 1, 3: 2, 4: 1, 5: 0}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r01   3  D1  W  log_score=+1.985618  P=0.04402759
+  r06   5  D1  W  log_score=+1.692574  P=0.03284411
+  r10  20  D2  H  log_score=+1.559737  P=0.02875855
+  r16  26  D3  W  log_score=+1.439754  P=0.02550700
+  r19  28  D3  W  log_score=+1.346723  P=0.02324107
+  r29  40  D4  C  log_score=+1.035501  P=0.01702528
+
+  P_sum=0.17140360  P_mean=0.02856727  P_min=0.01702528  P_max=0.04402759
+
+================================================================================
+PREDICTION RUN FOR Saturday Lotto on 2026-01-03
+================================================================================
+
+=== FINAL PREDICTION ===
+Lottery:   Saturday Lotto
+Date:      2026-01-03
+Draw size: 6
+TRIALS:    6, EXPLORE_FRAC=0.076
+  Category bias: avg_hot=0.310, avg_warm=0.589, avg_cold=0.102, bias=warm-heavy
+  Category weights: hot_w=0.680, warm_w=1.179, cold_w=1.141
+
+[DEBUG] Learned tape order:
+  2025-12-27  Saturday Lotto  {1: 2, 2: 1, 3: 2, 4: 1, 5: 0}
+  2025-12-29  Weekday Windfall  {1: 2, 2: 0, 3: 2, 4: 1, 5: 1}
+  2025-12-30  OZ Lotto  {1: 0, 2: 5, 3: 1, 4: 1, 5: 0}
+  2025-12-31  Weekday Windfall  {1: 3, 2: 0, 3: 1, 4: 1, 5: 1}
+  2026-01-01  Powerball  {1: 2, 2: 2, 3: 3, 4: 0, 5: 0}
+  2026-01-02  Weekday Windfall  {1: 1, 2: 1, 3: 1, 4: 3, 5: 0}
+
+Hot numbers:  [6, 7, 13, 15, 27, 42]
+Warm numbers: [3, 8, 9, 10, 11, 12, 18, 19, 20, 22, 23, 25, 29, 30, 31, 33, 36, 38, 39, 40, 41, 44]
+Cold numbers: [1, 2, 4, 5, 14, 16, 17, 21, 24, 26, 28, 32, 34, 35, 37, 43, 45]
+
+Hot numbers (scored)
+   6  log_score=+1.075278  P=0.01588080
+   7  log_score=+1.125435  P=0.01669764
+  42  log_score=+2.661537  P=0.07758469
+  13  log_score=+0.667872  P=0.01056667
+  15  log_score=+0.827224  P=0.01239208
+  27  log_score=+0.810254  P=0.01218355
+
+Warm numbers (scored)
+   3  log_score=+1.191625  P=0.01784026
+   8  log_score=+1.315801  P=0.02019901
+   9  log_score=+1.451568  P=0.02313625
+  10  log_score=+1.475010  P=0.02368501
+  11  log_score=+1.416607  P=0.02234136
+  12  log_score=+1.666673  P=0.02868877
+  18  log_score=+1.098005  P=0.01624586
+  19  log_score=+0.765567  P=0.01165109
+  20  log_score=+1.289447  P=0.01967364
+  22  log_score=+0.904105  P=0.01338236
+  23  log_score=+0.711389  P=0.01103665
+  25  log_score=+0.550477  P=0.00939624
+  29  log_score=+1.135474  P=0.01686611
+  30  log_score=+1.161756  P=0.01731527
+  31  log_score=+1.872893  P=0.03525919
+  33  log_score=+1.763874  P=0.03161739
+  36  log_score=+1.192441  P=0.01785483
+  38  log_score=+1.451076  P=0.02312487
+  39  log_score=+1.739624  P=0.03085986
+  40  log_score=+1.975161  P=0.03905590
+  41  log_score=+2.530036  P=0.06802453
+  44  log_score=+2.695446  P=0.08026059
+
+Cold numbers (scored)
+  32  log_score=+1.560510  P=0.02579918
+   1  log_score=+1.082409  P=0.01599445
+   2  log_score=+0.875522  P=0.01300527
+  34  log_score=+1.205210  P=0.01808427
+   4  log_score=+0.698702  P=0.01089752
+   5  log_score=+0.980870  P=0.01445013
+  35  log_score=+0.654171  P=0.01042288
+  37  log_score=+1.021520  P=0.01504963
+  43  log_score=+2.478671  P=0.06461869
+  45  log_score=+1.359694  P=0.02110536
+  14  log_score=+0.881739  P=0.01308638
+  16  log_score=+0.791262  P=0.01195435
+  17  log_score=+0.382396  P=0.00794251
+  21  log_score=+0.418259  P=0.00823252
+  24  log_score=+0.205860  P=0.00665716
+  26  log_score=+0.378248  P=0.00790963
+  28  log_score=+0.792539  P=0.01196962
+
+=== TOP P RANKS ===
+  r01  44  D5  W  log_score=+2.695446  P=0.08026059
+  r02  42  D5  H  log_score=+2.661537  P=0.07758469
+  r03  41  D5  W  log_score=+2.530036  P=0.06802453
+  r04  43  D5  C  log_score=+2.478671  P=0.06461869
+  r05  40  D4  W  log_score=+1.975161  P=0.03905590
+  r06  31  D4  W  log_score=+1.872893  P=0.03525919
+  r07  33  D4  W  log_score=+1.763874  P=0.03161739
+  r08  39  D4  W  log_score=+1.739624  P=0.03085986
+  r09  12  D2  W  log_score=+1.666673  P=0.02868877
+  r10  32  D4  C  log_score=+1.560510  P=0.02579918
+  r11  10  D1  W  log_score=+1.475010  P=0.02368501
+  r12   9  D1  W  log_score=+1.451568  P=0.02313625
+  r13  38  D4  W  log_score=+1.451076  P=0.02312487
+  r14  11  D2  W  log_score=+1.416607  P=0.02234136
+  r15  45  D5  C  log_score=+1.359694  P=0.02110536
+  r16   8  D1  W  log_score=+1.315801  P=0.02019901
+  r17  20  D2  W  log_score=+1.289447  P=0.01967364
+  r18  34  D4  C  log_score=+1.205210  P=0.01808427
+  r19  36  D4  W  log_score=+1.192441  P=0.01785483
+  r20   3  D1  W  log_score=+1.191625  P=0.01784026
+  r21  30  D3  W  log_score=+1.161756  P=0.01731527
+  r22  29  D3  W  log_score=+1.135474  P=0.01686611
+  r23   7  D1  H  log_score=+1.125435  P=0.01669764
+  r24  18  D2  W  log_score=+1.098005  P=0.01624586
+  r25   1  D1  C  log_score=+1.082409  P=0.01599445
+  r26   6  D1  H  log_score=+1.075278  P=0.01588080
+  r27  37  D4  C  log_score=+1.021520  P=0.01504963
+  r28   5  D1  C  log_score=+0.980870  P=0.01445013
+  r29  22  D3  W  log_score=+0.904105  P=0.01338236
+  r30  14  D2  C  log_score=+0.881739  P=0.01308638
+  r31   2  D1  C  log_score=+0.875522  P=0.01300527
+  r32  15  D2  H  log_score=+0.827224  P=0.01239208
+  r33  27  D3  H  log_score=+0.810254  P=0.01218355
+  r34  28  D3  C  log_score=+0.792539  P=0.01196962
+  r35  16  D2  C  log_score=+0.791262  P=0.01195435
+  r36  19  D2  W  log_score=+0.765567  P=0.01165109
+  r37  23  D3  W  log_score=+0.711389  P=0.01103665
+  r38   4  D1  C  log_score=+0.698702  P=0.01089752
+  r39  13  D2  H  log_score=+0.667872  P=0.01056667
+  r40  35  D4  C  log_score=+0.654171  P=0.01042288
+  r41  25  D3  W  log_score=+0.550477  P=0.00939624
+  r42  21  D3  C  log_score=+0.418259  P=0.00823252
+  r43  17  D2  C  log_score=+0.382396  P=0.00794251
+  r44  26  D3  C  log_score=+0.378248  P=0.00790963
+  r45  24  D3  C  log_score=+0.205860  P=0.00665716
+
+[ACTUAL] No actual draw found in GLOBAL_DRAWS for this prediction date.
+
+================================================================================
+LOCKED PREDICTION STEPS (COHORT REGIME)
+================================================================================
+
+=== COHORT REGIME TABLE ===
+2025-12-27 Saturday Lotto | leader=3 | cohort=[5, 20, 26, 28, 40] | HWC=(1, 3, 1) | decades={D1:1, D2:1, D3:2, D4:1, D5:0} | rank_min=6 rank_max=29 span=23 | P_sum=0.12737601 P_mean=0.02547520 P_min=0.01702528 P_max=0.03284411
+2025-12-20 Saturday Lotto | leader=41 | cohort=[8, 19, 31, 32, 43] | HWC=(0, 5, 0) | decades={D1:1, D2:1, D3:0, D4:2, D5:1} | rank_min=3 rank_max=37 span=34 | P_sum=0.12003124 P_mean=0.02400625 P_min=0.01538778 P_max=0.03551684
+2025-12-13 Saturday Lotto | leader=28 | cohort=[6, 17, 20, 32, 35] | HWC=(0, 1, 4) | decades={D1:1, D2:2, D3:0, D4:2, D5:0} | rank_min=29 rank_max=43 span=14 | P_sum=0.06495211 P_mean=0.01299042 P_min=0.01032282 P_max=0.01722315
+2025-12-06 Saturday Lotto | leader=42 | cohort=[5, 10, 17, 33, 45] | HWC=(0, 3, 2) | decades={D1:2, D2:1, D3:0, D4:1, D5:1} | rank_min=5 rank_max=32 span=27 | P_sum=0.11144400 P_mean=0.02228880 P_min=0.01777194 P_max=0.03411714
+2025-11-29 Saturday Lotto | leader=36 | cohort=[5, 10, 17, 22, 44] | HWC=(2, 2, 1) | decades={D1:2, D2:1, D3:1, D4:0, D5:1} | rank_min=13 rank_max=43 span=30 | P_sum=0.08073222 P_mean=0.01614644 P_min=0.01000076 P_max=0.02599865
+
+=== TARGET COHORT HWC ===
+TARGET_COHORT_HWC = (0, 4, 1)
+Evidence (shape -> count, adjacent cluster):
+  (0, 3, 2) -> 1
+  (1, 3, 1) -> 1
+  (2, 2, 1) -> 1
+
+=== TARGET COHORT DECADES ===
+TARGET_COHORT_DECADES = {D1:2, D2:1, D3:1, D4:1, D5:0}
+Evidence (template -> count, adjacent cluster):
+  {D1:1, D2:1, D3:0, D4:2, D5:1} -> 1
+  {D1:1, D2:2, D3:0, D4:2, D5:0} -> 1
+  {D1:2, D2:1, D3:0, D4:1, D5:1} -> 1
+
+=== COHORT ENVELOPES ===
+rank_min*=6.0 rank_max*=35.266666666666666 rank_span*=29.266666666666666
+P_min*=0.01487938 P_max*=0.03284411
+
+=== COHORT CANDIDATE POOL ===
+  r07 33 D4 W log_score=+1.763874 P=0.03161739
+  r08 39 D4 W log_score=+1.739624 P=0.03085986
+  r09 12 D2 W log_score=+1.666673 P=0.02868877
+  r10 32 D4 C log_score=+1.560510 P=0.02579918
+  r11 10 D1 W log_score=+1.475010 P=0.02368501
+  r12  9 D1 W log_score=+1.451568 P=0.02313625
+  r13 38 D4 W log_score=+1.451076 P=0.02312487
+  r14 11 D2 W log_score=+1.416607 P=0.02234136
+  r15 45 D5 C log_score=+1.359694 P=0.02110536
+  r16  8 D1 W log_score=+1.315801 P=0.02019901
+  r17 20 D2 W log_score=+1.289447 P=0.01967364
+  r18 34 D4 C log_score=+1.205210 P=0.01808427
+  r19 36 D4 W log_score=+1.192441 P=0.01785483
+  r20  3 D1 W log_score=+1.191625 P=0.01784026
+  r21 30 D3 W log_score=+1.161756 P=0.01731527
+  r22 29 D3 W log_score=+1.135474 P=0.01686611
+  r23  7 D1 H log_score=+1.125435 P=0.01669764
+  r24 18 D2 W log_score=+1.098005 P=0.01624586
+  r25  1 D1 C log_score=+1.082409 P=0.01599445
+  r26  6 D1 H log_score=+1.075278 P=0.01588080
+  r27 37 D4 C log_score=+1.021520 P=0.01504963
+
+=== LEADER POOL ===
+  r01 44 D5 W log_score=+2.695446 P=0.08026059
+  r02 42 D5 H log_score=+2.661537 P=0.07758469
+  r03 41 D5 W log_score=+2.530036 P=0.06802453
+  r04 43 D5 C log_score=+2.478671 P=0.06461869
+  r05 40 D4 W log_score=+1.975161 P=0.03905590
+[LOCKED] Joint relaxation available: rank[3..43] P[0.01000076..0.03551684] HWC_shapes=1 dec_shapes=1
+
+=== TICKETS ===
+[LOCKED] Diversification shortfall; expanding ticket pool.
+#1 leader=44 (r01) | cohort=[9, 10, 12, 30, 32] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.11862449 Pmean=0.02372490 Pmin=0.01731527 Pmax=0.02868877 | cohort_ranks=[9, 10, 11, 12, 21]
+#2 leader=44 (r01) | cohort=[9, 10, 12, 29, 32] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.11817533 Pmean=0.02363507 Pmin=0.01686611 Pmax=0.02868877 | cohort_ranks=[9, 10, 11, 12, 22]
+#3 leader=44 (r01) | cohort=[1, 8, 11, 30, 33] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.10746746 Pmean=0.02149349 Pmin=0.01599445 Pmax=0.03161739 | cohort_ranks=[7, 14, 16, 21, 25]
+#4 leader=44 (r01) | cohort=[1, 8, 11, 29, 33] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.10701831 Pmean=0.02140366 Pmin=0.01599445 Pmax=0.03161739 | cohort_ranks=[7, 14, 16, 22, 25]
+#5 leader=44 (r01) | cohort=[9, 10, 12, 30, 32] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.11862449 Pmean=0.02372490 Pmin=0.01731527 Pmax=0.02868877 | cohort_ranks=[9, 10, 11, 12, 21]
+#6 leader=44 (r01) | cohort=[9, 10, 12, 29, 32] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.11817533 Pmean=0.02363507 Pmin=0.01686611 Pmax=0.02868877 | cohort_ranks=[9, 10, 11, 12, 22]
+#7 leader=44 (r01) | cohort=[1, 8, 11, 30, 31] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.11110927 Pmean=0.02222185 Pmin=0.01599445 Pmax=0.03525919 | cohort_ranks=[6, 14, 16, 21, 25]
+#8 leader=44 (r01) | cohort=[1, 8, 11, 29, 31] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.11066011 Pmean=0.02213202 Pmin=0.01599445 Pmax=0.03525919 | cohort_ranks=[6, 14, 16, 22, 25]
+#9 leader=44 (r01) | cohort=[3, 5, 20, 22, 33] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.09696378 Pmean=0.01939276 Pmin=0.01338236 Pmax=0.03161739 | cohort_ranks=[7, 17, 20, 28, 29]
+#10 leader=44 (r01) | cohort=[3, 5, 20, 22, 39] | cohort_hwc=(0, 4, 1) | cohort_decades={D1:2, D2:1, D3:1, D4:1, D5:0} | cohort_Psum=0.09620625 Pmean=0.01924125 Pmin=0.01338236 Pmax=0.03085986 | cohort_ranks=[8, 17, 20, 28, 29]
+
+=== RUN END ===
+End time:   2026-01-03 19:53:39
+Total run time: 1.27 seconds (0.02 minutes)

@@ -1,0 +1,428 @@
+=== BACKTEST (LAST 5 DRAWS) ===
+
+=== ALL SCORED NUMBERS ===
+CandidateScore(n=10, total_score=0.959127, freq_recent=9, freq_long=140, freq_season=10, rank_recent=1, gap_days=42)
+CandidateScore(n=1, total_score=0.806746, freq_recent=7, freq_long=157, freq_season=9, rank_recent=2, gap_days=14)
+CandidateScore(n=42, total_score=0.763492, freq_recent=7, freq_long=146, freq_season=9, rank_recent=2, gap_days=7)
+CandidateScore(n=13, total_score=0.705357, freq_recent=7, freq_long=138, freq_season=7, rank_recent=2, gap_days=21)
+CandidateScore(n=11, total_score=0.655233, freq_recent=1, freq_long=144, freq_season=7, rank_recent=8, gap_days=175)
+CandidateScore(n=20, total_score=0.621429, freq_recent=0, freq_long=114, freq_season=6, rank_recent=9, gap_days=448)
+CandidateScore(n=37, total_score=0.598562, freq_recent=5, freq_long=130, freq_season=10, rank_recent=4, gap_days=49)
+CandidateScore(n=6, total_score=0.550546, freq_recent=5, freq_long=132, freq_season=6, rank_recent=4, gap_days=84)
+CandidateScore(n=40, total_score=0.548611, freq_recent=6, freq_long=130, freq_season=4, rank_recent=3, gap_days=35)
+CandidateScore(n=16, total_score=0.540724, freq_recent=5, freq_long=134, freq_season=7, rank_recent=4, gap_days=21)
+CandidateScore(n=41, total_score=0.530506, freq_recent=5, freq_long=127, freq_season=8, rank_recent=4, gap_days=14)
+CandidateScore(n=30, total_score=0.530456, freq_recent=3, freq_long=130, freq_season=10, rank_recent=6, gap_days=161)
+CandidateScore(n=45, total_score=0.526339, freq_recent=5, freq_long=123, freq_season=6, rank_recent=4, gap_days=98)
+CandidateScore(n=18, total_score=0.523393, freq_recent=4, freq_long=134, freq_season=9, rank_recent=5, gap_days=42)
+CandidateScore(n=8, total_score=0.517659, freq_recent=0, freq_long=121, freq_season=4, rank_recent=9, gap_days=287)
+CandidateScore(n=9, total_score=0.503026, freq_recent=5, freq_long=119, freq_season=7, rank_recent=4, gap_days=49)
+CandidateScore(n=36, total_score=0.499206, freq_recent=6, freq_long=109, freq_season=6, rank_recent=3, gap_days=14)
+CandidateScore(n=17, total_score=0.498264, freq_recent=5, freq_long=121, freq_season=7, rank_recent=4, gap_days=28)
+CandidateScore(n=21, total_score=0.485764, freq_recent=5, freq_long=128, freq_season=5, rank_recent=4, gap_days=28)
+CandidateScore(n=31, total_score=0.478552, freq_recent=4, freq_long=127, freq_season=9, rank_recent=5, gap_days=7)
+CandidateScore(n=12, total_score=0.468924, freq_recent=1, freq_long=129, freq_season=5, rank_recent=8, gap_days=7)
+CandidateScore(n=38, total_score=0.463571, freq_recent=4, freq_long=133, freq_season=6, rank_recent=5, gap_days=42)
+CandidateScore(n=23, total_score=0.461161, freq_recent=5, freq_long=120, freq_season=5, rank_recent=4, gap_days=35)
+CandidateScore(n=28, total_score=0.458581, freq_recent=5, freq_long=111, freq_season=7, rank_recent=4, gap_days=21)
+CandidateScore(n=44, total_score=0.447996, freq_recent=4, freq_long=104, freq_season=9, rank_recent=5, gap_days=98)
+CandidateScore(n=32, total_score=0.444821, freq_recent=4, freq_long=133, freq_season=5, rank_recent=5, gap_days=42)
+CandidateScore(n=5, total_score=0.432123, freq_recent=4, freq_long=125, freq_season=5, rank_recent=5, gap_days=70)
+CandidateScore(n=19, total_score=0.423363, freq_recent=5, freq_long=118, freq_season=4, rank_recent=4, gap_days=14)
+CandidateScore(n=39, total_score=0.420833, freq_recent=3, freq_long=129, freq_season=9, rank_recent=6, gap_days=7)
+CandidateScore(n=14, total_score=0.413938, freq_recent=5, freq_long=109, freq_season=5, rank_recent=4, gap_days=21)
+CandidateScore(n=3, total_score=0.412773, freq_recent=1, freq_long=116, freq_season=3, rank_recent=8, gap_days=56)
+CandidateScore(n=24, total_score=0.404464, freq_recent=2, freq_long=135, freq_season=7, rank_recent=7, gap_days=119)
+CandidateScore(n=7, total_score=0.404444, freq_recent=4, freq_long=122, freq_season=6, rank_recent=5, gap_days=7)
+CandidateScore(n=15, total_score=0.403552, freq_recent=4, freq_long=127, freq_season=5, rank_recent=5, gap_days=7)
+CandidateScore(n=29, total_score=0.399782, freq_recent=4, freq_long=132, freq_season=3, rank_recent=5, gap_days=35)
+CandidateScore(n=43, total_score=0.388075, freq_recent=4, freq_long=116, freq_season=5, rank_recent=5, gap_days=49)
+CandidateScore(n=25, total_score=0.377579, freq_recent=3, freq_long=108, freq_season=9, rank_recent=6, gap_days=63)
+CandidateScore(n=27, total_score=0.36369, freq_recent=3, freq_long=124, freq_season=5, rank_recent=6, gap_days=70)
+CandidateScore(n=35, total_score=0.34623, freq_recent=3, freq_long=108, freq_season=5, rank_recent=6, gap_days=140)
+CandidateScore(n=2, total_score=0.338472, freq_recent=4, freq_long=101, freq_season=5, rank_recent=5, gap_days=56)
+CandidateScore(n=22, total_score=0.334722, freq_recent=2, freq_long=129, freq_season=4, rank_recent=7, gap_days=133)
+CandidateScore(n=33, total_score=0.322698, freq_recent=4, freq_long=119, freq_season=2, rank_recent=5, gap_days=14)
+CandidateScore(n=4, total_score=0.319226, freq_recent=4, freq_long=105, freq_season=3, rank_recent=5, gap_days=63)
+CandidateScore(n=34, total_score=0.317163, freq_recent=2, freq_long=126, freq_season=3, rank_recent=7, gap_days=154)
+CandidateScore(n=26, total_score=0.289187, freq_recent=2, freq_long=121, freq_season=5, rank_recent=7, gap_days=70)
+Generated 20/20 tickets in 134 attempts
+
+Target: 2025-11-29
+Ticket #01: [10, 14, 17, 31, 36, 41]  decades={1: 1, 2: 2, 3: 0, 4: 2, 5: 1}
+Ticket #02: [3, 8, 12, 14, 18, 37]  decades={1: 2, 2: 3, 3: 0, 4: 1, 5: 0}
+Ticket #03: [1, 2, 18, 30, 31, 38]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #04: [1, 9, 13, 24, 30, 37]  decades={1: 2, 2: 1, 3: 2, 4: 1, 5: 0}
+Ticket #05: [10, 13, 29, 31, 36, 42]  decades={1: 1, 2: 1, 3: 1, 4: 2, 5: 1}
+Ticket #06: [9, 15, 17, 21, 24, 36]  decades={1: 1, 2: 2, 3: 2, 4: 1, 5: 0}
+Ticket #07: [3, 5, 13, 20, 24, 32]  decades={1: 2, 2: 2, 3: 1, 4: 1, 5: 0}
+Ticket #08: [3, 10, 19, 30, 36, 39]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #09: [8, 11, 12, 37, 42, 44]  decades={1: 1, 2: 2, 3: 0, 4: 1, 5: 2}
+Ticket #10: [12, 29, 36, 38, 42, 45]  decades={1: 0, 2: 1, 3: 1, 4: 2, 5: 2}
+Ticket #11: [2, 11, 20, 21, 39, 41]  decades={1: 1, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #12: [2, 6, 19, 32, 42, 45]  decades={1: 2, 2: 1, 3: 0, 4: 1, 5: 2}
+Ticket #13: [5, 10, 11, 17, 37, 41]  decades={1: 2, 2: 2, 3: 0, 4: 1, 5: 1}
+Ticket #14: [8, 11, 20, 21, 30, 38]  decades={1: 1, 2: 2, 3: 2, 4: 1, 5: 0}
+Ticket #15: [8, 11, 16, 17, 41, 45]  decades={1: 1, 2: 3, 3: 0, 4: 0, 5: 2}
+Ticket #16: [1, 16, 18, 27, 37, 42]  decades={1: 1, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #17: [3, 14, 19, 20, 27, 31]  decades={1: 1, 2: 3, 3: 1, 4: 1, 5: 0}
+Ticket #18: [5, 17, 21, 28, 40, 45]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #19: [10, 12, 21, 23, 24, 41]  decades={1: 1, 2: 1, 3: 3, 4: 0, 5: 1}
+Ticket #20: [3, 16, 18, 20, 28, 39]  decades={1: 1, 2: 3, 3: 1, 4: 1, 5: 0}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [5, 10, 17, 22, 36, 44]
+Ticket #01: hits=3 nums=[10, 17, 36] near_miss=0 near_nums=[]
+Ticket #13: hits=3 nums=[5, 10, 17] near_miss=2 near_nums=[11, 37]
+Best near-miss: Ticket #15 near_miss=3 near_nums=[11, 16, 45]
+
+=== ALL SCORED NUMBERS ===
+CandidateScore(n=10, total_score=0.942857, freq_recent=10, freq_long=141, freq_season=10, rank_recent=1, gap_days=7)
+CandidateScore(n=1, total_score=0.769896, freq_recent=7, freq_long=157, freq_season=9, rank_recent=2, gap_days=21)
+CandidateScore(n=11, total_score=0.70779, freq_recent=1, freq_long=144, freq_season=10, rank_recent=8, gap_days=182)
+CandidateScore(n=13, total_score=0.672612, freq_recent=7, freq_long=138, freq_season=7, rank_recent=2, gap_days=28)
+CandidateScore(n=42, total_score=0.643371, freq_recent=7, freq_long=146, freq_season=4, rank_recent=2, gap_days=14)
+CandidateScore(n=34, total_score=0.598452, freq_recent=1, freq_long=126, freq_season=8, rank_recent=8, gap_days=161)
+CandidateScore(n=20, total_score=0.596429, freq_recent=0, freq_long=114, freq_season=4, rank_recent=9, gap_days=455)
+CandidateScore(n=40, total_score=0.578103, freq_recent=6, freq_long=130, freq_season=7, rank_recent=3, gap_days=42)
+CandidateScore(n=6, total_score=0.564881, freq_recent=5, freq_long=132, freq_season=8, rank_recent=4, gap_days=91)
+CandidateScore(n=8, total_score=0.548251, freq_recent=0, freq_long=121, freq_season=5, rank_recent=9, gap_days=294)
+CandidateScore(n=36, total_score=0.544226, freq_recent=7, freq_long=110, freq_season=6, rank_recent=2, gap_days=7)
+CandidateScore(n=41, total_score=0.524628, freq_recent=5, freq_long=127, freq_season=9, rank_recent=4, gap_days=21)
+CandidateScore(n=9, total_score=0.515588, freq_recent=5, freq_long=119, freq_season=9, rank_recent=4, gap_days=56)
+CandidateScore(n=16, total_score=0.509576, freq_recent=4, freq_long=134, freq_season=10, rank_recent=5, gap_days=28)
+CandidateScore(n=37, total_score=0.504874, freq_recent=5, freq_long=130, freq_season=6, rank_recent=4, gap_days=56)
+CandidateScore(n=18, total_score=0.504628, freq_recent=4, freq_long=134, freq_season=9, rank_recent=5, gap_days=49)
+CandidateScore(n=17, total_score=0.496667, freq_recent=6, freq_long=122, freq_season=5, rank_recent=3, gap_days=7)
+CandidateScore(n=32, total_score=0.48439, freq_recent=4, freq_long=133, freq_season=8, rank_recent=5, gap_days=49)
+CandidateScore(n=45, total_score=0.473884, freq_recent=5, freq_long=123, freq_season=4, rank_recent=4, gap_days=105)
+CandidateScore(n=21, total_score=0.469345, freq_recent=5, freq_long=128, freq_season=5, rank_recent=4, gap_days=35)
+CandidateScore(n=12, total_score=0.460469, freq_recent=1, freq_long=129, freq_season=4, rank_recent=8, gap_days=14)
+CandidateScore(n=5, total_score=0.446577, freq_recent=5, freq_long=126, freq_season=5, rank_recent=4, gap_days=7)
+CandidateScore(n=31, total_score=0.44343, freq_recent=4, freq_long=127, freq_season=8, rank_recent=5, gap_days=14)
+CandidateScore(n=44, total_score=0.438244, freq_recent=5, freq_long=105, freq_season=9, rank_recent=4, gap_days=7)
+CandidateScore(n=38, total_score=0.43439, freq_recent=4, freq_long=133, freq_season=5, rank_recent=5, gap_days=49)
+CandidateScore(n=23, total_score=0.428013, freq_recent=5, freq_long=120, freq_season=4, rank_recent=4, gap_days=42)
+CandidateScore(n=30, total_score=0.423653, freq_recent=2, freq_long=130, freq_season=8, rank_recent=7, gap_days=168)
+CandidateScore(n=28, total_score=0.421391, freq_recent=5, freq_long=111, freq_season=6, rank_recent=4, gap_days=28)
+CandidateScore(n=24, total_score=0.418073, freq_recent=2, freq_long=135, freq_season=8, rank_recent=7, gap_days=126)
+CandidateScore(n=14, total_score=0.414249, freq_recent=5, freq_long=109, freq_season=6, rank_recent=4, gap_days=28)
+CandidateScore(n=39, total_score=0.40849, freq_recent=3, freq_long=129, freq_season=9, rank_recent=6, gap_days=14)
+CandidateScore(n=3, total_score=0.408051, freq_recent=1, freq_long=116, freq_season=2, rank_recent=8, gap_days=63)
+CandidateScore(n=7, total_score=0.39224, freq_recent=4, freq_long=122, freq_season=6, rank_recent=5, gap_days=14)
+CandidateScore(n=35, total_score=0.391042, freq_recent=3, freq_long=108, freq_season=8, rank_recent=6, gap_days=147)
+CandidateScore(n=33, total_score=0.385432, freq_recent=4, freq_long=119, freq_season=6, rank_recent=5, gap_days=21)
+CandidateScore(n=15, total_score=0.376763, freq_recent=4, freq_long=127, freq_season=4, rank_recent=5, gap_days=14)
+CandidateScore(n=19, total_score=0.359152, freq_recent=5, freq_long=118, freq_season=1, rank_recent=4, gap_days=21)
+CandidateScore(n=25, total_score=0.348073, freq_recent=3, freq_long=108, freq_season=8, rank_recent=6, gap_days=70)
+CandidateScore(n=2, total_score=0.327917, freq_recent=4, freq_long=101, freq_season=5, rank_recent=5, gap_days=63)
+CandidateScore(n=22, total_score=0.324821, freq_recent=3, freq_long=130, freq_season=4, rank_recent=6, gap_days=7)
+CandidateScore(n=43, total_score=0.318832, freq_recent=3, freq_long=116, freq_season=5, rank_recent=6, gap_days=56)
+CandidateScore(n=29, total_score=0.301496, freq_recent=3, freq_long=132, freq_season=1, rank_recent=6, gap_days=42)
+CandidateScore(n=4, total_score=0.296109, freq_recent=4, freq_long=105, freq_season=2, rank_recent=5, gap_days=70)
+CandidateScore(n=26, total_score=0.290729, freq_recent=2, freq_long=121, freq_season=5, rank_recent=7, gap_days=77)
+CandidateScore(n=27, total_score=0.284777, freq_recent=2, freq_long=124, freq_season=4, rank_recent=7, gap_days=77)
+Generated 20/20 tickets in 77 attempts
+
+Target: 2025-12-06
+Ticket #01: [10, 14, 17, 21, 32, 36]  decades={1: 1, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #02: [12, 14, 16, 20, 37, 39]  decades={1: 0, 2: 4, 3: 0, 4: 2, 5: 0}
+Ticket #03: [2, 13, 15, 24, 39, 41]  decades={1: 1, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #04: [13, 19, 24, 31, 36, 41]  decades={1: 0, 2: 2, 3: 1, 4: 2, 5: 1}
+Ticket #05: [3, 17, 18, 32, 35, 45]  decades={1: 1, 2: 2, 3: 0, 4: 2, 5: 1}
+Ticket #06: [3, 13, 23, 30, 34, 39]  decades={1: 1, 2: 1, 3: 2, 4: 2, 5: 0}
+Ticket #07: [10, 17, 24, 28, 39, 41]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #08: [11, 12, 20, 37, 38, 42]  decades={1: 0, 2: 3, 3: 0, 4: 2, 5: 1}
+Ticket #09: [5, 9, 11, 12, 17, 33]  decades={1: 2, 2: 3, 3: 0, 4: 1, 5: 0}
+Ticket #10: [9, 11, 22, 23, 28, 40]  decades={1: 1, 2: 1, 3: 3, 4: 1, 5: 0}
+Ticket #11: [6, 8, 13, 25, 31, 44]  decades={1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+Ticket #12: [6, 17, 19, 31, 36, 45]  decades={1: 1, 2: 2, 3: 0, 4: 2, 5: 1}
+Ticket #13: [15, 19, 28, 32, 38, 45]  decades={1: 0, 2: 2, 3: 1, 4: 2, 5: 1}
+Ticket #14: [10, 19, 20, 25, 30, 41]  decades={1: 1, 2: 2, 3: 2, 4: 0, 5: 1}
+Ticket #15: [8, 9, 32, 36, 37, 42]  decades={1: 2, 2: 0, 3: 0, 4: 3, 5: 1}
+Ticket #16: [11, 16, 23, 28, 34, 42]  decades={1: 0, 2: 2, 3: 2, 4: 1, 5: 1}
+Ticket #17: [3, 6, 13, 16, 34, 40]  decades={1: 2, 2: 2, 3: 0, 4: 2, 5: 0}
+Ticket #18: [10, 15, 21, 40, 41, 42]  decades={1: 1, 2: 1, 3: 1, 4: 1, 5: 2}
+Ticket #19: [2, 10, 15, 28, 32, 35]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #20: [12, 15, 24, 35, 37, 40]  decades={1: 0, 2: 2, 3: 1, 4: 3, 5: 0}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [5, 10, 17, 33, 42, 45]
+Ticket #09: hits=3 nums=[5, 17, 33] near_miss=2 near_nums=[9, 11]
+Best near-miss: Ticket #16 near_miss=3 near_nums=[11, 16, 34]
+
+=== ALL SCORED NUMBERS ===
+CandidateScore(n=10, total_score=0.871429, freq_recent=11, freq_long=142, freq_season=7, rank_recent=1, gap_days=7)
+CandidateScore(n=1, total_score=0.678205, freq_recent=6, freq_long=157, freq_season=12, rank_recent=4, gap_days=28)
+CandidateScore(n=11, total_score=0.659806, freq_recent=1, freq_long=144, freq_season=9, rank_recent=9, gap_days=189)
+CandidateScore(n=42, total_score=0.63873, freq_recent=8, freq_long=147, freq_season=4, rank_recent=2, gap_days=7)
+CandidateScore(n=13, total_score=0.598453, freq_recent=7, freq_long=138, freq_season=7, rank_recent=3, gap_days=35)
+CandidateScore(n=20, total_score=0.576429, freq_recent=0, freq_long=114, freq_season=4, rank_recent=10, gap_days=462)
+CandidateScore(n=8, total_score=0.542967, freq_recent=0, freq_long=121, freq_season=6, rank_recent=10, gap_days=301)
+CandidateScore(n=6, total_score=0.541825, freq_recent=5, freq_long=132, freq_season=10, rank_recent=5, gap_days=98)
+CandidateScore(n=34, total_score=0.538982, freq_recent=1, freq_long=126, freq_season=6, rank_recent=9, gap_days=168)
+CandidateScore(n=17, total_score=0.529497, freq_recent=7, freq_long=123, freq_season=7, rank_recent=3, gap_days=7)
+CandidateScore(n=9, total_score=0.506166, freq_recent=5, freq_long=119, freq_season=12, rank_recent=5, gap_days=63)
+CandidateScore(n=40, total_score=0.503315, freq_recent=6, freq_long=130, freq_season=6, rank_recent=4, gap_days=49)
+CandidateScore(n=36, total_score=0.501915, freq_recent=7, freq_long=110, freq_season=8, rank_recent=3, gap_days=14)
+CandidateScore(n=41, total_score=0.485507, freq_recent=5, freq_long=127, freq_season=10, rank_recent=5, gap_days=28)
+CandidateScore(n=5, total_score=0.469524, freq_recent=6, freq_long=127, freq_season=6, rank_recent=4, gap_days=7)
+CandidateScore(n=12, total_score=0.438927, freq_recent=1, freq_long=129, freq_season=4, rank_recent=9, gap_days=21)
+CandidateScore(n=32, total_score=0.438616, freq_recent=4, freq_long=133, freq_season=8, rank_recent=6, gap_days=56)
+CandidateScore(n=3, total_score=0.434421, freq_recent=1, freq_long=116, freq_season=5, rank_recent=9, gap_days=70)
+CandidateScore(n=16, total_score=0.430649, freq_recent=4, freq_long=134, freq_season=8, rank_recent=6, gap_days=35)
+CandidateScore(n=21, total_score=0.42177, freq_recent=5, freq_long=128, freq_season=5, rank_recent=5, gap_days=42)
+CandidateScore(n=37, total_score=0.410452, freq_recent=5, freq_long=130, freq_season=3, rank_recent=5, gap_days=63)
+CandidateScore(n=33, total_score=0.403968, freq_recent=5, freq_long=120, freq_season=7, rank_recent=5, gap_days=7)
+CandidateScore(n=28, total_score=0.40221, freq_recent=5, freq_long=111, freq_season=8, rank_recent=5, gap_days=35)
+CandidateScore(n=23, total_score=0.382045, freq_recent=5, freq_long=120, freq_season=4, rank_recent=5, gap_days=49)
+CandidateScore(n=18, total_score=0.374542, freq_recent=3, freq_long=134, freq_season=7, rank_recent=7, gap_days=56)
+CandidateScore(n=45, total_score=0.373254, freq_recent=5, freq_long=124, freq_season=4, rank_recent=5, gap_days=7)
+CandidateScore(n=44, total_score=0.369243, freq_recent=5, freq_long=105, freq_season=8, rank_recent=5, gap_days=14)
+CandidateScore(n=31, total_score=0.367957, freq_recent=4, freq_long=127, freq_season=6, rank_recent=6, gap_days=21)
+CandidateScore(n=39, total_score=0.367454, freq_recent=3, freq_long=129, freq_season=9, rank_recent=7, gap_days=21)
+CandidateScore(n=7, total_score=0.3651, freq_recent=4, freq_long=122, freq_season=7, rank_recent=6, gap_days=21)
+CandidateScore(n=24, total_score=0.353437, freq_recent=2, freq_long=135, freq_season=6, rank_recent=8, gap_days=133)
+CandidateScore(n=14, total_score=0.350067, freq_recent=5, freq_long=109, freq_season=5, rank_recent=5, gap_days=35)
+CandidateScore(n=29, total_score=0.333553, freq_recent=3, freq_long=132, freq_season=5, rank_recent=7, gap_days=49)
+CandidateScore(n=19, total_score=0.333364, freq_recent=5, freq_long=118, freq_season=2, rank_recent=5, gap_days=28)
+CandidateScore(n=30, total_score=0.328657, freq_recent=2, freq_long=130, freq_season=4, rank_recent=8, gap_days=175)
+CandidateScore(n=38, total_score=0.325971, freq_recent=3, freq_long=133, freq_season=4, rank_recent=7, gap_days=56)
+CandidateScore(n=35, total_score=0.313547, freq_recent=2, freq_long=108, freq_season=9, rank_recent=8, gap_days=154)
+CandidateScore(n=15, total_score=0.307957, freq_recent=4, freq_long=127, freq_season=2, rank_recent=6, gap_days=21)
+CandidateScore(n=26, total_score=0.291514, freq_recent=2, freq_long=121, freq_season=7, rank_recent=8, gap_days=84)
+CandidateScore(n=22, total_score=0.277179, freq_recent=3, freq_long=130, freq_season=3, rank_recent=7, gap_days=14)
+CandidateScore(n=4, total_score=0.275155, freq_recent=4, freq_long=105, freq_season=3, rank_recent=6, gap_days=77)
+CandidateScore(n=2, total_score=0.272023, freq_recent=4, freq_long=101, freq_season=4, rank_recent=6, gap_days=70)
+CandidateScore(n=43, total_score=0.269103, freq_recent=3, freq_long=116, freq_season=4, rank_recent=7, gap_days=63)
+CandidateScore(n=25, total_score=0.256239, freq_recent=2, freq_long=108, freq_season=8, rank_recent=8, gap_days=77)
+CandidateScore(n=27, total_score=0.242228, freq_recent=2, freq_long=124, freq_season=3, rank_recent=8, gap_days=84)
+Generated 20/20 tickets in 109 attempts
+
+Target: 2025-12-13
+Ticket #01: [3, 7, 9, 10, 21, 32]  decades={1: 4, 2: 0, 3: 1, 4: 1, 5: 0}
+Ticket #02: [8, 20, 29, 34, 36, 41]  decades={1: 1, 2: 1, 3: 1, 4: 2, 5: 1}
+Ticket #03: [5, 6, 9, 11, 39, 44]  decades={1: 3, 2: 1, 3: 0, 4: 1, 5: 1}
+Ticket #04: [5, 7, 8, 24, 37, 41]  decades={1: 3, 2: 0, 3: 1, 4: 1, 5: 1}
+Ticket #05: [1, 21, 22, 33, 40, 41]  decades={1: 1, 2: 0, 3: 2, 4: 2, 5: 1}
+Ticket #06: [1, 8, 12, 14, 36, 40]  decades={1: 2, 2: 2, 3: 0, 4: 2, 5: 0}
+Ticket #07: [10, 11, 21, 30, 32, 42]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #08: [1, 8, 14, 33, 36, 40]  decades={1: 2, 2: 1, 3: 0, 4: 3, 5: 0}
+Ticket #09: [14, 20, 24, 42, 44, 45]  decades={1: 0, 2: 2, 3: 1, 4: 0, 5: 3}
+Ticket #10: [1, 12, 19, 26, 38, 42]  decades={1: 1, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #11: [11, 30, 32, 33, 36, 37]  decades={1: 0, 2: 1, 3: 1, 4: 4, 5: 0}
+Ticket #12: [6, 11, 22, 31, 36, 45]  decades={1: 1, 2: 1, 3: 1, 4: 2, 5: 1}
+Ticket #13: [11, 22, 24, 26, 31, 37]  decades={1: 0, 2: 1, 3: 3, 4: 2, 5: 0}
+Ticket #14: [9, 10, 20, 21, 32, 35]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #15: [6, 8, 16, 35, 39, 41]  decades={1: 2, 2: 1, 3: 0, 4: 2, 5: 1}
+Ticket #16: [1, 9, 13, 23, 29, 30]  decades={1: 2, 2: 1, 3: 3, 4: 0, 5: 0}
+Ticket #17: [6, 7, 14, 17, 24, 29]  decades={1: 2, 2: 2, 3: 2, 4: 0, 5: 0}
+Ticket #18: [3, 5, 20, 28, 39, 44]  decades={1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+Ticket #19: [17, 18, 26, 28, 33, 37]  decades={1: 0, 2: 2, 3: 2, 4: 2, 5: 0}
+Ticket #20: [3, 6, 17, 20, 29, 39]  decades={1: 2, 2: 2, 3: 1, 4: 1, 5: 0}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [6, 17, 20, 28, 32, 35]
+Ticket #14: hits=3 nums=[20, 32, 35] near_miss=1 near_nums=[21]
+Ticket #20: hits=3 nums=[6, 17, 20] near_miss=1 near_nums=[29]
+Best near-miss: Ticket #02 near_miss=3 near_nums=[29, 34, 36]
+
+=== ALL SCORED NUMBERS ===
+CandidateScore(n=10, total_score=0.839743, freq_recent=11, freq_long=142, freq_season=4, rank_recent=1, gap_days=14)
+CandidateScore(n=11, total_score=0.724283, freq_recent=1, freq_long=144, freq_season=10, rank_recent=9, gap_days=196)
+CandidateScore(n=42, total_score=0.664544, freq_recent=8, freq_long=147, freq_season=5, rank_recent=2, gap_days=14)
+CandidateScore(n=8, total_score=0.646429, freq_recent=0, freq_long=121, freq_season=7, rank_recent=10, gap_days=308)
+CandidateScore(n=1, total_score=0.639922, freq_recent=6, freq_long=157, freq_season=9, rank_recent=4, gap_days=35)
+CandidateScore(n=34, total_score=0.605055, freq_recent=1, freq_long=126, freq_season=7, rank_recent=9, gap_days=175)
+CandidateScore(n=17, total_score=0.601587, freq_recent=8, freq_long=124, freq_season=7, rank_recent=2, gap_days=7)
+CandidateScore(n=13, total_score=0.574639, freq_recent=7, freq_long=138, freq_season=4, rank_recent=3, gap_days=42)
+CandidateScore(n=6, total_score=0.543452, freq_recent=6, freq_long=133, freq_season=10, rank_recent=4, gap_days=7)
+CandidateScore(n=5, total_score=0.490338, freq_recent=6, freq_long=127, freq_season=7, rank_recent=4, gap_days=14)
+CandidateScore(n=36, total_score=0.482197, freq_recent=7, freq_long=110, freq_season=6, rank_recent=3, gap_days=21)
+CandidateScore(n=12, total_score=0.481176, freq_recent=1, freq_long=129, freq_season=6, rank_recent=9, gap_days=28)
+CandidateScore(n=40, total_score=0.48038, freq_recent=5, freq_long=130, freq_season=7, rank_recent=5, gap_days=56)
+CandidateScore(n=9, total_score=0.474019, freq_recent=4, freq_long=119, freq_season=13, rank_recent=6, gap_days=70)
+CandidateScore(n=21, total_score=0.467423, freq_recent=5, freq_long=128, freq_season=7, rank_recent=5, gap_days=49)
+CandidateScore(n=41, total_score=0.464724, freq_recent=5, freq_long=127, freq_season=8, rank_recent=5, gap_days=35)
+CandidateScore(n=3, total_score=0.450446, freq_recent=1, freq_long=116, freq_season=4, rank_recent=9, gap_days=77)
+CandidateScore(n=24, total_score=0.434671, freq_recent=2, freq_long=135, freq_season=9, rank_recent=8, gap_days=140)
+CandidateScore(n=16, total_score=0.429334, freq_recent=4, freq_long=134, freq_season=7, rank_recent=6, gap_days=42)
+CandidateScore(n=37, total_score=0.425804, freq_recent=4, freq_long=130, freq_season=6, rank_recent=6, gap_days=70)
+CandidateScore(n=28, total_score=0.418452, freq_recent=6, freq_long=112, freq_season=6, rank_recent=4, gap_days=7)
+CandidateScore(n=32, total_score=0.416468, freq_recent=5, freq_long=134, freq_season=4, rank_recent=5, gap_days=7)
+CandidateScore(n=30, total_score=0.414198, freq_recent=2, freq_long=130, freq_season=6, rank_recent=8, gap_days=182)
+CandidateScore(n=39, total_score=0.409704, freq_recent=3, freq_long=129, freq_season=12, rank_recent=7, gap_days=28)
+CandidateScore(n=23, total_score=0.407166, freq_recent=5, freq_long=120, freq_season=4, rank_recent=5, gap_days=56)
+CandidateScore(n=20, total_score=0.401235, freq_recent=1, freq_long=115, freq_season=5, rank_recent=9, gap_days=7)
+CandidateScore(n=7, total_score=0.399849, freq_recent=4, freq_long=122, freq_season=9, rank_recent=6, gap_days=28)
+CandidateScore(n=33, total_score=0.384782, freq_recent=5, freq_long=120, freq_season=5, rank_recent=5, gap_days=14)
+CandidateScore(n=45, total_score=0.374068, freq_recent=5, freq_long=124, freq_season=3, rank_recent=5, gap_days=14)
+CandidateScore(n=4, total_score=0.373147, freq_recent=4, freq_long=105, freq_season=8, rank_recent=6, gap_days=84)
+CandidateScore(n=18, total_score=0.369131, freq_recent=3, freq_long=134, freq_season=5, rank_recent=7, gap_days=63)
+CandidateScore(n=29, total_score=0.368674, freq_recent=3, freq_long=132, freq_season=6, rank_recent=7, gap_days=56)
+CandidateScore(n=14, total_score=0.356252, freq_recent=5, freq_long=109, freq_season=4, rank_recent=5, gap_days=42)
+CandidateScore(n=38, total_score=0.340559, freq_recent=3, freq_long=133, freq_season=3, rank_recent=7, gap_days=63)
+CandidateScore(n=26, total_score=0.331474, freq_recent=2, freq_long=121, freq_season=8, rank_recent=8, gap_days=91)
+CandidateScore(n=19, total_score=0.328878, freq_recent=4, freq_long=118, freq_season=4, rank_recent=6, gap_days=35)
+CandidateScore(n=31, total_score=0.327561, freq_recent=3, freq_long=127, freq_season=6, rank_recent=7, gap_days=28)
+CandidateScore(n=15, total_score=0.317706, freq_recent=4, freq_long=127, freq_season=1, rank_recent=6, gap_days=28)
+CandidateScore(n=22, total_score=0.307461, freq_recent=3, freq_long=130, freq_season=4, rank_recent=7, gap_days=21)
+CandidateScore(n=2, total_score=0.303047, freq_recent=4, freq_long=101, freq_season=4, rank_recent=6, gap_days=77)
+CandidateScore(n=43, total_score=0.285659, freq_recent=3, freq_long=116, freq_season=3, rank_recent=7, gap_days=70)
+CandidateScore(n=35, total_score=0.283333, freq_recent=3, freq_long=109, freq_season=9, rank_recent=7, gap_days=7)
+CandidateScore(n=27, total_score=0.279688, freq_recent=2, freq_long=124, freq_season=3, rank_recent=8, gap_days=91)
+CandidateScore(n=44, total_score=0.270821, freq_recent=4, freq_long=105, freq_season=4, rank_recent=6, gap_days=21)
+CandidateScore(n=25, total_score=0.266731, freq_recent=2, freq_long=108, freq_season=7, rank_recent=8, gap_days=84)
+Generated 20/20 tickets in 136 attempts
+
+Target: 2025-12-20
+Ticket #01: [3, 4, 10, 24, 36, 37]  decades={1: 3, 2: 0, 3: 1, 4: 2, 5: 0}
+Ticket #02: [6, 9, 14, 17, 34, 40]  decades={1: 2, 2: 2, 3: 0, 4: 2, 5: 0}
+Ticket #03: [7, 13, 21, 36, 42, 45]  decades={1: 1, 2: 1, 3: 1, 4: 1, 5: 2}
+Ticket #04: [4, 9, 17, 18, 21, 28]  decades={1: 2, 2: 2, 3: 2, 4: 0, 5: 0}
+Ticket #05: [8, 11, 12, 17, 29, 41]  decades={1: 1, 2: 3, 3: 1, 4: 0, 5: 1}
+Ticket #06: [8, 12, 30, 31, 36, 45]  decades={1: 1, 2: 1, 3: 1, 4: 2, 5: 1}
+Ticket #07: [3, 16, 24, 29, 38, 41]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #08: [11, 12, 17, 29, 32, 40]  decades={1: 0, 2: 3, 3: 1, 4: 2, 5: 0}
+Ticket #09: [7, 8, 18, 20, 29, 34]  decades={1: 2, 2: 2, 3: 1, 4: 1, 5: 0}
+Ticket #10: [8, 11, 19, 22, 38, 41]  decades={1: 1, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #11: [1, 17, 21, 23, 28, 42]  decades={1: 1, 2: 1, 3: 3, 4: 0, 5: 1}
+Ticket #12: [2, 12, 20, 23, 34, 36]  decades={1: 1, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #13: [3, 8, 10, 23, 41, 42]  decades={1: 3, 2: 0, 3: 1, 4: 0, 5: 2}
+Ticket #14: [12, 15, 16, 21, 32, 42]  decades={1: 0, 2: 3, 3: 1, 4: 1, 5: 1}
+Ticket #15: [3, 11, 22, 23, 36, 42]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #16: [1, 3, 10, 18, 23, 32]  decades={1: 3, 2: 1, 3: 1, 4: 1, 5: 0}
+Ticket #17: [4, 5, 11, 14, 32, 45]  decades={1: 2, 2: 2, 3: 0, 4: 1, 5: 1}
+Ticket #18: [1, 7, 10, 26, 30, 37]  decades={1: 3, 2: 0, 3: 2, 4: 1, 5: 0}
+Ticket #19: [10, 22, 24, 31, 32, 34]  decades={1: 1, 2: 0, 3: 2, 4: 3, 5: 0}
+Ticket #20: [7, 15, 16, 18, 29, 33]  decades={1: 1, 2: 3, 3: 1, 4: 1, 5: 0}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [8, 19, 31, 32, 41, 43]
+Ticket #10: hits=3 nums=[8, 19, 41] near_miss=0 near_nums=[]
+Best near-miss: Ticket #09 near_miss=3 near_nums=[7, 18, 20]
+
+=== ALL SCORED NUMBERS ===
+CandidateScore(n=10, total_score=0.880952, freq_recent=11, freq_long=142, freq_season=6, rank_recent=1, gap_days=21)
+CandidateScore(n=11, total_score=0.786905, freq_recent=1, freq_long=144, freq_season=10, rank_recent=8, gap_days=203)
+CandidateScore(n=42, total_score=0.676667, freq_recent=8, freq_long=147, freq_season=6, rank_recent=2, gap_days=21)
+CandidateScore(n=34, total_score=0.645833, freq_recent=1, freq_long=126, freq_season=7, rank_recent=8, gap_days=182)
+CandidateScore(n=1, total_score=0.610119, freq_recent=6, freq_long=157, freq_season=6, rank_recent=3, gap_days=42)
+CandidateScore(n=17, total_score=0.585595, freq_recent=8, freq_long=124, freq_season=6, rank_recent=2, gap_days=14)
+CandidateScore(n=13, total_score=0.534524, freq_recent=6, freq_long=138, freq_season=5, rank_recent=3, gap_days=49)
+CandidateScore(n=6, total_score=0.505357, freq_recent=6, freq_long=133, freq_season=7, rank_recent=3, gap_days=14)
+CandidateScore(n=40, total_score=0.492619, freq_recent=5, freq_long=130, freq_season=7, rank_recent=4, gap_days=63)
+CandidateScore(n=41, total_score=0.478571, freq_recent=6, freq_long=128, freq_season=7, rank_recent=3, gap_days=7)
+CandidateScore(n=9, total_score=0.477143, freq_recent=4, freq_long=119, freq_season=11, rank_recent=5, gap_days=77)
+CandidateScore(n=30, total_score=0.476088, freq_recent=2, freq_long=130, freq_season=7, rank_recent=7, gap_days=189)
+CandidateScore(n=24, total_score=0.473707, freq_recent=2, freq_long=135, freq_season=9, rank_recent=7, gap_days=147)
+CandidateScore(n=32, total_score=0.470238, freq_recent=6, freq_long=135, freq_season=5, rank_recent=3, gap_days=7)
+CandidateScore(n=3, total_score=0.468452, freq_recent=1, freq_long=116, freq_season=6, rank_recent=8, gap_days=84)
+CandidateScore(n=21, total_score=0.459881, freq_recent=5, freq_long=128, freq_season=6, rank_recent=4, gap_days=56)
+CandidateScore(n=5, total_score=0.445, freq_recent=5, freq_long=127, freq_season=8, rank_recent=4, gap_days=21)
+CandidateScore(n=23, total_score=0.440238, freq_recent=5, freq_long=120, freq_season=6, rank_recent=4, gap_days=63)
+CandidateScore(n=28, total_score=0.430357, freq_recent=6, freq_long=112, freq_season=7, rank_recent=3, gap_days=14)
+CandidateScore(n=16, total_score=0.428333, freq_recent=4, freq_long=134, freq_season=7, rank_recent=5, gap_days=49)
+CandidateScore(n=12, total_score=0.419048, freq_recent=1, freq_long=129, freq_season=4, rank_recent=8, gap_days=35)
+CandidateScore(n=4, total_score=0.411667, freq_recent=4, freq_long=105, freq_season=9, rank_recent=5, gap_days=91)
+CandidateScore(n=20, total_score=0.408929, freq_recent=1, freq_long=115, freq_season=8, rank_recent=8, gap_days=14)
+CandidateScore(n=38, total_score=0.392738, freq_recent=3, freq_long=133, freq_season=7, rank_recent=6, gap_days=70)
+CandidateScore(n=8, total_score=0.391667, freq_recent=1, freq_long=122, freq_season=6, rank_recent=8, gap_days=7)
+CandidateScore(n=37, total_score=0.390952, freq_recent=3, freq_long=130, freq_season=7, rank_recent=6, gap_days=77)
+CandidateScore(n=7, total_score=0.384286, freq_recent=4, freq_long=122, freq_season=8, rank_recent=5, gap_days=35)
+CandidateScore(n=18, total_score=0.379643, freq_recent=3, freq_long=134, freq_season=6, rank_recent=6, gap_days=70)
+CandidateScore(n=36, total_score=0.374405, freq_recent=6, freq_long=110, freq_season=3, rank_recent=3, gap_days=28)
+CandidateScore(n=45, total_score=0.367619, freq_recent=5, freq_long=124, freq_season=4, rank_recent=4, gap_days=21)
+CandidateScore(n=39, total_score=0.367143, freq_recent=3, freq_long=129, freq_season=9, rank_recent=6, gap_days=35)
+CandidateScore(n=19, total_score=0.365238, freq_recent=5, freq_long=119, freq_season=6, rank_recent=4, gap_days=7)
+CandidateScore(n=29, total_score=0.363571, freq_recent=3, freq_long=132, freq_season=6, rank_recent=6, gap_days=63)
+CandidateScore(n=31, total_score=0.353333, freq_recent=4, freq_long=128, freq_season=7, rank_recent=5, gap_days=7)
+CandidateScore(n=14, total_score=0.349762, freq_recent=5, freq_long=109, freq_season=4, rank_recent=4, gap_days=49)
+CandidateScore(n=33, total_score=0.342619, freq_recent=4, freq_long=120, freq_season=7, rank_recent=5, gap_days=21)
+CandidateScore(n=26, total_score=0.311207, freq_recent=2, freq_long=121, freq_season=6, rank_recent=7, gap_days=98)
+CandidateScore(n=2, total_score=0.305119, freq_recent=4, freq_long=101, freq_season=4, rank_recent=5, gap_days=84)
+CandidateScore(n=15, total_score=0.302143, freq_recent=4, freq_long=127, freq_season=2, rank_recent=5, gap_days=35)
+CandidateScore(n=25, total_score=0.272517, freq_recent=2, freq_long=108, freq_season=7, rank_recent=7, gap_days=91)
+CandidateScore(n=27, total_score=0.271922, freq_recent=2, freq_long=124, freq_season=3, rank_recent=7, gap_days=98)
+CandidateScore(n=44, total_score=0.264643, freq_recent=4, freq_long=105, freq_season=5, rank_recent=5, gap_days=28)
+CandidateScore(n=43, total_score=0.264048, freq_recent=4, freq_long=117, freq_season=4, rank_recent=5, gap_days=7)
+CandidateScore(n=22, total_score=0.261786, freq_recent=3, freq_long=130, freq_season=3, rank_recent=6, gap_days=28)
+CandidateScore(n=35, total_score=0.194541, freq_recent=2, freq_long=109, freq_season=8, rank_recent=7, gap_days=14)
+Generated 20/20 tickets in 93 attempts
+
+Target: 2025-12-27
+Ticket #01: [5, 9, 10, 23, 36, 45]  decades={1: 3, 2: 0, 3: 1, 4: 1, 5: 1}
+Ticket #02: [13, 17, 24, 29, 32, 40]  decades={1: 0, 2: 2, 3: 2, 4: 2, 5: 0}
+Ticket #03: [3, 12, 13, 32, 39, 45]  decades={1: 1, 2: 2, 3: 0, 4: 2, 5: 1}
+Ticket #04: [4, 11, 16, 25, 30, 32]  decades={1: 1, 2: 2, 3: 2, 4: 1, 5: 0}
+Ticket #05: [11, 13, 19, 21, 30, 45]  decades={1: 0, 2: 3, 3: 2, 4: 0, 5: 1}
+Ticket #06: [9, 20, 26, 30, 34, 36]  decades={1: 1, 2: 1, 3: 2, 4: 2, 5: 0}
+Ticket #07: [7, 17, 19, 34, 37, 39]  decades={1: 1, 2: 2, 3: 0, 4: 3, 5: 0}
+Ticket #08: [5, 10, 18, 30, 36, 39]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #09: [4, 5, 12, 14, 24, 42]  decades={1: 2, 2: 2, 3: 1, 4: 0, 5: 1}
+Ticket #10: [1, 9, 17, 25, 28, 36]  decades={1: 2, 2: 1, 3: 2, 4: 1, 5: 0}
+Ticket #11: [6, 18, 24, 25, 37, 42]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #12: [5, 9, 20, 26, 28, 40]  decades={1: 2, 2: 1, 3: 2, 4: 1, 5: 0}
+Ticket #13: [8, 18, 23, 26, 28, 33]  decades={1: 1, 2: 1, 3: 3, 4: 1, 5: 0}
+Ticket #14: [9, 15, 17, 26, 33, 37]  decades={1: 1, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #15: [3, 10, 17, 19, 29, 30]  decades={1: 2, 2: 2, 3: 2, 4: 0, 5: 0}
+Ticket #16: [4, 10, 18, 26, 29, 42]  decades={1: 2, 2: 1, 3: 2, 4: 0, 5: 1}
+Ticket #17: [12, 13, 15, 19, 36, 39]  decades={1: 0, 2: 4, 3: 0, 4: 2, 5: 0}
+Ticket #18: [1, 5, 12, 28, 40, 45]  decades={1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+Ticket #19: [8, 10, 16, 40, 41, 45]  decades={1: 2, 2: 1, 3: 0, 4: 1, 5: 2}
+Ticket #20: [3, 15, 18, 21, 31, 40]  decades={1: 1, 2: 2, 3: 1, 4: 2, 5: 0}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [3, 5, 20, 26, 28, 40]
+Ticket #12: hits=5 nums=[5, 20, 26, 28, 40] near_miss=0 near_nums=[]
+Ticket #18: hits=3 nums=[5, 28, 40] near_miss=0 near_nums=[]
+Best near-miss: Ticket #04 near_miss=2 near_nums=[4, 25]
+TARGET_DATE not found in CSV; generating prediction without hit summary.
+
+=== TOP 20 SCORED NUMBERS ===
+CandidateScore(n=10, total_score=0.8632, freq_recent=11, freq_long=142, freq_season=4, rank_recent=1, gap_days=28)
+CandidateScore(n=11, total_score=0.803571, freq_recent=1, freq_long=144, freq_season=12, rank_recent=9, gap_days=210)
+CandidateScore(n=42, total_score=0.714352, freq_recent=8, freq_long=147, freq_season=8, rank_recent=2, gap_days=28)
+CandidateScore(n=34, total_score=0.658878, freq_recent=1, freq_long=126, freq_season=8, rank_recent=9, gap_days=189)
+CandidateScore(n=17, total_score=0.623589, freq_recent=8, freq_long=124, freq_season=8, rank_recent=2, gap_days=21)
+CandidateScore(n=1, total_score=0.542349, freq_recent=6, freq_long=157, freq_season=1, rank_recent=4, gap_days=49)
+CandidateScore(n=6, total_score=0.531243, freq_recent=6, freq_long=133, freq_season=9, rank_recent=4, gap_days=21)
+CandidateScore(n=13, total_score=0.524022, freq_recent=6, freq_long=138, freq_season=4, rank_recent=4, gap_days=56)
+CandidateScore(n=27, total_score=0.493742, freq_recent=1, freq_long=124, freq_season=4, rank_recent=9, gap_days=105)
+CandidateScore(n=40, total_score=0.493222, freq_recent=6, freq_long=131, freq_season=8, rank_recent=4, gap_days=7)
+CandidateScore(n=41, total_score=0.477492, freq_recent=6, freq_long=128, freq_season=7, rank_recent=4, gap_days=14)
+CandidateScore(n=32, total_score=0.47522, freq_recent=6, freq_long=135, freq_season=5, rank_recent=4, gap_days=14)
+CandidateScore(n=30, total_score=0.474711, freq_recent=2, freq_long=130, freq_season=7, rank_recent=8, gap_days=196)
+CandidateScore(n=12, total_score=0.461285, freq_recent=1, freq_long=129, freq_season=6, rank_recent=9, gap_days=42)
+CandidateScore(n=24, total_score=0.45448, freq_recent=2, freq_long=135, freq_season=8, rank_recent=8, gap_days=154)
+CandidateScore(n=28, total_score=0.452403, freq_recent=7, freq_long=113, freq_season=5, rank_recent=3, gap_days=7)
+CandidateScore(n=38, total_score=0.436791, freq_recent=3, freq_long=133, freq_season=10, rank_recent=7, gap_days=77)
+CandidateScore(n=21, total_score=0.436303, freq_recent=5, freq_long=128, freq_season=4, rank_recent=5, gap_days=63)
+CandidateScore(n=16, total_score=0.43127, freq_recent=4, freq_long=134, freq_season=7, rank_recent=6, gap_days=56)
+CandidateScore(n=19, total_score=0.425634, freq_recent=5, freq_long=119, freq_season=10, rank_recent=5, gap_days=14)
+Generated 20/20 tickets in 91 attempts
+
+=== WEIGHTED STRATEGY ===
+Target: 2026-01-03
+Tickets: 20 | Pool size: 30 + mid 10 + cold 10
+Decade bands: [(1, 1, 10), (2, 11, 20), (3, 21, 30), (4, 31, 40), (5, 41, 45)]
+Ticket #01: [10, 19, 21, 38, 41, 45]  decades={1: 1, 2: 1, 3: 1, 4: 1, 5: 2}
+Ticket #02: [10, 15, 18, 27, 34, 37]  decades={1: 1, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #03: [6, 15, 16, 28, 32, 42]  decades={1: 1, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #04: [6, 12, 14, 18, 24, 45]  decades={1: 1, 2: 3, 3: 1, 4: 0, 5: 1}
+Ticket #05: [11, 12, 19, 25, 32, 36]  decades={1: 0, 2: 3, 3: 1, 4: 2, 5: 0}
+Ticket #06: [4, 6, 11, 28, 32, 45]  decades={1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+Ticket #07: [5, 15, 32, 34, 39, 41]  decades={1: 1, 2: 1, 3: 0, 4: 3, 5: 1}
+Ticket #08: [4, 6, 11, 30, 32, 36]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #09: [1, 4, 14, 31, 34, 37]  decades={1: 2, 2: 1, 3: 0, 4: 3, 5: 0}
+Ticket #10: [1, 10, 13, 34, 36, 37]  decades={1: 2, 2: 1, 3: 0, 4: 3, 5: 0}
+Ticket #11: [6, 7, 15, 21, 31, 38]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #12: [5, 8, 16, 17, 24, 39]  decades={1: 2, 2: 2, 3: 1, 4: 1, 5: 0}
+Ticket #13: [17, 21, 24, 33, 34, 38]  decades={1: 0, 2: 1, 3: 2, 4: 3, 5: 0}
+Ticket #14: [4, 19, 21, 29, 37, 42]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #15: [7, 9, 17, 19, 40, 41]  decades={1: 2, 2: 2, 3: 0, 4: 1, 5: 1}
+Ticket #16: [9, 15, 22, 29, 40, 42]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #17: [5, 13, 21, 24, 25, 36]  decades={1: 1, 2: 1, 3: 3, 4: 1, 5: 0}
+Ticket #18: [10, 16, 25, 27, 36, 41]  decades={1: 1, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #19: [5, 14, 18, 25, 38, 40]  decades={1: 1, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #20: [1, 10, 18, 33, 42, 45]  decades={1: 2, 2: 1, 3: 0, 4: 1, 5: 2}

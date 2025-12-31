@@ -1,0 +1,178 @@
+Decade 1: 1–10
+Decade 2: 11–20
+
+=== RUN START ===
+Start time: 2025-12-25 14:43:19
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-11-27
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-11-27
+Actual powerball: [1]
+Actual H/W/C: H=0, W=1, C=0
+Actual decades: {1: 1, 2: 0}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r01   1  D1  W  log_score=+2.200642  P=0.11586810
+
+  P_sum=0.11586810  P_mean=0.11586810  P_min=0.11586810  P_max=0.11586810
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-04
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-12-04
+Actual powerball: [14]
+Actual H/W/C: H=0, W=1, C=0
+Actual decades: {1: 0, 2: 1}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r02  14  D2  W  log_score=+2.246765  P=0.08998910
+
+  P_sum=0.08998910  P_mean=0.08998910  P_min=0.08998910  P_max=0.08998910
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-11
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-12-11
+Actual powerball: [10]
+Actual H/W/C: H=1, W=0, C=0
+Actual decades: {1: 1, 2: 0}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r08  10  D1  H  log_score=+1.645815  P=0.05999812
+
+  P_sum=0.05999812  P_mean=0.05999812  P_min=0.05999812  P_max=0.05999812
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-18
+================================================================================
+
+=== ACTUAL RESULT (FOUND IN GLOBAL_DRAWS) ===
+Lottery: Powerball
+Date:    2025-12-18
+Actual powerball: [14]
+Actual H/W/C: H=0, W=1, C=0
+Actual decades: {1: 0, 2: 1}
+
+ACTUAL numbers (with score)
+
+=== RANKS of ACTUAL numbers (with score) ===
+  r06  14  D2  W  log_score=+1.712531  P=0.06530914
+
+  P_sum=0.06530914  P_mean=0.06530914  P_min=0.06530914  P_max=0.06530914
+
+================================================================================
+PREDICTION RUN FOR Powerball on 2025-12-25
+================================================================================
+
+=== FINAL PREDICTION ===
+Lottery:   Powerball
+Date:      2025-12-25
+Draw size: 1
+TRIALS:    90000, EXPLORE_FRAC=0.076
+  Category bias: avg_hot=0.328, avg_warm=0.598, avg_cold=0.074, bias=warm-heavy
+  Category weights: hot_w=0.742, warm_w=1.297, cold_w=0.961
+
+[DEBUG] Learned tape order:
+  2025-12-18  Powerball  {1: 1, 2: 3}
+  2025-12-19  Weekday Windfall  {1: 3, 2: 1}
+  2025-12-20  Saturday Lotto  {1: 1, 2: 1}
+  2025-12-22  Weekday Windfall  {1: 1, 2: 2}
+  2025-12-23  OZ Lotto  {1: 1, 2: 1}
+  2025-12-24  Weekday Windfall  {1: 0, 2: 2}
+
+Hot numbers:  [2, 19, 20]
+Warm numbers: [1, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 17]
+Cold numbers: [10, 12, 15, 16, 18]
+
+Hot numbers (scored)
+   2  log_score=+1.563880  P=0.04688204
+  19  log_score=+1.643752  P=0.05078020
+  20  log_score=+1.750747  P=0.05651479
+
+Warm numbers (scored)
+   1  log_score=+1.724731  P=0.05506346
+   3  log_score=+1.965531  P=0.07005538
+   4  log_score=+1.665687  P=0.05190642
+   5  log_score=+2.004397  P=0.07283177
+   6  log_score=+1.779257  P=0.05814917
+   7  log_score=+1.771940  P=0.05772525
+   8  log_score=+1.825792  P=0.06091913
+   9  log_score=+1.710389  P=0.05427934
+  11  log_score=+1.805939  P=0.05972162
+  13  log_score=+1.807871  P=0.05983712
+  14  log_score=+1.998771  P=0.07242317
+  17  log_score=+1.171710  P=0.03167301
+
+Cold numbers (scored)
+  10  log_score=+0.540935  P=0.01685572
+  12  log_score=+1.361351  P=0.03828683
+  15  log_score=+1.160711  P=0.03132657
+  16  log_score=+0.696149  P=0.01968592
+  18  log_score=+1.273964  P=0.03508309
+
+=== P-RANK WINDOWS (size=1) ===
+Top windows by sum(P) + decade_coverage bonus:
+  W#1 ranks[1..1]  sumP=0.073  decades=1  nums=[5]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#2 ranks[2..2]  sumP=0.072  decades=1  nums=[14]  dc={2: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#3 ranks[3..3]  sumP=0.070  decades=1  nums=[3]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#4 ranks[4..4]  sumP=0.061  decades=1  nums=[8]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#5 ranks[5..5]  sumP=0.060  decades=1  nums=[13]  dc={2: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#6 ranks[6..6]  sumP=0.060  decades=1  nums=[11]  dc={2: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#7 ranks[7..7]  sumP=0.058  decades=1  nums=[6]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#8 ranks[8..8]  sumP=0.058  decades=1  nums=[7]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#9 ranks[9..9]  sumP=0.057  decades=1  nums=[20]  dc={2: 1}  hwc={'H': 1, 'W': 0, 'C': 0}
+  W#10 ranks[10..10]  sumP=0.055  decades=1  nums=[1]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#11 ranks[11..11]  sumP=0.054  decades=1  nums=[9]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#12 ranks[12..12]  sumP=0.052  decades=1  nums=[4]  dc={1: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#13 ranks[13..13]  sumP=0.051  decades=1  nums=[19]  dc={2: 1}  hwc={'H': 1, 'W': 0, 'C': 0}
+  W#14 ranks[14..14]  sumP=0.047  decades=1  nums=[2]  dc={1: 1}  hwc={'H': 1, 'W': 0, 'C': 0}
+  W#15 ranks[15..15]  sumP=0.038  decades=1  nums=[12]  dc={2: 1}  hwc={'H': 0, 'W': 0, 'C': 1}
+  W#16 ranks[16..16]  sumP=0.035  decades=1  nums=[18]  dc={2: 1}  hwc={'H': 0, 'W': 0, 'C': 1}
+  W#17 ranks[17..17]  sumP=0.032  decades=1  nums=[17]  dc={2: 1}  hwc={'H': 0, 'W': 1, 'C': 0}
+  W#18 ranks[18..18]  sumP=0.031  decades=1  nums=[15]  dc={2: 1}  hwc={'H': 0, 'W': 0, 'C': 1}
+  W#19 ranks[19..19]  sumP=0.020  decades=1  nums=[16]  dc={2: 1}  hwc={'H': 0, 'W': 0, 'C': 1}
+  W#20 ranks[20..20]  sumP=0.017  decades=1  nums=[10]  dc={1: 1}  hwc={'H': 0, 'W': 0, 'C': 1}
+
+=== P-RANK WINDOWS (size=2) ===
+Top windows by sum(P) + decade_coverage bonus:
+  W#1 ranks[1..2]  sumP=0.145  decades=2  nums=[5, 14]  dc={1: 1, 2: 1}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#2 ranks[2..3]  sumP=0.142  decades=2  nums=[14, 3]  dc={2: 1, 1: 1}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#3 ranks[3..4]  sumP=0.131  decades=1  nums=[3, 8]  dc={1: 2}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#4 ranks[4..5]  sumP=0.121  decades=2  nums=[8, 13]  dc={1: 1, 2: 1}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#5 ranks[6..7]  sumP=0.118  decades=2  nums=[11, 6]  dc={2: 1, 1: 1}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#6 ranks[8..9]  sumP=0.114  decades=2  nums=[7, 20]  dc={1: 1, 2: 1}  hwc={'H': 1, 'W': 1, 'C': 0}
+  W#7 ranks[9..10]  sumP=0.112  decades=2  nums=[20, 1]  dc={2: 1, 1: 1}  hwc={'H': 1, 'W': 1, 'C': 0}
+  W#8 ranks[5..6]  sumP=0.120  decades=1  nums=[13, 11]  dc={2: 2}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#9 ranks[7..8]  sumP=0.116  decades=1  nums=[6, 7]  dc={1: 2}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#10 ranks[12..13]  sumP=0.103  decades=2  nums=[4, 19]  dc={1: 1, 2: 1}  hwc={'H': 1, 'W': 1, 'C': 0}
+  W#11 ranks[10..11]  sumP=0.109  decades=1  nums=[1, 9]  dc={1: 2}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#12 ranks[13..14]  sumP=0.098  decades=2  nums=[19, 2]  dc={2: 1, 1: 1}  hwc={'H': 2, 'W': 0, 'C': 0}
+  W#13 ranks[11..12]  sumP=0.106  decades=1  nums=[9, 4]  dc={1: 2}  hwc={'H': 0, 'W': 2, 'C': 0}
+  W#14 ranks[14..15]  sumP=0.085  decades=2  nums=[2, 12]  dc={1: 1, 2: 1}  hwc={'H': 1, 'W': 0, 'C': 1}
+  W#15 ranks[15..16]  sumP=0.073  decades=1  nums=[12, 18]  dc={2: 2}  hwc={'H': 0, 'W': 0, 'C': 2}
+  W#16 ranks[16..17]  sumP=0.067  decades=1  nums=[18, 17]  dc={2: 2}  hwc={'H': 0, 'W': 1, 'C': 1}
+  W#17 ranks[17..18]  sumP=0.063  decades=1  nums=[17, 15]  dc={2: 2}  hwc={'H': 0, 'W': 1, 'C': 1}
+  W#18 ranks[18..19]  sumP=0.051  decades=1  nums=[15, 16]  dc={2: 2}  hwc={'H': 0, 'W': 0, 'C': 2}
+  W#19 ranks[19..20]  sumP=0.037  decades=2  nums=[16, 10]  dc={2: 1, 1: 1}  hwc={'H': 0, 'W': 0, 'C': 2}
+
+[ACTUAL] No actual draw found in GLOBAL_DRAWS for this prediction date.
+
+=== RUN END ===
+End time:   2025-12-25 14:58:00
+Total run time: 881.16 seconds (14.69 minutes)
