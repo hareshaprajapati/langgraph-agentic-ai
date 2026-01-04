@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 from datetime import datetime
 
 class Tee:
@@ -34,7 +35,7 @@ sys.stderr = Tee(sys.stderr, log_file)
 import pandas as pd
 from dataclasses import dataclass
 from datetime import date
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional, Callable
 import random
 import math
 
@@ -127,6 +128,7 @@ COHESION_W_RANK_CONT = 0.20
 COHESION_W_CENTRAL = 0.15
 # DEFAULT_STRATEGY_NAME = "RANK_CONT_HEAVY"
 DEFAULT_STRATEGY_NAME = "COHESION_SOFT"
+DEFAULT_PRESET = "OZ_BASELINE"
 # DEFAULT_STRATEGY_NAME = "PAIR_HEAVY"
 
 # Sweep mode (strategy backtest comparison)
@@ -136,8 +138,8 @@ VARIANT_SWEEP = False
 VARIANT_BACKTEST_DRAWS = 12
 
 # Oz Lotto tuner (auto-select best config on recent draws)
-TUNER_MODE = True
-TUNER_BACKTEST_DRAWS = 8
+TUNER_MODE = os.environ.get("TUNER_MODE", "1").strip() == "1"
+TUNER_BACKTEST_DRAWS = 10
 TUNER_MIN_WEEKS_WITH_4 = 1
 
 # Portfolio selection (20-ticket optimizer)
@@ -194,6 +196,28 @@ def _detect_main_cols(df: pd.DataFrame) -> List[str]:
     if len(cols) < NUMBERS_PER_TICKET:
         raise ValueError(f"Expected at least {NUMBERS_PER_TICKET} main columns.")
     return cols[:NUMBERS_PER_TICKET]
+
+
+def _detect_supp_cols(df: pd.DataFrame) -> List[str]:
+    cols = [c for c in df.columns if "Supplementary" in c]
+    if not cols:
+        return []
+    import re
+    def key(c):
+        m = re.search(r"(\d+)$", c.strip())
+        return int(m.group(1)) if m else 999
+    return sorted(cols, key=key)
+
+
+def _load_ga_preset_file(path: str) -> Dict[str, object]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {}
 
 
 def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str]]:
@@ -440,6 +464,21 @@ def _centrality_score(ranks: List[int], top_rank: int) -> float:
     return 1.0 - min((avg_rank - 1.0) / float(top_rank - 1), 1.0)
 
 
+def _pair_count_map(df: pd.DataFrame, main_cols: List[str]) -> Dict[Tuple[int, int], int]:
+    if df.empty:
+        return {}
+    return _build_pair_counts(df, main_cols)
+
+
+def _pair_key(a: int, b: int) -> Tuple[int, int]:
+    return (a, b) if a < b else (b, a)
+
+
+def _ticket_pairs(nums: List[int]) -> List[Tuple[int, int]]:
+    from itertools import combinations
+    return [_pair_key(a, b) for a, b in combinations(sorted(nums), 2)]
+
+
 def _cohesion_score(
     nums: List[int],
     score_map: Dict[int, float],
@@ -469,6 +508,42 @@ def _cohesion_score(
     )
 
 
+def _build_adaptive_pool(
+    scored: List[CandidateScore],
+    pair_counts: Dict[Tuple[int, int], int],
+    pool_target: int,
+    cold_pool_size: int,
+) -> List[int]:
+    score_map = {c.n: c.total_score for c in scored}
+    top_pairs = [p for p, _ in sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[:200]]
+    top_pair_set = set(top_pairs)
+
+    pool: List[int] = []
+    for c in scored[:6]:
+        pool.append(c.n)
+    pool = list(dict.fromkeys(pool))
+
+    while len(pool) < pool_target:
+        best = None
+        best_score = -1e9
+        for c in scored:
+            n = c.n
+            if n in pool:
+                continue
+            new_pairs = sum(1 for p in _ticket_pairs(pool + [n]) if p in top_pair_set)
+            score = (2.0 * new_pairs) + (0.8 * score_map.get(n, 0.0))
+            if score > best_score:
+                best_score = score
+                best = n
+        if best is None:
+            break
+        pool.append(best)
+
+    cold_pool = [c.n for c in scored if c.freq_recent <= 1][:cold_pool_size]
+    pool = list(dict.fromkeys(pool + cold_pool))
+    return pool
+
+
 # ============================================================
 # Scoring + ticketing
 # ============================================================
@@ -479,6 +554,7 @@ def score_numbers(
     target_date: str,
     debug: bool,
     show_all: bool = False,
+    score_config: Dict[str, float] = None,
 ) -> List[CandidateScore]:
     t = pd.Timestamp(target_date)
     if pd.isna(t):
@@ -533,6 +609,39 @@ def score_numbers(
     inv_rank = pd.Series({n: 1.0 / float(ranks.get(n, 999)) for n in range(MAIN_MIN, MAIN_MAX + 1)})
     s_rank = _normalize_series(inv_rank)
 
+    w_recent = score_config.get("w_recent", W_RECENT) if score_config else W_RECENT
+    w_long = score_config.get("w_long", W_LONG) if score_config else W_LONG
+    w_season = score_config.get("w_season", W_SEASON) if score_config else W_SEASON
+    w_rank = score_config.get("w_rank", W_RANK) if score_config else W_RANK
+    w_gap = score_config.get("w_gap", W_GAP) if score_config else W_GAP
+    gap_cap = score_config.get("gap_cap", GAP_CAP) if score_config else GAP_CAP
+    cold_boost = score_config.get("cold_boost", COLD_BOOST) if score_config else COLD_BOOST
+    w_decay = score_config.get("w_decay", 0.0) if score_config else 0.0
+    decay_half_life = score_config.get("decay_half_life", 60) if score_config else 60
+    use_decay = score_config.get("use_decay", False) if score_config else False
+    w_pairnum = score_config.get("w_pairnum", 0.0) if score_config else 0.0
+    use_pairnum = score_config.get("use_pairnum", False) if score_config else False
+
+    s_decay = pd.Series({n: 0.0 for n in range(MAIN_MIN, MAIN_MAX + 1)})
+    if use_decay:
+        recent = train[(train["Date"] >= recent_start) & (train["Date"] < t)]
+        for _, row in recent.iterrows():
+            d = row["Date"]
+            age = max(0, int((t - d).days))
+            w = math.exp(-age / float(max(decay_half_life, 1)))
+            for c in main_cols:
+                n = int(row[c])
+                s_decay[n] = s_decay.get(n, 0.0) + w
+        s_decay = _normalize_series(pd.Series(s_decay).sort_index())
+
+    s_pairnum = pd.Series({n: 0.0 for n in range(MAIN_MIN, MAIN_MAX + 1)})
+    if use_pairnum:
+        pair_counts = _build_pair_counts(train, main_cols)
+        for (a, b), cnt in pair_counts.items():
+            s_pairnum[a] = s_pairnum.get(a, 0.0) + cnt
+            s_pairnum[b] = s_pairnum.get(b, 0.0) + cnt
+        s_pairnum = _normalize_series(pd.Series(s_pairnum).sort_index())
+
     scored: List[CandidateScore] = []
     for n in range(MAIN_MIN, MAIN_MAX + 1):
         freq_recent = int(recent_counts.get(n, 0))
@@ -541,14 +650,18 @@ def score_numbers(
         rank_recent = int(ranks.get(n, 999))
 
         total = (
-            W_RECENT * float(s_recent.get(n, 0.0)) +
-            W_LONG * float(s_long.get(n, 0.0)) +
-            W_SEASON * float(s_season.get(n, 0.0)) +
-            W_RANK * float(s_rank.get(n, 0.0))
+            w_recent * float(s_recent.get(n, 0.0)) +
+            w_long * float(s_long.get(n, 0.0)) +
+            w_season * float(s_season.get(n, 0.0)) +
+            w_rank * float(s_rank.get(n, 0.0))
         )
-        total += min(GAP_CAP, W_GAP * float(s_gap.get(n, 0.0)))
+        total += min(gap_cap, w_gap * float(s_gap.get(n, 0.0)))
+        if use_decay and w_decay > 0.0:
+            total += w_decay * float(s_decay.get(n, 0.0))
+        if use_pairnum and w_pairnum > 0.0:
+            total += w_pairnum * float(s_pairnum.get(n, 0.0))
         if freq_recent <= 1:
-            total += COLD_BOOST
+            total += cold_boost
 
         scored.append(CandidateScore(n=n, total_score=round(total, 6),
                                      freq_recent=freq_recent, freq_long=freq_long,
@@ -631,33 +744,159 @@ def _history_distributions(df: pd.DataFrame, main_cols: List[str], target_date: 
         "consec_counts": pd.Series(consec_counts).value_counts().to_dict(),
         "decade_mean": decade_mean,
         "decade_season_mean": decade_season_mean,
+        "sum_series": sums,
     }
 
 
-def _ticket_penalty(nums: List[int], dist: Dict[str, object]) -> float:
+def _learn_winner_profile(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    learn_dates: List[pd.Timestamp],
+) -> Optional[Dict[str, object]]:
+    ranks = []
+    gaps = []
+    scores = []
+    for d in learn_dates:
+        bt_date = d.strftime("%Y-%m-%d")
+        scored = score_numbers(df, main_cols, bt_date, debug=False)
+        score_map = {c.n: c for c in scored}
+        row = df[df["Date"] == d].iloc[0]
+        winners = [int(row[c]) for c in main_cols]
+        for n in winners:
+            c = score_map.get(n)
+            if c is None:
+                continue
+            ranks.append(int(c.rank_recent))
+            gaps.append(int(c.gap_days))
+            scores.append(float(c.total_score))
+    if not ranks:
+        return None
+    s_rank = pd.Series(ranks)
+    s_gap = pd.Series(gaps) if gaps else pd.Series([0])
+    s_score = pd.Series(scores) if scores else pd.Series([0.0])
+    return {
+        "rank_soft_max": int(round(s_rank.quantile(0.75))),
+        "rank_hard_max": int(round(s_rank.quantile(0.90))),
+        "gap_hard_max": int(round(s_gap.quantile(0.90))),
+        "score_min": float(s_score.quantile(0.40)),
+    }
+
+
+def _ticket_passes_profile(
+    ticket: List[int],
+    score_map: Dict[int, CandidateScore],
+    profile: Dict[str, object],
+) -> bool:
+    if not profile:
+        return True
+    rank_soft = int(profile.get("rank_soft_max", 7))
+    rank_hard = int(profile.get("rank_hard_max", 10))
+    gap_hard = int(profile.get("gap_hard_max", 150))
+    score_min = float(profile.get("score_min", 0.0))
+
+    rank_soft_ct = 0
+    outlier_ct = 0
+    for n in ticket:
+        c = score_map.get(n)
+        if c is None:
+            return False
+        if c.rank_recent <= rank_soft:
+            rank_soft_ct += 1
+        is_outlier = (c.rank_recent > rank_hard) or (c.gap_days > gap_hard) or (c.total_score < score_min)
+        if is_outlier:
+            outlier_ct += 1
+    if rank_soft_ct < 4 or rank_soft_ct > 5:
+        return False
+    if outlier_ct > 1:
+        return False
+    return True
+
+
+def _ticket_passes_profile_relaxed(
+    ticket: List[int],
+    score_map: Dict[int, CandidateScore],
+    profile: Dict[str, object],
+) -> bool:
+    if not profile:
+        return True
+    rank_soft = int(profile.get("rank_soft_max", 7))
+    rank_hard = int(profile.get("rank_hard_max", 10))
+    gap_hard = int(profile.get("gap_hard_max", 150))
+    score_min = float(profile.get("score_min", 0.0))
+
+    rank_soft_ct = 0
+    outlier_ct = 0
+    for n in ticket:
+        c = score_map.get(n)
+        if c is None:
+            return False
+        if c.rank_recent <= rank_soft:
+            rank_soft_ct += 1
+        is_outlier = (c.rank_recent > rank_hard) or (c.gap_days > gap_hard) or (c.total_score < score_min)
+        if is_outlier:
+            outlier_ct += 1
+    if rank_soft_ct < 3:
+        return False
+    if outlier_ct > 2:
+        return False
+    return True
+
+
+def _dynamic_band(counts: Dict[int, int], low_pct: float, high_pct: float) -> Tuple[int, int]:
+    if not counts:
+        return (0, 0)
+    items = []
+    for k, v in counts.items():
+        items.extend([int(k)] * int(v))
+    if not items:
+        return (0, 0)
+    items.sort()
+    lo_idx = int(round(low_pct * (len(items) - 1)))
+    hi_idx = int(round(high_pct * (len(items) - 1)))
+    lo = items[max(0, min(lo_idx, len(items) - 1))]
+    hi = items[max(0, min(hi_idx, len(items) - 1))]
+    return (int(lo), int(hi))
+
+
+def _ticket_penalty(nums: List[int], dist: Dict[str, object], penalty_config: Dict[str, object] = None) -> float:
     penalty = 0.0
 
     # odd count band
     odd_ct = sum(1 for n in nums if n % 2 == 1)
-    if odd_ct < ODD_BAND[0] or odd_ct > ODD_BAND[1]:
-        penalty += 0.8 * abs(odd_ct - max(min(odd_ct, ODD_BAND[1]), ODD_BAND[0]))
+    odd_band = ODD_BAND
+    if penalty_config and penalty_config.get("dynamic_bands"):
+        odd_band = _dynamic_band(dist.get("odd_counts", {}), 0.20, 0.80)
+    if odd_ct < odd_band[0] or odd_ct > odd_band[1]:
+        penalty += 0.8 * abs(odd_ct - max(min(odd_ct, odd_band[1]), odd_band[0]))
 
     # low count band
     low_ct = sum(1 for n in nums if n <= LOW_RANGE_MAX)
-    if low_ct < LOW_BAND[0] or low_ct > LOW_BAND[1]:
-        penalty += 0.8 * abs(low_ct - max(min(low_ct, LOW_BAND[1]), LOW_BAND[0]))
+    low_band = LOW_BAND
+    if penalty_config and penalty_config.get("dynamic_bands"):
+        low_band = _dynamic_band(dist.get("low_counts", {}), 0.20, 0.80)
+    if low_ct < low_band[0] or low_ct > low_band[1]:
+        penalty += 0.8 * abs(low_ct - max(min(low_ct, low_band[1]), low_band[0]))
 
     # sum band
     s = sum(nums)
-    if s < dist["sum_lo"]:
-        penalty += 0.6 * (dist["sum_lo"] - s) / 10.0
-    elif s > dist["sum_hi"]:
-        penalty += 0.6 * (s - dist["sum_hi"]) / 10.0
+    sum_lo = dist["sum_lo"]
+    sum_hi = dist["sum_hi"]
+    if penalty_config and penalty_config.get("sum_quantiles"):
+        qlo, qhi = penalty_config["sum_quantiles"]
+        sum_lo = int(round(pd.Series(dist.get("sum_series", [])).quantile(qlo))) if dist.get("sum_series") else sum_lo
+        sum_hi = int(round(pd.Series(dist.get("sum_series", [])).quantile(qhi))) if dist.get("sum_series") else sum_hi
+    if s < sum_lo:
+        penalty += 0.6 * (sum_lo - s) / 10.0
+    elif s > sum_hi:
+        penalty += 0.6 * (s - sum_hi) / 10.0
 
     # consecutive pairs
     consec = _count_consecutive_pairs(nums)
-    if consec > CONSECUTIVE_MAX:
-        penalty += 0.7 * (consec - CONSECUTIVE_MAX)
+    consec_max = CONSECUTIVE_MAX
+    if penalty_config and penalty_config.get("consec_max") is not None:
+        consec_max = int(penalty_config["consec_max"])
+    if consec > consec_max:
+        penalty += 0.7 * (consec - consec_max)
 
     # decade balance (blend seasonal + global)
     vec = _decade_vector(nums)
@@ -685,6 +924,8 @@ def generate_tickets(
     global_max_override: int = None,
     cohesion_config: Dict[str, object] = None,
     pool_config: Dict[str, object] = None,
+    penalty_config: Dict[str, object] = None,
+    constraint_fn: Optional[Callable[[List[int]], bool]] = None,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -833,7 +1074,10 @@ def generate_tickets(
         if not ok:
             continue
 
-        penalty = _ticket_penalty(pick, dist)
+        if constraint_fn and not constraint_fn(pick):
+            continue
+
+        penalty = _ticket_penalty(pick, dist, penalty_config=penalty_config)
         if DECADE_TARGET_COUNTS is not None:
             vec = _decade_vector(pick)
             if any(vec.get(d, 0) != DECADE_TARGET_COUNTS.get(d, 0) for d in DECADE_IDS):
@@ -864,11 +1108,12 @@ def generate_tickets(
     return tickets
 
 
-def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
+def show_ticket_hits(real_draw: List[int], tickets: List[List[int]], supp_draw: List[int]):
     if not real_draw:
         return
     rd = sorted(real_draw)
     rd_set = set(rd)
+    supp_set = set(supp_draw)
     print("\n=== REAL DRAW HIT SUMMARY ===")
     print(f"REAL_DRAW: {rd}")
 
@@ -889,7 +1134,12 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
             best_near = (len(near), i, sorted(set(near)))
         if hit_n >= 3:
             any_ge3 = True
-            print(f"Ticket #{i:02d}: hits={hit_n} nums={hits} near_miss={len(near)} near_nums={sorted(set(near))}")
+            supp_hits = sorted(set(t).intersection(supp_set)) if supp_set else []
+            print(
+                f"Ticket #{i:02d}: hits={hit_n} nums={hits} "
+                f"supp_hit={len(supp_hits)} supp_nums={supp_hits} "
+                f"near_miss={len(near)} near_nums={sorted(set(near))}"
+            )
 
     if not any_ge3:
         print("No tickets with 3+ hits.")
@@ -968,117 +1218,328 @@ def _tune_configs(
     bt_dates: List[pd.Timestamp],
     base_cohesion: Dict[str, object],
 ) -> Dict[str, object]:
-    configs = [
-        {
-            "name": "OZ_BASELINE",
-            "pool": {
-                "pool_size": 36, "mid_pool_size": 14, "cold_pool_size": 12,
-                "hot_pool_size": 10, "overdue_pool_size": 10, "season_pool_size": 10,
-                "cold_force_count": 2,
-            },
-            "penalty_scale": 0.55,
-            "force_coverage": False,
-            "cohesion": base_cohesion,
-        },
-        {
-            "name": "OZ_FOCUS_TIGHT",
-            "pool": {
-                "pool_size": 30, "mid_pool_size": 10, "cold_pool_size": 10,
-                "hot_pool_size": 8, "overdue_pool_size": 8, "season_pool_size": 8,
-                "cold_force_count": 1,
-            },
-            "penalty_scale": 0.65,
-            "force_coverage": False,
-            "cohesion": base_cohesion,
-        },
-        {
-            "name": "OZ_FORCE_COVERAGE",
-            "pool": {
-                "pool_size": 40, "mid_pool_size": 16, "cold_pool_size": 12,
-                "hot_pool_size": 12, "overdue_pool_size": 12, "season_pool_size": 12,
-                "cold_force_count": 2,
-            },
-            "penalty_scale": 0.60,
-            "force_coverage": True,
-            "cohesion": base_cohesion,
-        },
-        {
-            "name": "OZ_COHESION_SOFT",
-            "pool": {
-                "pool_size": 36, "mid_pool_size": 14, "cold_pool_size": 12,
-                "hot_pool_size": 10, "overdue_pool_size": 10, "season_pool_size": 10,
-                "cold_force_count": 2,
-            },
-            "penalty_scale": 0.58,
-            "force_coverage": False,
-            "cohesion": {
-                "enabled": True,
-                "accept_floor": 0.70,
-                "accept_span": 0.65,
-                "min_score": None,
-                "weights": {"spread": 0.30, "pair": 0.35, "rank_cont": 0.20, "central": 0.10, "rank_mass": 0.05},
-            },
-        },
-        {
-            "name": "OZ_PAIR_HEAVY",
-            "pool": {
-                "pool_size": 36, "mid_pool_size": 14, "cold_pool_size": 12,
-                "hot_pool_size": 10, "overdue_pool_size": 10, "season_pool_size": 10,
-                "cold_force_count": 2,
-            },
-            "penalty_scale": 0.60,
-            "force_coverage": False,
-            "cohesion": {
-                "enabled": True,
-                "accept_floor": 0.72,
-                "accept_span": 0.60,
-                "min_score": 0.52,
-                "weights": {"spread": 0.22, "pair": 0.45, "rank_cont": 0.18, "central": 0.10, "rank_mass": 0.05},
-            },
-        },
+    preset_name = os.environ.get("PRESET", "").strip().upper()
+    ga_preset_path = os.environ.get("GA_PRESET_PATH", "ga_best_config.json")
+    compare_only = os.environ.get("COMPARE_ONLY", "").strip() == "1"
+    p36 = {
+        "pool_size": 36, "mid_pool_size": 14, "cold_pool_size": 12,
+        "hot_pool_size": 10, "overdue_pool_size": 10, "season_pool_size": 10,
+        "cold_force_count": 2,
+    }
+    p40 = {
+        "pool_size": 40, "mid_pool_size": 16, "cold_pool_size": 12,
+        "hot_pool_size": 12, "overdue_pool_size": 12, "season_pool_size": 12,
+        "cold_force_count": 2,
+    }
+    p44 = {
+        "pool_size": 44, "mid_pool_size": 18, "cold_pool_size": 12,
+        "hot_pool_size": 12, "overdue_pool_size": 12, "season_pool_size": 12,
+        "cold_force_count": 2,
+    }
+    coh_soft = {
+        "enabled": True,
+        "accept_floor": 0.70,
+        "accept_span": 0.65,
+        "min_score": None,
+        "weights": {"spread": 0.30, "pair": 0.35, "rank_cont": 0.20, "central": 0.10, "rank_mass": 0.05},
+    }
+    coh_pair = {
+        "enabled": True,
+        "accept_floor": 0.72,
+        "accept_span": 0.60,
+        "min_score": 0.52,
+        "weights": {"spread": 0.22, "pair": 0.45, "rank_cont": 0.18, "central": 0.10, "rank_mass": 0.05},
+    }
+    coh_rank = {
+        "enabled": True,
+        "accept_floor": 0.68,
+        "accept_span": 0.65,
+        "min_score": None,
+        "weights": {"spread": 0.22, "pair": 0.28, "rank_cont": 0.35, "central": 0.10, "rank_mass": 0.05},
+    }
+    coh_none = {
+        "enabled": False,
+        "accept_floor": 1.0,
+        "accept_span": 0.0,
+        "min_score": None,
+        "weights": {"spread": 0.0, "pair": 0.0, "rank_cont": 0.0, "central": 0.0, "rank_mass": 0.0},
+    }
+
+    base_score = {"w_recent": 0.55, "w_long": 0.20, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.25, "gap_cap": 0.30, "cold_boost": 0.25}
+    decay_score = {"w_recent": 0.40, "w_long": 0.15, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.30, "gap_cap": 0.35, "cold_boost": 0.20, "use_decay": True, "w_decay": 0.25, "decay_half_life": 60}
+    pair_score = {"w_recent": 0.50, "w_long": 0.15, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.25, "gap_cap": 0.30, "cold_boost": 0.20, "use_pairnum": True, "w_pairnum": 0.20}
+    decay_pair_score = {"w_recent": 0.35, "w_long": 0.15, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.25, "gap_cap": 0.30, "cold_boost": 0.20, "use_decay": True, "w_decay": 0.20, "decay_half_life": 60, "use_pairnum": True, "w_pairnum": 0.15}
+
+    def _load_ga_preset() -> Dict[str, object]:
+        if not os.path.exists(ga_preset_path):
+            return None
+        try:
+            with open(ga_preset_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        data.setdefault("name", "GA_BEST")
+        return data
+
+    def _save_ga_preset(cfg: Dict[str, object]) -> None:
+        try:
+            with open(ga_preset_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2, sort_keys=True)
+        except OSError:
+            pass
+
+    configs = []
+    base_cfg = {
+        "name": "BASE",
+        "pool": p36,
+        "penalty_scale": 0.50,
+        "cohesion": coh_soft,
+        "score_config": base_score,
+        "penalty_config": {"dynamic_bands": False},
+        "generator": "standard",
+    }
+
+    # One-by-one variants (single changes from BASE)
+    configs.extend([
+        base_cfg,
+        {**base_cfg, "name": "POOL_P40", "pool": p40},
+        {**base_cfg, "name": "POOL_P44", "pool": p44},
+        {**base_cfg, "name": "PENALTY_035", "penalty_scale": 0.35},
+        {**base_cfg, "name": "PENALTY_065", "penalty_scale": 0.65},
+        {**base_cfg, "name": "COH_PAIR", "cohesion": coh_pair},
+        {**base_cfg, "name": "COH_RANK", "cohesion": coh_rank},
+        {**base_cfg, "name": "COH_NONE", "cohesion": coh_none},
+        {**base_cfg, "name": "SCORE_DECAY", "score_config": decay_score},
+        {**base_cfg, "name": "SCORE_PAIR", "score_config": pair_score},
+        {**base_cfg, "name": "SCORE_DECAY_PAIR", "score_config": decay_pair_score},
+        {**base_cfg, "name": "DYN_BANDS", "penalty_config": {"dynamic_bands": True}},
+        {**base_cfg, "name": "SUM_BAND_TIGHT", "penalty_config": {"dynamic_bands": False, "sum_quantiles": (0.25, 0.75)}},
+        {**base_cfg, "name": "SUM_BAND_WIDE", "penalty_config": {"dynamic_bands": False, "sum_quantiles": (0.15, 0.85)}},
+        {**base_cfg, "name": "CONSEC_1", "penalty_config": {"dynamic_bands": False, "consec_max": 1}},
+        {**base_cfg, "name": "CONSEC_3", "penalty_config": {"dynamic_bands": False, "consec_max": 3}},
+        {**base_cfg, "name": "PORTFOLIO", "generator": "portfolio"},
+        {**base_cfg, "name": "PAIR_ANCHOR", "generator": "pair_anchored"},
+        {**base_cfg, "name": "PAIR_CLUSTER", "generator": "pair_cluster"},
+        {**base_cfg, "name": "GRAPH_COVER", "generator": "graph_cover"},
+        {**base_cfg, "name": "ADAPT_POOL", "generator": "adaptive_pool"},
+        {**base_cfg, "name": "ADAPT_POOL_FORCE", "generator": "adaptive_pool", "force_coverage": True},
+    ])
+
+    if preset_name == "BASE":
+        print("Preset selected: BASE")
+        return base_cfg
+    if preset_name == "GA_BEST":
+        cached = _load_ga_preset()
+        if cached:
+            print(f"Preset selected: GA_BEST (loaded from {ga_preset_path})")
+            return cached
+        print("Preset GA_BEST not found; running GA search.")
+
+    if compare_only:
+        configs = [base_cfg]
+    # Combination grid (small, systematic cross-product)
+    combo_generators = ["standard", "adaptive_pool"]
+    combo_scores = [base_score, decay_pair_score]
+    combo_pools = [p36]
+    combo_cohesion = [coh_soft, coh_pair]
+    combo_penalties = [
+        {"dynamic_bands": False},
+        {"dynamic_bands": True},
     ]
+    combo_penalty_scale = [0.50]
+    combo_force = [False, True]
+
+    if not compare_only:
+        for gen in combo_generators:
+            for sc in combo_scores:
+                for pool in combo_pools:
+                    for coh in combo_cohesion:
+                        for pen in combo_penalties:
+                            for ps in combo_penalty_scale:
+                                for force in combo_force:
+                                    if gen == "standard" and force:
+                                        continue
+                                    if gen != "adaptive_pool" and force:
+                                        continue
+                                    name = f"COMBO_{gen}_sc{combo_scores.index(sc)}_p{combo_pools.index(pool)}_c{combo_cohesion.index(coh)}_d{combo_penalties.index(pen)}_s{combo_penalty_scale.index(ps)}_f{int(force)}"
+                                    configs.append({
+                                        "name": name,
+                                        "pool": pool,
+                                        "penalty_scale": ps,
+                                        "cohesion": coh,
+                                        "score_config": sc,
+                                        "penalty_config": pen,
+                                        "generator": gen,
+                                        "force_coverage": force,
+                                    })
+
+    def _genetic_tune_config() -> Dict[str, object]:
+        rng = random.Random(RANDOM_SEED + 17)
+        ga_quick = os.environ.get("GA_QUICK", "").strip() == "1"
+        pop_size = 6 if ga_quick else (10 if compare_only else 18)
+        generations = 3 if ga_quick else (6 if compare_only else 10)
+
+        def _rand_gene() -> Dict[str, object]:
+            return {
+                "w_recent": rng.uniform(0.25, 0.70),
+                "w_long": rng.uniform(0.05, 0.30),
+                "w_season": rng.uniform(0.05, 0.25),
+                "w_rank": rng.uniform(0.05, 0.20),
+                "w_gap": rng.uniform(0.10, 0.35),
+                "gap_cap": rng.uniform(0.20, 0.40),
+                "cold_boost": rng.uniform(0.00, 0.30),
+                "use_decay": rng.choice([True, False]),
+                "w_decay": rng.uniform(0.00, 0.30),
+                "decay_half_life": rng.randint(40, 120),
+                "use_pairnum": rng.choice([True, False]),
+                "w_pairnum": rng.uniform(0.00, 0.30),
+                "penalty_scale": rng.uniform(0.30, 0.70),
+                "dynamic_bands": rng.choice([True, False]),
+                "sum_quant": rng.choice([None, (0.20, 0.80), (0.25, 0.75)]),
+                "consec_max": rng.choice([1, 2, 3]),
+                "pool_size": rng.randint(32, 40),
+                "mid_pool_size": rng.randint(10, 18),
+                "cold_pool_size": rng.randint(8, 14),
+            }
+
+        def _decode_gene(gene: Dict[str, object]) -> Dict[str, object]:
+            score_config = {
+                "w_recent": gene["w_recent"],
+                "w_long": gene["w_long"],
+                "w_season": gene["w_season"],
+                "w_rank": gene["w_rank"],
+                "w_gap": gene["w_gap"],
+                "gap_cap": gene["gap_cap"],
+                "cold_boost": gene["cold_boost"],
+                "use_decay": gene["use_decay"],
+                "w_decay": gene["w_decay"],
+                "decay_half_life": gene["decay_half_life"],
+                "use_pairnum": gene["use_pairnum"],
+                "w_pairnum": gene["w_pairnum"],
+            }
+            penalty_config = {"dynamic_bands": gene["dynamic_bands"], "consec_max": gene["consec_max"]}
+            if gene["sum_quant"]:
+                penalty_config["sum_quantiles"] = gene["sum_quant"]
+            pool_cfg = {
+                "pool_size": gene["pool_size"],
+                "mid_pool_size": gene["mid_pool_size"],
+                "cold_pool_size": gene["cold_pool_size"],
+                "hot_pool_size": 10,
+                "overdue_pool_size": 10,
+                "season_pool_size": 10,
+                "cold_force_count": 2,
+            }
+            return {
+                "name": "GA_BEST",
+                "pool": pool_cfg,
+                "penalty_scale": gene["penalty_scale"],
+                "cohesion": coh_soft,
+                "score_config": score_config,
+                "penalty_config": penalty_config,
+                "generator": "standard",
+            }
+
+        def _mutate(gene: Dict[str, object]) -> Dict[str, object]:
+            g = dict(gene)
+            key = rng.choice(list(g.keys()))
+            if key in ("use_decay", "use_pairnum", "dynamic_bands"):
+                g[key] = not g[key]
+                return g
+            if key == "sum_quant":
+                g[key] = rng.choice([None, (0.20, 0.80), (0.25, 0.75)])
+                return g
+            if key == "consec_max":
+                g[key] = rng.choice([1, 2, 3])
+                return g
+            if key in ("decay_half_life", "pool_size", "mid_pool_size", "cold_pool_size"):
+                if key == "decay_half_life":
+                    g[key] = rng.randint(40, 120)
+                elif key == "pool_size":
+                    g[key] = rng.randint(32, 40)
+                elif key == "mid_pool_size":
+                    g[key] = rng.randint(10, 18)
+                else:
+                    g[key] = rng.randint(8, 14)
+                return g
+            lo, hi = {
+                "w_recent": (0.25, 0.70),
+                "w_long": (0.05, 0.30),
+                "w_season": (0.05, 0.25),
+                "w_rank": (0.05, 0.20),
+                "w_gap": (0.10, 0.35),
+                "gap_cap": (0.20, 0.40),
+                "cold_boost": (0.00, 0.30),
+                "w_decay": (0.00, 0.30),
+                "w_pairnum": (0.00, 0.30),
+                "penalty_scale": (0.30, 0.70),
+            }[key]
+            g[key] = rng.uniform(lo, hi)
+            return g
+
+        def _crossover(a: Dict[str, object], b: Dict[str, object]) -> Dict[str, object]:
+            child = {}
+            for k in a.keys():
+                child[k] = a[k] if rng.random() < 0.5 else b[k]
+            return child
+
+        pop = [_rand_gene() for _ in range(pop_size)]
+        best_gene = None
+        best_key = None
+        for _ in range(generations):
+            scored_pop = []
+            for gene in pop:
+                cfg = _decode_gene(gene)
+                w4, minhit, g4, g5, g3, total_hits = _evaluate_cfg_with_profile(df, main_cols, bt_dates, cfg)
+                key = (w4, minhit, g4, g5, g3, total_hits)
+                scored_pop.append((key, gene))
+                if best_key is None or key > best_key:
+                    best_key = key
+                    best_gene = gene
+            scored_pop.sort(key=lambda x: x[0], reverse=True)
+            survivors = [g for _, g in scored_pop[: max(4, pop_size // 3)]]
+            next_pop = survivors[:]
+            while len(next_pop) < pop_size:
+                p1 = rng.choice(survivors)
+                p2 = rng.choice(survivors)
+                child = _crossover(p1, p2)
+                if rng.random() < 0.35:
+                    child = _mutate(child)
+                next_pop.append(child)
+            pop = next_pop
+
+        if best_gene is None:
+            return base_cfg
+        best_cfg = _decode_gene(best_gene)
+        best_cfg["name"] = "GA_BEST"
+        return best_cfg
 
     best = None
     best_key = None
     results = []
+    target_weeks = len(bt_dates)
+    ga_best = _genetic_tune_config()
+    ga_key = _evaluate_cfg_with_profile(df, main_cols, bt_dates, ga_best)
+    _save_ga_preset(ga_best)
+    results.append((ga_best["name"], *ga_key))
+    best = ga_best
+    best_key = ga_key
     for cfg in configs:
-        weeks_with_4 = 0
-        ge3_total = 0
-        ge4_total = 0
-        ge5_total = 0
-        for d in bt_dates:
-            bt_date = d.strftime("%Y-%m-%d")
-            row = df[df["Date"] == d].iloc[0]
-            bt_draw = [int(row[c]) for c in main_cols]
-            bt_scored = score_numbers(df, main_cols, bt_date, debug=False)
-            bt_tickets = generate_tickets(
-                bt_scored,
-                df,
-                main_cols,
-                bt_date,
-                use_weights=True,
-                seed_hot_overdue=False,
-                force_coverage=cfg.get("force_coverage", False),
-                cohesion_config=cfg.get("cohesion"),
-                penalty_scale=cfg.get("penalty_scale"),
-                pool_config=cfg.get("pool"),
-            )
-            summary = _hit_summary(bt_draw, bt_tickets)
-            ge3_total += summary.get("ge3", 0)
-            ge4_total += summary.get("ge4", 0)
-            ge5_total += summary.get("ge5", 0)
-            if summary.get("ge4", 0) > 0:
-                weeks_with_4 += 1
-
-        key = (weeks_with_4, ge4_total, ge5_total, ge3_total)
-        results.append((cfg["name"], weeks_with_4, ge4_total, ge5_total, ge3_total))
+        key = _evaluate_cfg_with_profile(df, main_cols, bt_dates, cfg)
+        results.append((cfg["name"], *key))
         if best_key is None or key > best_key:
             best_key = key
             best = cfg
+        if key[0] >= target_weeks:
+            best = cfg
+            break
 
     print("\n=== TUNER RESULTS ===")
-    for name, w4, g4, g5, g3 in results:
-        print(f"{name}: weeks_with_4={w4} ge4_total={g4} ge5_total={g5} ge3_total={g3}")
+    for name, w4, minhit, g4, g5, g3, total_hits in results:
+        print(f"{name}: weeks_with_4={w4} min_week_maxhit={minhit} ge4_total={g4} ge5_total={g5} ge3_total={g3} total_hits={total_hits}")
+    if ga_best:
+        print("GA best parameters are included as GA_BEST.")
     if best:
         print(f"Selected strategy: {best['name']}")
     return best or configs[0]
@@ -1193,9 +1654,9 @@ def _build_core_numbers(scored: List[CandidateScore], core_size: int) -> List[in
 
 
 def _build_sampling_pool(scored: List[CandidateScore], include_cold: bool) -> Tuple[List[int], List[float]]:
-    top_pool = [c.n for c in scored[:pool_size]]
-    mid_pool = [c.n for c in scored[pool_size:pool_size + mid_pool_size]]
-    cold_pool = [c.n for c in scored if c.freq_recent <= 1][:cold_pool_size] if include_cold else []
+    top_pool = [c.n for c in scored[:POOL_SIZE]]
+    mid_pool = [c.n for c in scored[POOL_SIZE:POOL_SIZE + MID_POOL_SIZE]]
+    cold_pool = [c.n for c in scored if c.freq_recent <= 1][:COLD_POOL_SIZE] if include_cold else []
     pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
     score_map = {c.n: c.total_score for c in scored}
     min_score = min(score_map.values()) if score_map else 0.0
@@ -1440,6 +1901,347 @@ def generate_pair_anchored_tickets(
     return selected[:NUM_TICKETS]
 
 
+def generate_pair_cluster_tickets(
+    scored: List[CandidateScore],
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    pool_config: Dict[str, object] = None,
+    penalty_scale: float = None,
+    penalty_config: Dict[str, object] = None,
+    cohesion_config: Dict[str, object] = None,
+    seed_recent_days: int = 120,
+) -> List[List[int]]:
+    rng = random.Random(RANDOM_SEED)
+    t = pd.Timestamp(target_date)
+    train = df[df["Date"] < t]
+    if train.empty:
+        return []
+
+    dist = _history_distributions(train, main_cols, target_date)
+    score_map = {c.n: c.total_score for c in scored}
+    rank_map = {c.n: c.rank_recent for c in scored}
+
+    pool_cfg = pool_config or {}
+    pool_size = int(pool_cfg.get("pool_size", POOL_SIZE))
+    mid_pool_size = int(pool_cfg.get("mid_pool_size", MID_POOL_SIZE))
+    cold_pool_size = int(pool_cfg.get("cold_pool_size", COLD_POOL_SIZE))
+
+    top_pool = [c.n for c in scored[:pool_size]]
+    mid_pool = [c.n for c in scored[pool_size:pool_size + mid_pool_size]]
+    cold_pool = [c.n for c in scored if c.freq_recent <= 1][:cold_pool_size]
+    pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
+
+    recent_start = t - pd.Timedelta(days=seed_recent_days)
+    recent = train[(train["Date"] >= recent_start) & (train["Date"] < t)]
+    pair_counts = _pair_count_map(train, main_cols)
+    pair_counts_recent = _pair_count_map(recent, main_cols)
+
+    # Build top pair list weighted by overall + recent counts
+    pair_scores = []
+    for (a, b), cnt in pair_counts.items():
+        rc = pair_counts_recent.get((a, b), 0)
+        score = cnt + (0.7 * rc)
+        pair_scores.append(((a, b), score))
+    pair_scores.sort(key=lambda x: x[1], reverse=True)
+    top_pairs = [p for p, _ in pair_scores[:200]] if pair_scores else []
+
+    pair_base = _percentile(list(pair_counts.values()), COHESION_PAIR_BASE_PCTL) if pair_counts else 0
+    if cohesion_config is None:
+        cohesion_config = {
+            "enabled": COHESION_ENABLED,
+            "accept_floor": COHESION_ACCEPT_FLOOR,
+            "accept_span": COHESION_ACCEPT_SPAN,
+            "min_score": None,
+            "weights": {
+                "spread": COHESION_W_SPREAD,
+                "pair": COHESION_W_PAIR,
+                "rank_cont": COHESION_W_RANK_CONT,
+                "central": COHESION_W_CENTRAL,
+                "rank_mass": 0.05,
+            },
+        }
+
+    tickets: List[List[int]] = []
+    global_use = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    overlap_cap = OVERLAP_CAP
+    global_max = GLOBAL_MAX_USES
+    attempts = 0
+    pair_idx = 0
+
+    while len(tickets) < NUM_TICKETS and attempts < MAX_ATTEMPTS:
+        attempts += 1
+        if not top_pairs:
+            break
+        a, b = top_pairs[pair_idx % len(top_pairs)]
+        pair_idx += 1
+        if a not in pool or b not in pool:
+            continue
+
+        pick = [a, b]
+        candidates = [n for n in pool if n not in pick]
+
+        while len(pick) < NUMBERS_PER_TICKET and candidates:
+            scored_candidates = []
+            for n in candidates:
+                score = 0.0
+                for p in pick:
+                    score += pair_counts.get(_pair_key(p, n), 0)
+                    score += 0.7 * pair_counts_recent.get(_pair_key(p, n), 0)
+                score += 0.3 * score_map.get(n, 0.0)
+                scored_candidates.append((n, score))
+            scored_candidates.sort(key=lambda x: x[1], reverse=True)
+            top_k = [n for n, _ in scored_candidates[:12]]
+            if not top_k:
+                break
+            n = rng.choice(top_k)
+            pick.append(n)
+            candidates.remove(n)
+
+        if len(pick) != NUMBERS_PER_TICKET:
+            continue
+        pick = sorted(pick)
+        if pick in tickets:
+            continue
+        if any(global_use[n] >= global_max for n in pick):
+            continue
+        s_pick = set(pick)
+        if any(len(s_pick.intersection(t)) > overlap_cap for t in tickets):
+            continue
+
+        penalty = _ticket_penalty(pick, dist, penalty_config=penalty_config)
+        scale = PENALTY_SCALE if penalty_scale is None else float(penalty_scale)
+        if (penalty * scale) > 2.5:
+            continue
+        if cohesion_config.get("enabled"):
+            cohesion = _cohesion_score(
+                pick, score_map, rank_map, pair_counts, pair_base, cohesion_config["weights"]
+            )
+            min_score = cohesion_config.get("min_score")
+            if min_score is not None and cohesion < float(min_score):
+                continue
+
+        tickets.append(pick)
+        for n in pick:
+            global_use[n] += 1
+
+    print(f"Generated {len(tickets)}/{NUM_TICKETS} tickets in {attempts} attempts")
+    return tickets
+
+
+def generate_adaptive_pool_tickets(
+    scored: List[CandidateScore],
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    pool_config: Dict[str, object] = None,
+    penalty_scale: float = None,
+    penalty_config: Dict[str, object] = None,
+    cohesion_config: Dict[str, object] = None,
+    force_coverage: bool = False,
+) -> List[List[int]]:
+    t = pd.Timestamp(target_date)
+    train = df[df["Date"] < t]
+    if train.empty:
+        return []
+    pair_counts = _pair_count_map(train, main_cols)
+    pool_cfg = pool_config or {}
+    pool_size = int(pool_cfg.get("pool_size", POOL_SIZE))
+    mid_pool_size = int(pool_cfg.get("mid_pool_size", MID_POOL_SIZE))
+    cold_pool_size = int(pool_cfg.get("cold_pool_size", COLD_POOL_SIZE))
+    pool_target = pool_size + mid_pool_size
+    pool_override = _build_adaptive_pool(scored, pair_counts, pool_target, cold_pool_size)
+    return generate_tickets(
+        scored,
+        df,
+        main_cols,
+        target_date,
+        use_weights=True,
+        seed_hot_overdue=True,
+        force_coverage=force_coverage,
+        cohesion_config=cohesion_config,
+        penalty_scale=penalty_scale,
+        pool_override=pool_override,
+        pool_config=pool_config,
+        penalty_config=penalty_config,
+    )
+
+
+def _coverage_select(
+    candidates: List[List[int]],
+    num_tickets: int,
+    top_numbers: set,
+    top_pairs: set,
+    pair_weight: float = 1.0,
+    num_weight: float = 0.5,
+    overlap_weight: float = 0.25,
+) -> List[List[int]]:
+    selected: List[List[int]] = []
+    covered_nums = set()
+    covered_pairs = set()
+    use_count: Dict[int, int] = {}
+    for _ in range(num_tickets):
+        best = None
+        best_score = -1e9
+        for t in candidates:
+            if t in selected:
+                continue
+            new_nums = sum(1 for n in t if n in top_numbers and n not in covered_nums)
+            new_pairs = sum(1 for p in _ticket_pairs(t) if p in top_pairs and p not in covered_pairs)
+            overlap = sum(max(0, use_count.get(n, 0) - 1) for n in t)
+            score = (pair_weight * new_pairs) + (num_weight * new_nums) - (overlap_weight * overlap)
+            if score > best_score:
+                best_score = score
+                best = t
+        if best is None:
+            break
+        selected.append(best)
+        for n in best:
+            use_count[n] = use_count.get(n, 0) + 1
+            if n in top_numbers:
+                covered_nums.add(n)
+        for p in _ticket_pairs(best):
+            if p in top_pairs:
+                covered_pairs.add(p)
+    return selected
+
+
+def generate_graph_coverage_tickets(
+    scored: List[CandidateScore],
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    pool_config: Dict[str, object] = None,
+    penalty_scale: float = None,
+    penalty_config: Dict[str, object] = None,
+    cohesion_config: Dict[str, object] = None,
+) -> List[List[int]]:
+    rng = random.Random(RANDOM_SEED)
+    t = pd.Timestamp(target_date)
+    train = df[df["Date"] < t]
+    if train.empty:
+        return []
+
+    dist = _history_distributions(train, main_cols, target_date)
+    score_map = {c.n: c.total_score for c in scored}
+    rank_map = {c.n: c.rank_recent for c in scored}
+
+    pool_cfg = pool_config or {}
+    pool_size = int(pool_cfg.get("pool_size", POOL_SIZE))
+    mid_pool_size = int(pool_cfg.get("mid_pool_size", MID_POOL_SIZE))
+    cold_pool_size = int(pool_cfg.get("cold_pool_size", COLD_POOL_SIZE))
+
+    top_pool = [c.n for c in scored[:pool_size]]
+    mid_pool = [c.n for c in scored[pool_size:pool_size + mid_pool_size]]
+    cold_pool = [c.n for c in scored if c.freq_recent <= 1][:cold_pool_size]
+    pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
+
+    pair_counts = _pair_count_map(train, main_cols)
+    pair_base = _percentile(list(pair_counts.values()), COHESION_PAIR_BASE_PCTL) if pair_counts else 0
+
+    centrality = {n: 0.0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    for (a, b), cnt in pair_counts.items():
+        centrality[a] = centrality.get(a, 0.0) + cnt
+        centrality[b] = centrality.get(b, 0.0) + cnt
+    max_cent = max(centrality.values()) if centrality else 0.0
+    if max_cent > 0:
+        for n in centrality:
+            centrality[n] = centrality[n] / max_cent
+
+    if cohesion_config is None:
+        cohesion_config = {
+            "enabled": COHESION_ENABLED,
+            "accept_floor": COHESION_ACCEPT_FLOOR,
+            "accept_span": COHESION_ACCEPT_SPAN,
+            "min_score": None,
+            "weights": {
+                "spread": COHESION_W_SPREAD,
+                "pair": COHESION_W_PAIR,
+                "rank_cont": COHESION_W_RANK_CONT,
+                "central": COHESION_W_CENTRAL,
+                "rank_mass": 0.05,
+            },
+        }
+
+    top_numbers = set(n for n in [c.n for c in scored[:24]])
+    top_pairs = set()
+    if pair_counts:
+        top_pairs = set([p for p, _ in sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[:120]])
+
+    candidates: List[List[int]] = []
+    candidate_target = min(PORTFOLIO_CANDIDATES, 1000)
+    max_attempts = max(1200, candidate_target * 6)
+    attempts = 0
+    while len(candidates) < candidate_target and attempts < max_attempts:
+        attempts += 1
+        if not pool:
+            break
+        first_weights = [(score_map.get(n, 0.0) + centrality.get(n, 0.0) + 0.05) for n in pool]
+        n1 = rng.choices(pool, weights=first_weights, k=1)[0]
+
+        n1_dec = _decade_of(n1)
+        alt_pool = [n for n in pool if _decade_of(n) != n1_dec]
+        if not alt_pool:
+            alt_pool = pool
+        n2 = rng.choice(alt_pool)
+        if n2 == n1:
+            continue
+        pick = [n1, n2]
+
+        while len(pick) < NUMBERS_PER_TICKET:
+            candidates_left = [n for n in pool if n not in pick]
+            if not candidates_left:
+                break
+            weights = []
+            for n in candidates_left:
+                pair_aff = sum(pair_counts.get(_pair_key(n, p), 0) for p in pick)
+                if pair_base:
+                    pair_term = 0.15 * (pair_aff / float(pair_base))
+                else:
+                    pair_term = 0.15 * pair_aff
+                w = (0.55 * score_map.get(n, 0.0)) + (0.30 * centrality.get(n, 0.0)) + pair_term
+                weights.append(max(w, 0.01))
+            pick.append(rng.choices(candidates_left, weights=weights, k=1)[0])
+
+        pick = sorted(set(pick))
+        if len(pick) != NUMBERS_PER_TICKET:
+            continue
+
+        penalty = _ticket_penalty(pick, dist, penalty_config=penalty_config)
+        scale = PENALTY_SCALE if penalty_scale is None else float(penalty_scale)
+        accept_prob = math.exp(-penalty * scale)
+        if cohesion_config.get("enabled"):
+            cohesion = _cohesion_score(
+                pick, score_map, rank_map, pair_counts, pair_base, cohesion_config["weights"]
+            )
+            min_score = cohesion_config.get("min_score")
+            if min_score is not None and cohesion < float(min_score):
+                continue
+            accept_prob *= (cohesion_config["accept_floor"] + cohesion_config["accept_span"] * cohesion)
+            if accept_prob > 1.0:
+                accept_prob = 1.0
+        if rng.random() > accept_prob:
+            continue
+        if pick not in candidates:
+            candidates.append(pick)
+
+    selected = _coverage_select(
+        candidates,
+        NUM_TICKETS,
+        top_numbers,
+        top_pairs,
+        pair_weight=1.0,
+        num_weight=0.5,
+        overlap_weight=0.25,
+    )
+    if len(selected) < NUM_TICKETS:
+        extras = [t for t in candidates if t not in selected]
+        rng.shuffle(extras)
+        selected.extend(extras[: max(0, NUM_TICKETS - len(selected))])
+    print(f"Generated {len(selected)}/{NUM_TICKETS} tickets in {attempts} attempts")
+    return selected[:NUM_TICKETS]
+
+
 def _evaluate_variant(
     df: pd.DataFrame,
     main_cols: List[str],
@@ -1476,11 +2278,109 @@ def _evaluate_variant(
     }
 
 
+def _evaluate_cfg_with_profile(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    bt_dates: List[pd.Timestamp],
+    cfg: Dict[str, object],
+) -> Tuple[int, int, int, int, int, int]:
+    weeks_with_4 = 0
+    ge3_total = 0
+    ge4_total = 0
+    ge5_total = 0
+    total_hits = 0
+    min_week_maxhit = 99
+    if len(bt_dates) >= 10:
+        start_idx = 5
+    else:
+        start_idx = 0
+    for i in range(start_idx, len(bt_dates)):
+        d = bt_dates[i]
+        learn_dates = bt_dates[:i]
+        profile = _learn_winner_profile(df, main_cols, learn_dates) if len(learn_dates) >= 5 else None
+        bt_date = d.strftime("%Y-%m-%d")
+        row = df[df["Date"] == d].iloc[0]
+        bt_draw = [int(row[c]) for c in main_cols]
+        bt_scored = score_numbers(df, main_cols, bt_date, debug=False, score_config=cfg.get("score_config"))
+        score_map = {c.n: c for c in bt_scored}
+        if cfg.get("generator") == "portfolio":
+            bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
+        elif cfg.get("generator") == "pair_anchored":
+            bt_tickets = generate_pair_anchored_tickets(bt_scored, df, main_cols, bt_date, pair_weight=0.50)
+        elif cfg.get("generator") == "pair_cluster":
+            bt_tickets = generate_pair_cluster_tickets(
+                bt_scored,
+                df,
+                main_cols,
+                bt_date,
+                pool_config=cfg.get("pool"),
+                penalty_scale=cfg.get("penalty_scale"),
+                penalty_config=cfg.get("penalty_config"),
+                cohesion_config=cfg.get("cohesion"),
+            )
+        elif cfg.get("generator") == "graph_cover":
+            bt_tickets = generate_graph_coverage_tickets(
+                bt_scored,
+                df,
+                main_cols,
+                bt_date,
+                pool_config=cfg.get("pool"),
+                penalty_scale=cfg.get("penalty_scale"),
+                penalty_config=cfg.get("penalty_config"),
+                cohesion_config=cfg.get("cohesion"),
+            )
+        elif cfg.get("generator") == "adaptive_pool":
+            bt_tickets = generate_adaptive_pool_tickets(
+                bt_scored,
+                df,
+                main_cols,
+                bt_date,
+                pool_config=cfg.get("pool"),
+                penalty_scale=cfg.get("penalty_scale"),
+                penalty_config=cfg.get("penalty_config"),
+                cohesion_config=cfg.get("cohesion"),
+                force_coverage=cfg.get("force_coverage", False),
+            )
+        else:
+            bt_tickets = generate_tickets(
+                bt_scored,
+                df,
+                main_cols,
+                bt_date,
+                use_weights=True,
+                seed_hot_overdue=cfg.get("seed_hot_overdue", False),
+                force_coverage=cfg.get("force_coverage", False),
+                cohesion_config=cfg.get("cohesion"),
+                penalty_scale=cfg.get("penalty_scale"),
+                pool_config=cfg.get("pool"),
+                penalty_config=cfg.get("penalty_config"),
+            )
+        if profile:
+            strict = [t for t in bt_tickets if _ticket_passes_profile(t, score_map, profile)]
+            relaxed = [t for t in bt_tickets if _ticket_passes_profile_relaxed(t, score_map, profile) and t not in strict]
+            remainder = [t for t in bt_tickets if t not in strict and t not in relaxed]
+            bt_tickets = (strict + relaxed + remainder)[:NUM_TICKETS]
+        summary = _hit_summary(bt_draw, bt_tickets)
+        ge3_total += summary.get("ge3", 0)
+        ge4_total += summary.get("ge4", 0)
+        ge5_total += summary.get("ge5", 0)
+        total_hits += summary.get("total_hits", 0)
+        if summary.get("ge4", 0) > 0:
+            weeks_with_4 += 1
+        rd_set = set(bt_draw)
+        max_hit = 0
+        for t in bt_tickets:
+            max_hit = max(max_hit, len(set(t).intersection(rd_set)))
+        min_week_maxhit = min(min_week_maxhit, max_hit)
+    return weeks_with_4, min_week_maxhit, ge4_total, ge5_total, ge3_total, total_hits
+
+
 # ============================================================
 # MAIN
 # ============================================================
 if __name__ == "__main__":
     df, main_cols = _load_csv(CSV_PATH)
+    supp_cols = _detect_supp_cols(df)
 
     # Run for the configured target date (prediction); if it exists in CSV, use it as a backtest draw.
     t_target = pd.Timestamp(TARGET_DATE)
@@ -1568,9 +2468,12 @@ if __name__ == "__main__":
 
     run_date = t_target.strftime("%Y-%m-%d")
 
-    # Backtest: run on the last 5 available draws excluding TARGET_DATE (oldest to newest).
-    backtest_rows = df[df["Date"] != t_target].sort_values("Date").tail(5)
+    # Backtest: run on the last 10 available draws excluding TARGET_DATE (oldest to newest).
+    backtest_rows = df[df["Date"] != t_target].sort_values("Date").tail(10)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
+    learn_dates = bt_dates[:5] if len(bt_dates) >= 10 else []
+    predict_dates = bt_dates[5:] if len(bt_dates) >= 10 else bt_dates
+    profile = _learn_winner_profile(df, main_cols, learn_dates) if learn_dates else None
 
     strategies = _strategy_configs()
     main_cfg = next((s["cohesion"] for s in strategies if s["name"] == DEFAULT_STRATEGY_NAME), None)
@@ -1578,18 +2481,64 @@ if __name__ == "__main__":
         raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
 
     tuner_cfg = None
-    if TUNER_MODE:
+    use_ga_preset = os.environ.get("USE_GA_PRESET", "1").strip() == "1"
+    if use_ga_preset:
+        if DEFAULT_PRESET == "OZ_BASELINE":
+            tuner_cfg = {
+                "name": "OZ_BASELINE",
+                "pool": {
+                    "pool_size": 36, "mid_pool_size": 14, "cold_pool_size": 12,
+                    "hot_pool_size": 10, "overdue_pool_size": 10, "season_pool_size": 10,
+                    "cold_force_count": 2,
+                },
+                "penalty_scale": 0.55,
+                "force_coverage": False,
+                "cohesion": main_cfg,
+            }
+            print("Using OZ_BASELINE preset (no tuner).")
+        else:
+            ga_preset_path = os.environ.get("GA_PRESET_PATH", "ga_best_config.json")
+            tuner_cfg = _load_ga_preset_file(ga_preset_path)
+            if tuner_cfg:
+                tuner_cfg.setdefault("name", DEFAULT_PRESET)
+                print(f"Using {DEFAULT_PRESET} preset (no tuner): {ga_preset_path}")
+                if tuner_cfg.get("cohesion"):
+                    main_cfg = tuner_cfg["cohesion"]
+            else:
+                print(f"GA_BEST preset not found at {ga_preset_path}; falling back to tuner.")
+                tuner_cfg = None
+
+    if TUNER_MODE and tuner_cfg is None:
         tuner_rows = df[df["Date"] != t_target].sort_values("Date").tail(TUNER_BACKTEST_DRAWS)
         tuner_dates = [row["Date"] for _, row in tuner_rows.iterrows()]
         tuner_cfg = _tune_configs(df, main_cols, tuner_dates, main_cfg)
         if tuner_cfg.get("cohesion"):
             main_cfg = tuner_cfg["cohesion"]
 
-    print("\n=== BACKTEST (LAST 5 DRAWS) ===")
-    for d in bt_dates:
+    if len(bt_dates) >= 10:
+        start_idx = 5
+    else:
+        start_idx = 0
+    print(
+        f"\n=== BACKTEST (LAST {len(bt_dates)} DRAWS; "
+        f"PREDICT LAST {len(bt_dates) - start_idx}; INCREMENTAL LEARNING) ==="
+    )
+    for i in range(start_idx, len(bt_dates)):
+        d = bt_dates[i]
+        learn_dates = bt_dates[:i]
+        profile = _learn_winner_profile(df, main_cols, learn_dates) if len(learn_dates) >= 5 else None
+        if profile:
+            print(f"\nLearned profile from last {len(learn_dates)} draws:")
+            print(
+                f"  rank_soft_max={profile['rank_soft_max']} "
+                f"rank_hard_max={profile['rank_hard_max']} "
+                f"gap_hard_max={profile['gap_hard_max']} "
+                f"score_min={profile['score_min']:.3f}"
+            )
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]
         bt_draw = [int(row[c]) for c in main_cols]
+        bt_supp = [int(row[c]) for c in supp_cols] if supp_cols else []
         bt_scored = score_numbers(
             df,
             main_cols,
@@ -1597,26 +2546,75 @@ if __name__ == "__main__":
             DEBUG_PRINT,
             show_all=PRINT_ALL_SCORES_WHEN_REAL,
         )
+        score_map = {c.n: c for c in bt_scored}
         if PORTFOLIO_MODE:
             bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
         else:
-            bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
-                                          use_weights=True, seed_hot_overdue=False,
-                                          force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
-                                          cohesion_config=main_cfg,
-                                          penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                                          pool_config=(tuner_cfg.get("pool") if tuner_cfg else None))
+            if tuner_cfg and tuner_cfg.get("generator") == "portfolio":
+                bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
+            elif tuner_cfg and tuner_cfg.get("generator") == "pair_anchored":
+                bt_tickets = generate_pair_anchored_tickets(bt_scored, df, main_cols, bt_date, pair_weight=0.50)
+            elif tuner_cfg and tuner_cfg.get("generator") == "pair_cluster":
+                bt_tickets = generate_pair_cluster_tickets(
+                    bt_scored,
+                    df,
+                    main_cols,
+                    bt_date,
+                    pool_config=tuner_cfg.get("pool"),
+                    penalty_scale=tuner_cfg.get("penalty_scale"),
+                    penalty_config=tuner_cfg.get("penalty_config"),
+                    cohesion_config=main_cfg,
+                )
+            elif tuner_cfg and tuner_cfg.get("generator") == "graph_cover":
+                bt_tickets = generate_graph_coverage_tickets(
+                    bt_scored,
+                    df,
+                    main_cols,
+                    bt_date,
+                    pool_config=tuner_cfg.get("pool"),
+                    penalty_scale=tuner_cfg.get("penalty_scale"),
+                    penalty_config=tuner_cfg.get("penalty_config"),
+                    cohesion_config=main_cfg,
+                )
+            elif tuner_cfg and tuner_cfg.get("generator") == "adaptive_pool":
+                bt_tickets = generate_adaptive_pool_tickets(
+                    bt_scored,
+                    df,
+                    main_cols,
+                    bt_date,
+                    pool_config=tuner_cfg.get("pool"),
+                    penalty_scale=tuner_cfg.get("penalty_scale"),
+                    penalty_config=tuner_cfg.get("penalty_config"),
+                    cohesion_config=main_cfg,
+                    force_coverage=tuner_cfg.get("force_coverage", False),
+                )
+            else:
+                bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
+                                              use_weights=True,
+                                              seed_hot_overdue=(tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False),
+                                              force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
+                                              cohesion_config=main_cfg,
+                                              penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
+                                              pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
+                                              penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None))
+        if profile:
+            strict = [t for t in bt_tickets if _ticket_passes_profile(t, score_map, profile)]
+            relaxed = [t for t in bt_tickets if _ticket_passes_profile_relaxed(t, score_map, profile) and t not in strict]
+            remainder = [t for t in bt_tickets if t not in strict and t not in relaxed]
+            bt_tickets = (strict + relaxed + remainder)[:NUM_TICKETS]
         print(f"\nBacktest Target: {bt_date}")
         for i, t in enumerate(bt_tickets, 1):
             vec = _decade_vector(t)
             print(f"Ticket #{i:02d}: {t}  decades={vec}")
-        show_ticket_hits(bt_draw, bt_tickets)
+        show_ticket_hits(bt_draw, bt_tickets, bt_supp)
 
     if not df_target.empty:
         row = df_target.iloc[0]
         real_draw = [int(row[c]) for c in main_cols]
+        real_supp = [int(row[c]) for c in supp_cols] if supp_cols else []
     else:
         real_draw = REAL_DRAW if (USE_REAL_DRAW_FALLBACK and REAL_DRAW) else []
+        real_supp = []
         if real_draw:
             print("TARGET_DATE not found in CSV; using REAL_DRAW override.")
         else:
@@ -1628,17 +2626,68 @@ if __name__ == "__main__":
         run_date,
         DEBUG_PRINT,
         show_all=(not df_target.empty) and PRINT_ALL_SCORES_WHEN_REAL,
+        score_config=(tuner_cfg.get("score_config") if tuner_cfg else None),
     )
+    target_learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(5)
+    target_learn_dates = [row["Date"] for _, row in target_learn_rows.iterrows()]
+    target_profile = _learn_winner_profile(df, main_cols, target_learn_dates) if len(target_learn_dates) >= 5 else None
+    target_score_map = {c.n: c for c in scored}
 
     if PORTFOLIO_MODE:
         tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
     else:
-        tickets = generate_tickets(scored, df, main_cols, run_date,
-                                   use_weights=True, seed_hot_overdue=False,
-                                   force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
-                                   cohesion_config=main_cfg,
-                                   penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                                   pool_config=(tuner_cfg.get("pool") if tuner_cfg else None))
+        if tuner_cfg and tuner_cfg.get("generator") == "portfolio":
+            tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
+        elif tuner_cfg and tuner_cfg.get("generator") == "pair_anchored":
+            tickets = generate_pair_anchored_tickets(scored, df, main_cols, run_date, pair_weight=0.50)
+        elif tuner_cfg and tuner_cfg.get("generator") == "pair_cluster":
+            tickets = generate_pair_cluster_tickets(
+                scored,
+                df,
+                main_cols,
+                run_date,
+                pool_config=tuner_cfg.get("pool"),
+                penalty_scale=tuner_cfg.get("penalty_scale"),
+                penalty_config=tuner_cfg.get("penalty_config"),
+                cohesion_config=main_cfg,
+            )
+        elif tuner_cfg and tuner_cfg.get("generator") == "graph_cover":
+            tickets = generate_graph_coverage_tickets(
+                scored,
+                df,
+                main_cols,
+                run_date,
+                pool_config=tuner_cfg.get("pool"),
+                penalty_scale=tuner_cfg.get("penalty_scale"),
+                penalty_config=tuner_cfg.get("penalty_config"),
+                cohesion_config=main_cfg,
+            )
+        elif tuner_cfg and tuner_cfg.get("generator") == "adaptive_pool":
+            tickets = generate_adaptive_pool_tickets(
+                scored,
+                df,
+                main_cols,
+                run_date,
+                pool_config=tuner_cfg.get("pool"),
+                penalty_scale=tuner_cfg.get("penalty_scale"),
+                penalty_config=tuner_cfg.get("penalty_config"),
+                cohesion_config=main_cfg,
+                force_coverage=tuner_cfg.get("force_coverage", False),
+            )
+        else:
+            tickets = generate_tickets(scored, df, main_cols, run_date,
+                                       use_weights=True,
+                                       seed_hot_overdue=(tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False),
+                                       force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
+                                       cohesion_config=main_cfg,
+                                       penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
+                                       pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
+                                       penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None))
+    if target_profile:
+        strict = [t for t in tickets if _ticket_passes_profile(t, target_score_map, target_profile)]
+        relaxed = [t for t in tickets if _ticket_passes_profile_relaxed(t, target_score_map, target_profile) and t not in strict]
+        remainder = [t for t in tickets if t not in strict and t not in relaxed]
+        tickets = (strict + relaxed + remainder)[:NUM_TICKETS]
 
     mode_label = "HARD_FORCE" if FORCE_COVERAGE else "WEIGHTED"
     print(f"\n=== {mode_label} STRATEGY ===")
@@ -1650,4 +2699,4 @@ if __name__ == "__main__":
         vec = _decade_vector(t)
         print(f"Ticket #{i:02d}: {t}  decades={vec}")
 
-    show_ticket_hits(real_draw, tickets)
+    show_ticket_hits(real_draw, tickets, real_supp)

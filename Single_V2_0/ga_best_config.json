@@ -1,0 +1,49 @@
+{
+  "cohesion": {
+    "accept_floor": 0.7,
+    "accept_span": 0.65,
+    "enabled": true,
+    "min_score": null,
+    "weights": {
+      "central": 0.1,
+      "pair": 0.35,
+      "rank_cont": 0.2,
+      "rank_mass": 0.05,
+      "spread": 0.3
+    }
+  },
+  "generator": "standard",
+  "name": "GA_BEST",
+  "penalty_config": {
+    "consec_max": 1,
+    "dynamic_bands": false,
+    "sum_quantiles": [
+      0.25,
+      0.75
+    ]
+  },
+  "penalty_scale": 0.5541873577905445,
+  "pool": {
+    "cold_force_count": 2,
+    "cold_pool_size": 8,
+    "hot_pool_size": 10,
+    "mid_pool_size": 11,
+    "overdue_pool_size": 10,
+    "pool_size": 34,
+    "season_pool_size": 10
+  },
+  "score_config": {
+    "cold_boost": 0.015088699667539928,
+    "decay_half_life": 40,
+    "gap_cap": 0.3003689643730353,
+    "use_decay": false,
+    "use_pairnum": true,
+    "w_decay": 0.11244870404916296,
+    "w_gap": 0.32421984887129596,
+    "w_long": 0.13409553769572508,
+    "w_pairnum": 0.11173750610727029,
+    "w_rank": 0.13575543245487176,
+    "w_recent": 0.31791736036621027,
+    "w_season": 0.1365564128342164
+  }
+}
