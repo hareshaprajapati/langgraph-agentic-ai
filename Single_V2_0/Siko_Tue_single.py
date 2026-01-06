@@ -124,6 +124,9 @@ DECADE_BANDS: List[Tuple[int, int, int]] = [
     (5, 41, 47),
 ]
 
+# Force predictions to use learned winner-band pool only.
+ENFORCE_WINNER_BAND_ONLY = True
+
 # Seasonal decade weighting (date-agnostic, learned from history)
 SEASON_DECADE_WEIGHT = 0.6
 
@@ -751,6 +754,30 @@ def _learn_winner_band_stats(
         "freq_season_min": _q(freq_season, 5),
         "freq_season_max": _q(freq_season, 95),
     }
+
+
+def _learn_winner_band_stats_relaxed(
+    df: pd.DataFrame, main_cols: List[str], learn_dates: List[pd.Timestamp]
+) -> Dict[str, float]:
+    if not learn_dates:
+        return {}
+    stats = _learn_winner_band_stats(df, main_cols, learn_dates)
+    if not stats:
+        return {}
+    # Widen percentiles to reduce pool collapse.
+    stats["rank_min"] = min(stats["rank_min"], 10.0)
+    stats["rank_max"] = max(stats["rank_max"], 40.0)
+    stats["gap_min"] = min(stats["gap_min"], 0.0)
+    stats["gap_max"] = max(stats["gap_max"], stats["gap_min"] + 1.0)
+    stats["score_min"] = min(stats["score_min"], stats["score_min"] * 0.7)
+    stats["score_max"] = max(stats["score_max"], stats["score_max"] * 1.1)
+    stats["freq_recent_min"] = min(stats["freq_recent_min"], 0.0)
+    stats["freq_recent_max"] = max(stats["freq_recent_max"], stats["freq_recent_min"] + 1.0)
+    stats["freq_long_min"] = min(stats["freq_long_min"], 0.0)
+    stats["freq_long_max"] = max(stats["freq_long_max"], stats["freq_long_min"] + 1.0)
+    stats["freq_season_min"] = min(stats["freq_season_min"], 0.0)
+    stats["freq_season_max"] = max(stats["freq_season_max"], stats["freq_season_min"] + 1.0)
+    return stats
 
 
 def _band_pool_from_stats(
@@ -2400,7 +2427,7 @@ def _generate_variant_tickets(
     if variant == "WINNER_SHAPE_POOL_WINDOW":
         train = df[df["Date"] < pd.Timestamp(target_date)].sort_values("Date").tail(LEARN_WINDOW_DRAWS)
         learn_dates = [row["Date"] for _, row in train.iterrows()]
-        band = _learn_winner_shape_band(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
+        band = _learn_winner_band_stats_relaxed(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
         if not band:
             return []
         band_pool = _band_pool_from_stats(scored_use, band)
@@ -2522,6 +2549,27 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]], supp_draw: 
         print("No tickets with 3+ hits.")
     if best_near[0] >= 1:
         print(f"Best near-miss: Ticket #{best_near[1]:02d} near_miss={best_near[0]} near_nums={best_near[2]}")
+
+
+def _log_winner_candidate_scores(
+    scored: List[CandidateScore],
+    winners: List[int],
+    label: str,
+) -> None:
+
+    if not scored or not winners:
+        return
+    score_map = {c.n: c for c in scored}
+    print(f"\n=== WINNER CANDIDATE SCORES ({label}) ===")
+    for n in winners:
+        c = score_map.get(n)
+        if not c:
+            continue
+        print(
+            f"{n:02d}: score={c.total_score:.3f} rank={c.rank_recent} "
+            f"freq_recent={c.freq_recent} gap_days={c.gap_days} "
+            f"freq_long={c.freq_long} freq_season={c.freq_season}"
+        )
 
 
 def _hit_summary(real_draw: List[int], tickets: List[List[int]]) -> Dict[str, int]:
@@ -4050,7 +4098,7 @@ if __name__ == "__main__":
                     best = None
                     for w in range(WINDOW_MIN_DRAWS, max_window + 1):
                         window_dates = prior_dates[-w:]
-                        band = _learn_winner_shape_band(df, main_cols, window_dates) if len(window_dates) >= 3 else None
+                        band = _learn_winner_band_stats_relaxed(df, main_cols, window_dates) if len(window_dates) >= 3 else None
                         if not band:
                             continue
                         constraint_fn = _make_winner_shape_constraint(
@@ -4317,6 +4365,7 @@ if __name__ == "__main__":
                 best_w, _, _, bt_tickets = results[0]
                 print(f"Selected window={best_w} for ticket display.")
         print(f"\nBacktest Target: {bt_date}")
+        _log_winner_candidate_scores(bt_scored, bt_draw, bt_date)
         for i, t in enumerate(bt_tickets, 1):
             vec = _decade_vector(t)
             print(f"Ticket #{i:02d}: {t}  decades={vec}")
@@ -4409,6 +4458,8 @@ if __name__ == "__main__":
         show_all=(not df_target.empty) and PRINT_ALL_SCORES_WHEN_REAL,
         score_config=(tuner_cfg.get("score_config") if tuner_cfg else None),
     )
+    if real_draw:
+        _log_winner_candidate_scores(scored, real_draw, run_date)
     target_supp_candidates = _supp_candidate_set(
         df, supp_cols, run_date
     ) if supp_cols and (SUPP_MIN_HIT > 0 or SUPP_SOFT_SWAP or SUPP_FOCUS_TICKETS > 0) else []
@@ -4478,6 +4529,9 @@ if __name__ == "__main__":
         else:
             selected_variant = best_variant or "BASELINE"
             print(f"Using target variant: {selected_variant}")
+            if ENFORCE_WINNER_BAND_ONLY:
+                selected_variant = "WINNER_SHAPE_POOL_WINDOW"
+                print("Enforcing winner-band-only prediction.")
             if selected_variant == "PATTERN_FILTER_WINDOW" and best_window_filter:
                 tickets = []
                 for w in range(best_window_filter, WINDOW_MIN_DRAWS - 1, -1):
@@ -4495,7 +4549,7 @@ if __name__ == "__main__":
                 for w in range(best_window_pool, WINDOW_MIN_DRAWS - 1, -1):
                     learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(w)
                     learn_dates = [row["Date"] for _, row in learn_rows.iterrows()]
-                    band = _learn_winner_shape_band(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
+                    band = _learn_winner_band_stats_relaxed(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
                     if not band:
                         continue
                     band_pool = _band_pool_from_stats(scored, band)

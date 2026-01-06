@@ -142,8 +142,8 @@ OVERRIDE_P_MAX = None               # e.g. 0.030
 
 if __name__ == "__main__":
 
-    today = datetime.date.today() # - datetime.timedelta(days=1)
-    # today = datetime.date(2025, 12, 23)  # keep explicit & reproducible
+    # today = datetime.date.today() # - datetime.timedelta(days=1)
+    today = datetime.date(2025, 12, 30)  # keep explicit & reproducible
     tuesday_dates = last_n_tuesday(today, 6)
     tuesday_date_set = set(tuesday_dates)
     # print(tuesday_dates)

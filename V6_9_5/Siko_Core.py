@@ -2851,9 +2851,9 @@ def add_draw(date, lottery, main, supp=None, powerball=None):
 def addDraws():
     # Set for Life
     def setForLife():
-        add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
-        add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
-        add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
+        add_draw(d(5, 1,2026), "Set for Life", [40, 34, 9, 44, 41, 29, 36], [16, 7])
+        add_draw(d(4, 1,2026), "Set for Life", [3, 39, 31, 1, 11, 42, 25], [44, 40])
+        add_draw(d(3, 1,2026), "Set for Life", [9, 29, 3, 38, 22, 4, 1], [11,6])
         add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
         add_draw(d(1, 1, 2026), "Set for Life", [33, 42, 12, 1, 43, 32, 44], [22, 20])
         add_draw(d(31, 12), "Set for Life", [41, 42, 29, 40, 44, 39, 10], [11, 37])
@@ -2922,6 +2922,7 @@ def addDraws():
 
     # Weekday Windfall
     def weekdayWindfall():
+        add_draw(d(5, 1, 2026),"Weekday Windfall", [25, 41, 38, 29, 22, 6], [5, 30])
         add_draw(d(2, 1, 2026),"Weekday Windfall", [8, 23, 36, 15, 39, 31], [21, 5])
         add_draw(d(31, 12), "Weekday Windfall", [2, 40, 22, 42, 9, 6], [28, 27])
         add_draw(d(29, 12), "Weekday Windfall", [38, 7, 6, 30, 42, 27], [19, 34])
@@ -2954,7 +2955,7 @@ def addDraws():
 
     # OZ Lotto
     def ozLott():
-        add_draw(d(30, 12), "OZ Lotto", [14, 11, 31, 20, 19, 12, 27], [43, 1, 13])
+        # add_draw(d(30, 12), "OZ Lotto", [14, 11, 31, 20, 19, 12, 27], [43, 1, 13])
         add_draw(d(23, 12), "OZ Lotto", [47, 29, 36, 2, 23, 37, 12], [34, 43, 3])
         add_draw(d(16, 12), "OZ Lotto", [43, 41, 20, 9, 46, 4, 19], [45, 8, 21])
         add_draw(d(9, 12), "OZ Lotto", [21, 15, 3, 6, 9, 33, 19], [31, 14, 7])
@@ -2982,6 +2983,7 @@ def addDraws():
 
     # Saturday Lotto
     def saturdayLotto():
+        add_draw(d(3, 1,2026), "Saturday Lotto", [19, 36, 21, 10, 9, 13],[39, 2])
         add_draw(d(27, 12), "Saturday Lotto", [26, 20, 40, 3, 5, 28],[22, 42])
         add_draw(d(20, 12), "Saturday Lotto", [8, 32, 31, 19, 43, 41],[14, 6])
         add_draw(d(13, 12), "Saturday Lotto", [28, 20, 35, 17, 32, 6],[41, 25])
