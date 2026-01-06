@@ -2852,6 +2852,9 @@ def addDraws():
     # Set for Life
     def setForLife():
         add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
+        add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
+        add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
+        add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
         add_draw(d(1, 1, 2026), "Set for Life", [33, 42, 12, 1, 43, 32, 44], [22, 20])
         add_draw(d(31, 12), "Set for Life", [41, 42, 29, 40, 44, 39, 10], [11, 37])
         add_draw(d(30, 12), "Set for Life", [13, 42, 7, 38, 25, 33, 34], [24, 22])

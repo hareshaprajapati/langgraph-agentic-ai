@@ -24,7 +24,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "siko_Tue_single_logs.log"   # single growing log file
+    "siko_Tue_single_3_hits_logs.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
@@ -54,18 +54,18 @@ NUMBERS_PER_TICKET = 7
 MAIN_MIN = 1
 MAIN_MAX = 47
 
-LOOKBACK_DAYS = 210
-SEASON_WINDOW_DAYS = 9
-SEASON_LOOKBACK_YEARS = 20
+LOOKBACK_DAYS = int(os.environ.get("LOOKBACK_DAYS", "210"))
+SEASON_WINDOW_DAYS = int(os.environ.get("SEASON_WINDOW_DAYS", "9"))
+SEASON_LOOKBACK_YEARS = int(os.environ.get("SEASON_LOOKBACK_YEARS", "20"))
 
 # Candidate pool
-POOL_SIZE = 36
-MID_POOL_SIZE = 14
-COLD_POOL_SIZE = 12
-HOT_POOL_SIZE = 10
-OVERDUE_POOL_SIZE = 10
-SEASON_POOL_SIZE = 10
-COLD_FORCE_COUNT = 2
+POOL_SIZE = int(os.environ.get("POOL_SIZE", "32"))
+MID_POOL_SIZE = int(os.environ.get("MID_POOL_SIZE", "10"))
+COLD_POOL_SIZE = int(os.environ.get("COLD_POOL_SIZE", "12"))
+HOT_POOL_SIZE = int(os.environ.get("HOT_POOL_SIZE", "10"))
+OVERDUE_POOL_SIZE = int(os.environ.get("OVERDUE_POOL_SIZE", "10"))
+SEASON_POOL_SIZE = int(os.environ.get("SEASON_POOL_SIZE", "10"))
+COLD_FORCE_COUNT = int(os.environ.get("COLD_FORCE_COUNT", "2"))
 
 # Hard-force coverage mix
 FORCE_COVERAGE = False
@@ -74,18 +74,18 @@ DEBUG_PRINT = True
 PRINT_ALL_SCORES_WHEN_REAL = True
 
 # Score weights (date-agnostic)
-W_RECENT = 0.55
-W_LONG = 0.20
-W_SEASON = 0.15
-W_RANK = 0.10
-COLD_BOOST = 0.25
+W_RECENT = float(os.environ.get("W_RECENT", "0.55"))
+W_LONG = float(os.environ.get("W_LONG", "0.20"))
+W_SEASON = float(os.environ.get("W_SEASON", "0.15"))
+W_RANK = float(os.environ.get("W_RANK", "0.10"))
+COLD_BOOST = float(os.environ.get("COLD_BOOST", "0.25"))
 # Overdue gap boost (date-agnostic)
-W_GAP = 0.25
-GAP_CAP = 0.30
+W_GAP = float(os.environ.get("W_GAP", "0.25"))
+GAP_CAP = float(os.environ.get("GAP_CAP", "0.30"))
 
 # Ticket constraints (soft)
-OVERLAP_CAP = 6
-GLOBAL_MAX_USES = 6
+OVERLAP_CAP = int(os.environ.get("OVERLAP_CAP", "6"))
+GLOBAL_MAX_USES = int(os.environ.get("GLOBAL_MAX_USES", "6"))
 
 # Odd / low / sum preferences (learned from history)
 ODD_BAND = (2, 5)
@@ -111,8 +111,8 @@ SEASON_DECADE_WEIGHT = 0.6
 DECADE_TARGET_COUNTS = None
 
 # Acceptance behavior
-PENALTY_SCALE = 0.55
-MAX_ATTEMPTS = 30000
+PENALTY_SCALE = float(os.environ.get("PENALTY_SCALE", "0.55"))
+MAX_ATTEMPTS = int(os.environ.get("MAX_ATTEMPTS", "30000"))
 
 # Cohesion strategy (3+ hit traits)
 COHESION_ENABLED = True
@@ -164,6 +164,26 @@ DIFFUSE_DIVERSITY_PENALTY = 0.15
 REAL_DRAW = []
 # If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
 USE_REAL_DRAW_FALLBACK = False
+
+# Supplementary targeting (Oz Lotto has 3 supplementary numbers)
+SUPP_MIN_HIT = 0
+SUPP_POOL_SIZE = 12
+SUPP_W_RECENT = 0.60
+SUPP_W_LONG = 0.30
+SUPP_W_SEASON = 0.10
+SUPP_SCORE_W = float(os.environ.get("SUPP_SCORE_W", "0.10"))
+SUPP_SOFT_SWAP = True
+SUPP_SWAP_TOP = int(os.environ.get("SUPP_SWAP_TOP", "24"))
+SUPP_SWAP_SCORE_DELTA = float(os.environ.get("SUPP_SWAP_DELTA", "-0.02"))
+SUPP_SWAP_TICKETS = int(os.environ.get("SUPP_SWAP_TICKETS", "0"))
+SUPP_FOCUS_TICKETS = int(os.environ.get("SUPP_FOCUS_TICKETS", "2"))
+SUPP_FOCUS_COUNT = int(os.environ.get("SUPP_FOCUS_COUNT", "2"))
+SUPP_FOCUS_TOP = int(os.environ.get("SUPP_FOCUS_TOP", "47"))
+SUPP_FOCUS_MODE = os.environ.get("SUPP_FOCUS_MODE", "HIGH").strip().upper()
+USE_PROFILE_FILTER = False
+
+# Filled at runtime after CSV load
+SUPP_COLS: List[str] = []
 
 # ============================================================
 # INTERNALS
@@ -251,6 +271,72 @@ def _counts_mains_in_window(df: pd.DataFrame, main_cols: List[str], start: pd.Ti
     sub = df[(df["Date"] >= start) & (df["Date"] < end)]
     nums = _explode_mains(sub, main_cols)
     return nums.value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
+
+
+def _explode_supps(df: pd.DataFrame, supp_cols: List[str]) -> pd.Series:
+    return pd.concat([df[c] for c in supp_cols], ignore_index=True)
+
+
+def _counts_supp_in_window(df: pd.DataFrame, supp_cols: List[str], start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
+    sub = df[(df["Date"] >= start) & (df["Date"] < end)]
+    if sub.empty:
+        return pd.Series([0] * (MAIN_MAX - MAIN_MIN + 1), index=range(MAIN_MIN, MAIN_MAX + 1))
+    nums = _explode_supps(sub, supp_cols)
+    return nums.value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
+
+
+def _supp_score_map(df: pd.DataFrame, supp_cols: List[str], target_date: str) -> Dict[int, float]:
+    if not supp_cols:
+        return {}
+    t = pd.to_datetime(target_date)
+    if pd.isna(t):
+        return {}
+    train = df[df["Date"] < t]
+    if train.empty:
+        return {}
+
+    recent_start = t - pd.Timedelta(days=LOOKBACK_DAYS)
+    recent_counts = _counts_supp_in_window(train, supp_cols, recent_start, t)
+    long_counts = _explode_supps(train, supp_cols).value_counts().reindex(
+        range(MAIN_MIN, MAIN_MAX + 1), fill_value=0
+    ).sort_index()
+
+    seasonal_counts = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    for year in range(t.year - SEASON_LOOKBACK_YEARS, t.year + 1):
+        anchor = date(year, t.month, t.day)
+        win_start, win_end = _season_window_dates(anchor, SEASON_WINDOW_DAYS)
+        rows = train[(train["Date"] >= win_start) & (train["Date"] <= win_end)]
+        if rows.empty:
+            continue
+        for _, row in rows.iterrows():
+            for c in supp_cols:
+                val = row[c]
+                if pd.isna(val):
+                    continue
+                n = int(val)
+                seasonal_counts[n] += 1
+    s_recent = _normalize_series(recent_counts)
+    s_long = _normalize_series(long_counts)
+    s_season = _normalize_series(pd.Series(seasonal_counts).sort_index())
+
+    scores: Dict[int, float] = {}
+    for n in range(MAIN_MIN, MAIN_MAX + 1):
+        scores[n] = (
+            SUPP_W_RECENT * float(s_recent.get(n, 0.0)) +
+            SUPP_W_LONG * float(s_long.get(n, 0.0)) +
+            SUPP_W_SEASON * float(s_season.get(n, 0.0))
+        )
+    return scores
+
+
+def _supp_candidate_set(df: pd.DataFrame, supp_cols: List[str], target_date: str) -> List[int]:
+    if not supp_cols:
+        return []
+    scores = _supp_score_map(df, supp_cols, target_date)
+    if not scores:
+        return []
+    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    return [n for n, _ in ranked[:SUPP_POOL_SIZE]]
 
 
 def _rank_from_counts(counts: pd.Series) -> Dict[int, int]:
@@ -555,6 +641,7 @@ def score_numbers(
     debug: bool,
     show_all: bool = False,
     score_config: Dict[str, float] = None,
+    supp_cols: Optional[List[str]] = None,
 ) -> List[CandidateScore]:
     t = pd.Timestamp(target_date)
     if pd.isna(t):
@@ -606,6 +693,36 @@ def score_numbers(
     s_long = _normalize_series(long_counts)
     s_season = _normalize_series(pd.Series(seasonal_counts).sort_index())
 
+    # supplementary score components (learned from supplementary history)
+    supp_cols = supp_cols or SUPP_COLS
+    if supp_cols and SUPP_SCORE_W > 0.0:
+        supp_recent_counts = _counts_supp_in_window(train, supp_cols, recent_start, t)
+        supp_long_counts = _explode_supps(train, supp_cols).value_counts().reindex(
+            range(MAIN_MIN, MAIN_MAX + 1), fill_value=0
+        ).sort_index()
+        supp_season_counts = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+        for y in range(start_year, end_year + 1):
+            anchor = _anchor_for_year(target_dt, y)
+            win_start, win_end = _season_window_dates(anchor, SEASON_WINDOW_DAYS)
+            near = train[(train["Date"] >= win_start) & (train["Date"] < win_end)]
+            if near.empty:
+                continue
+            for _, row in near.iterrows():
+                for c in supp_cols:
+                    val = row[c]
+                    if pd.isna(val):
+                        continue
+                    n = int(val)
+                    if MAIN_MIN <= n <= MAIN_MAX:
+                        supp_season_counts[n] += 1
+        s_supp_recent = _normalize_series(supp_recent_counts)
+        s_supp_long = _normalize_series(supp_long_counts)
+        s_supp_season = _normalize_series(pd.Series(supp_season_counts).sort_index())
+    else:
+        s_supp_recent = {}
+        s_supp_long = {}
+        s_supp_season = {}
+
     inv_rank = pd.Series({n: 1.0 / float(ranks.get(n, 999)) for n in range(MAIN_MIN, MAIN_MAX + 1)})
     s_rank = _normalize_series(inv_rank)
 
@@ -656,6 +773,13 @@ def score_numbers(
             w_rank * float(s_rank.get(n, 0.0))
         )
         total += min(gap_cap, w_gap * float(s_gap.get(n, 0.0)))
+        if supp_cols and SUPP_SCORE_W > 0.0:
+            supp_score = (
+                SUPP_W_RECENT * float(s_supp_recent.get(n, 0.0)) +
+                SUPP_W_LONG * float(s_supp_long.get(n, 0.0)) +
+                SUPP_W_SEASON * float(s_supp_season.get(n, 0.0))
+            )
+            total += SUPP_SCORE_W * supp_score
         if use_decay and w_decay > 0.0:
             total += w_decay * float(s_decay.get(n, 0.0))
         if use_pairnum and w_pairnum > 0.0:
@@ -909,6 +1033,190 @@ def _ticket_penalty(nums: List[int], dist: Dict[str, object], penalty_config: Di
     return penalty
 
 
+def _apply_supp_soft_swap(
+    pick: List[int],
+    supp_candidates: List[int],
+    supp_scores: Dict[int, float],
+    score_map: Dict[int, float],
+    pool: List[int],
+    global_use: Dict[int, int],
+    global_max: int,
+) -> List[int]:
+    if not SUPP_SOFT_SWAP or not supp_candidates:
+        return pick
+    pick_set = set(pick)
+    if pick_set.intersection(supp_candidates):
+        return pick
+
+    pool_set = set(pool)
+    candidates = [
+        n for n in supp_candidates[:SUPP_SWAP_TOP]
+        if n in pool_set and n not in pick_set and global_use.get(n, 0) < global_max
+    ]
+    if not candidates:
+        return pick
+
+    candidates.sort(key=lambda n: (supp_scores.get(n, 0.0), score_map.get(n, 0.0)), reverse=True)
+    removable = sorted(pick, key=lambda n: score_map.get(n, 0.0))
+    for cand in candidates:
+        cand_score = score_map.get(cand, 0.0)
+        for out in removable:
+            out_score = score_map.get(out, 0.0)
+            if cand_score + SUPP_SWAP_SCORE_DELTA < out_score:
+                continue
+            new_pick = [n for n in pick if n != out] + [cand]
+            return sorted(new_pick)
+    return pick
+
+
+def _apply_supp_soft_swaps(
+    tickets: List[List[int]],
+    supp_candidates: List[int],
+    supp_scores: Dict[int, float],
+    score_map: Dict[int, float],
+    pool: List[int],
+    global_use: Dict[int, int],
+    global_max: int,
+    overlap_cap: int,
+) -> List[List[int]]:
+    if not SUPP_SOFT_SWAP or not supp_candidates:
+        return tickets
+    if not tickets:
+        return tickets
+
+    pool_set = set(pool)
+    candidates = [n for n in supp_candidates[:SUPP_SWAP_TOP] if n in pool_set]
+    if not candidates:
+        return tickets
+
+    candidates.sort(key=lambda n: (supp_scores.get(n, 0.0), score_map.get(n, 0.0)), reverse=True)
+    ticket_scores = []
+    for i, t in enumerate(tickets):
+        avg_score = sum(score_map.get(n, 0.0) for n in t) / float(len(t))
+        ticket_scores.append((avg_score, i))
+    if SUPP_FOCUS_MODE == "HIGH":
+        ticket_scores.sort(reverse=True)
+    else:
+        ticket_scores.sort()
+
+    swaps_done = 0
+    for _, idx in ticket_scores:
+        if swaps_done >= SUPP_SWAP_TICKETS:
+            break
+        pick = tickets[idx]
+        pick_set = set(pick)
+        if pick_set.intersection(candidates):
+            continue
+
+        removable = sorted(pick, key=lambda n: score_map.get(n, 0.0))
+        for cand in candidates:
+            if cand in pick_set or global_use.get(cand, 0) >= global_max:
+                continue
+            cand_score = score_map.get(cand, 0.0)
+            for out in removable:
+                out_score = score_map.get(out, 0.0)
+                if cand_score + SUPP_SWAP_SCORE_DELTA < out_score:
+                    continue
+                new_pick = sorted([n for n in pick if n != out] + [cand])
+                s_new = set(new_pick)
+                ok = True
+                for j, other in enumerate(tickets):
+                    if j == idx:
+                        continue
+                    if len(s_new.intersection(other)) > overlap_cap:
+                        ok = False
+                        break
+                if not ok:
+                    continue
+                global_use[out] -= 1
+                global_use[cand] = global_use.get(cand, 0) + 1
+                tickets[idx] = new_pick
+                swaps_done += 1
+                break
+            if swaps_done >= SUPP_SWAP_TICKETS:
+                break
+    return tickets
+
+
+def _apply_supp_focus_tickets(
+    tickets: List[List[int]],
+    scored: List[CandidateScore],
+    supp_scores: Dict[int, float],
+    score_map: Dict[int, float],
+    global_use: Dict[int, int],
+    global_max: int,
+    overlap_cap: int,
+) -> List[List[int]]:
+    if SUPP_FOCUS_TICKETS <= 0 or SUPP_FOCUS_COUNT <= 0:
+        return tickets
+    if not tickets or not supp_scores:
+        return tickets
+
+    supp_ranked = sorted(supp_scores.items(), key=lambda kv: kv[1], reverse=True)
+    supp_candidates = [n for n, _ in supp_ranked[:SUPP_FOCUS_TOP]]
+    if not supp_candidates:
+        return tickets
+
+    main_ranked = [c.n for c in scored]
+    ticket_scores = []
+    for i, t in enumerate(tickets):
+        avg_score = sum(score_map.get(n, 0.0) for n in t) / float(len(t))
+        ticket_scores.append((avg_score, i))
+    ticket_scores.sort()
+
+    replaced = 0
+    for _, idx in ticket_scores:
+        if replaced >= SUPP_FOCUS_TICKETS:
+            break
+
+        pick = tickets[idx]
+        pick_set = set(pick)
+        supp_pick = []
+        for n in supp_candidates:
+            if n in pick_set:
+                continue
+            if global_use.get(n, 0) >= global_max:
+                continue
+            supp_pick.append(n)
+            if len(supp_pick) >= SUPP_FOCUS_COUNT:
+                break
+        if len(supp_pick) < SUPP_FOCUS_COUNT:
+            continue
+
+        remaining = []
+        for n in main_ranked:
+            if n in pick_set or n in supp_pick:
+                continue
+            if global_use.get(n, 0) >= global_max:
+                continue
+            remaining.append(n)
+            if len(remaining) >= NUMBERS_PER_TICKET - len(supp_pick):
+                break
+        if len(remaining) < NUMBERS_PER_TICKET - len(supp_pick):
+            continue
+
+        new_pick = sorted(supp_pick + remaining)
+        s_new = set(new_pick)
+        ok = True
+        for j, other in enumerate(tickets):
+            if j == idx:
+                continue
+            if len(s_new.intersection(other)) > overlap_cap:
+                ok = False
+                break
+        if not ok:
+            continue
+
+        for n in pick:
+            global_use[n] -= 1
+        for n in new_pick:
+            global_use[n] = global_use.get(n, 0) + 1
+        tickets[idx] = new_pick
+        replaced += 1
+
+    return tickets
+
+
 def generate_tickets(
     scored: List[CandidateScore],
     df: pd.DataFrame,
@@ -926,6 +1234,8 @@ def generate_tickets(
     pool_config: Dict[str, object] = None,
     penalty_config: Dict[str, object] = None,
     constraint_fn: Optional[Callable[[List[int]], bool]] = None,
+    supp_candidates: Optional[List[int]] = None,
+    supp_min_hit: int = 0,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -952,6 +1262,10 @@ def generate_tickets(
     # weights from scores
     score_map = {c.n: c.total_score for c in scored}
     rank_map = {c.n: c.rank_recent for c in scored}
+    supp_scores: Dict[int, float] = {}
+    if (SUPP_SOFT_SWAP or SUPP_FOCUS_TICKETS > 0) and SUPP_COLS:
+        if supp_candidates or SUPP_FOCUS_TICKETS > 0:
+            supp_scores = _supp_score_map(df, SUPP_COLS, target_date)
     min_score = min(score_map.values()) if score_map else 0.0
     if use_weights:
         weights = [(score_map.get(n, 0.0) - min_score) + 0.25 for n in pool]
@@ -1060,6 +1374,9 @@ def generate_tickets(
             pick = sorted(_weighted_sample_no_replace(pool, weights, NUMBERS_PER_TICKET, rng))
         if pick in tickets:
             continue
+        if supp_candidates and supp_min_hit > 0:
+            if len(set(pick).intersection(supp_candidates)) < supp_min_hit:
+                continue
 
         if any(global_use[n] >= global_max for n in pick):
             continue
@@ -2025,6 +2342,15 @@ def generate_pair_cluster_tickets(
         for n in pick:
             global_use[n] += 1
 
+    if SUPP_SOFT_SWAP and supp_candidates:
+        tickets = _apply_supp_soft_swaps(
+            tickets, supp_candidates, supp_scores, score_map, pool, global_use, global_max, overlap_cap
+        )
+    if SUPP_FOCUS_TICKETS > 0:
+        tickets = _apply_supp_focus_tickets(
+            tickets, scored, supp_scores, score_map, global_use, global_max, overlap_cap
+        )
+
     print(f"Generated {len(tickets)}/{NUM_TICKETS} tickets in {attempts} attempts")
     return tickets
 
@@ -2355,7 +2681,7 @@ def _evaluate_cfg_with_profile(
                 pool_config=cfg.get("pool"),
                 penalty_config=cfg.get("penalty_config"),
             )
-        if profile:
+        if profile and USE_PROFILE_FILTER:
             strict = [t for t in bt_tickets if _ticket_passes_profile(t, score_map, profile)]
             relaxed = [t for t in bt_tickets if _ticket_passes_profile_relaxed(t, score_map, profile) and t not in strict]
             remainder = [t for t in bt_tickets if t not in strict and t not in relaxed]
@@ -2381,6 +2707,7 @@ def _evaluate_cfg_with_profile(
 if __name__ == "__main__":
     df, main_cols = _load_csv(CSV_PATH)
     supp_cols = _detect_supp_cols(df)
+    globals()["SUPP_COLS"] = supp_cols
 
     # Run for the configured target date (prediction); if it exists in CSV, use it as a backtest draw.
     t_target = pd.Timestamp(TARGET_DATE)
@@ -2546,6 +2873,9 @@ if __name__ == "__main__":
             DEBUG_PRINT,
             show_all=PRINT_ALL_SCORES_WHEN_REAL,
         )
+        supp_candidates = _supp_candidate_set(
+            df, supp_cols, bt_date
+        ) if supp_cols and (SUPP_MIN_HIT > 0 or SUPP_SOFT_SWAP or SUPP_FOCUS_TICKETS > 0) else []
         score_map = {c.n: c for c in bt_scored}
         if PORTFOLIO_MODE:
             bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
@@ -2596,7 +2926,9 @@ if __name__ == "__main__":
                                               cohesion_config=main_cfg,
                                               penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
                                               pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                                              penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None))
+                                              penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
+                                              supp_candidates=supp_candidates,
+                                              supp_min_hit=SUPP_MIN_HIT)
         if profile:
             strict = [t for t in bt_tickets if _ticket_passes_profile(t, score_map, profile)]
             relaxed = [t for t in bt_tickets if _ticket_passes_profile_relaxed(t, score_map, profile) and t not in strict]
@@ -2628,6 +2960,9 @@ if __name__ == "__main__":
         show_all=(not df_target.empty) and PRINT_ALL_SCORES_WHEN_REAL,
         score_config=(tuner_cfg.get("score_config") if tuner_cfg else None),
     )
+    target_supp_candidates = _supp_candidate_set(
+        df, supp_cols, run_date
+    ) if supp_cols and (SUPP_MIN_HIT > 0 or SUPP_SOFT_SWAP or SUPP_FOCUS_TICKETS > 0) else []
     target_learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(5)
     target_learn_dates = [row["Date"] for _, row in target_learn_rows.iterrows()]
     target_profile = _learn_winner_profile(df, main_cols, target_learn_dates) if len(target_learn_dates) >= 5 else None
@@ -2682,8 +3017,10 @@ if __name__ == "__main__":
                                        cohesion_config=main_cfg,
                                        penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
                                        pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                                       penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None))
-    if target_profile:
+                                       penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
+                                       supp_candidates=target_supp_candidates,
+                                       supp_min_hit=SUPP_MIN_HIT)
+    if target_profile and USE_PROFILE_FILTER:
         strict = [t for t in tickets if _ticket_passes_profile(t, target_score_map, target_profile)]
         relaxed = [t for t in tickets if _ticket_passes_profile_relaxed(t, target_score_map, target_profile) and t not in strict]
         remainder = [t for t in tickets if t not in strict and t not in relaxed]
