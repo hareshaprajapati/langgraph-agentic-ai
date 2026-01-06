@@ -1,0 +1,287 @@
+Generated 13/20 tickets in 30000 attempts
+Using OZ_BASELINE preset (no tuner).
+
+=== BACKTEST (LAST 10 DRAWS; PREDICT LAST 5; INCREMENTAL LEARNING) ===
+Generated 20/20 tickets in 63 attempts
+Generated 20/20 tickets in 63 attempts
+Generated 15/20 tickets in 30000 attempts
+Generated 20/20 tickets in 63 attempts
+Generated 20/20 tickets in 116 attempts
+Generated 20/20 tickets in 64 attempts
+Generated 20/20 tickets in 39 attempts
+Generated 19/20 tickets in 30000 attempts
+Generated 20/20 tickets in 8026 attempts
+Generated 8/20 tickets in 30000 attempts
+Generated 8/20 tickets in 30000 attempts
+Generated 18/20 tickets in 30000 attempts
+Generated 6/20 tickets in 30000 attempts
+Generated 20/20 tickets in 56 attempts
+
+Strategy results for 2025-11-25:
+  GREEDY_BOOST_8K: max_hit=5 ge4=1 ge3=1
+  ENSEMBLE_PORTFOLIO: max_hit=4 ge4=1 ge3=2
+  WINNER_SHAPE_WINDOW: max_hit=4 ge4=1 ge3=1
+  WINNER_SHAPE: max_hit=3 ge4=0 ge3=5
+  BASELINE: max_hit=3 ge4=0 ge3=2
+  RULE_TOP7_OVERDUE1: max_hit=3 ge4=0 ge3=2
+  TOP20_HALF: max_hit=3 ge4=0 ge3=2
+  PAIR_TRIPLET_POOL: max_hit=3 ge4=0 ge3=2
+  GREEDY_BOOST_20K: max_hit=3 ge4=0 ge3=2
+  PAIR_RANK7: max_hit=3 ge4=0 ge3=1
+  GREEDY_COVER: max_hit=3 ge4=0 ge3=1
+  BASELINE_BOOST: max_hit=3 ge4=0 ge3=1
+  GREEDY_BOOST_40K: max_hit=3 ge4=0 ge3=1
+  CONC_TOP16: max_hit=2 ge4=0 ge3=0
+  CONC_TOP18: max_hit=2 ge4=0 ge3=0
+  BAND_ANCHOR: max_hit=2 ge4=0 ge3=0
+  PATTERN_FILTER_WINDOW: max_hit=2 ge4=0 ge3=0
+  GREEDY_BOOST_MULTI: max_hit=2 ge4=0 ge3=0
+  WINNER_SHAPE_POOL_WINDOW: max_hit=0 ge4=0 ge3=0
+Selected strategy=GREEDY_BOOST_8K for ticket display.
+
+Backtest Target: 2025-11-25
+Ticket #01: [17, 21, 26, 28, 32, 34, 39]  decades={1: 0, 2: 1, 3: 3, 4: 3, 5: 0}
+Ticket #02: [1, 7, 17, 30, 37, 38, 39]  decades={1: 2, 2: 1, 3: 1, 4: 3, 5: 0}
+Ticket #03: [21, 25, 32, 38, 39, 43, 45]  decades={1: 0, 2: 0, 3: 2, 4: 3, 5: 2}
+Ticket #04: [2, 7, 16, 19, 21, 25, 28]  decades={1: 2, 2: 2, 3: 3, 4: 0, 5: 0}
+Ticket #05: [1, 33, 34, 35, 37, 39, 41]  decades={1: 1, 2: 0, 3: 0, 4: 5, 5: 1}
+Ticket #06: [7, 17, 21, 26, 29, 30, 31]  decades={1: 1, 2: 1, 3: 4, 4: 1, 5: 0}
+Ticket #07: [1, 2, 5, 18, 28, 44, 45]  decades={1: 3, 2: 1, 3: 1, 4: 0, 5: 2}
+Ticket #08: [16, 24, 26, 35, 36, 40, 43]  decades={1: 0, 2: 1, 3: 2, 4: 3, 5: 1}
+Ticket #09: [4, 8, 14, 17, 29, 32, 37]  decades={1: 2, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #10: [11, 12, 19, 20, 33, 38, 39]  decades={1: 0, 2: 4, 3: 0, 4: 3, 5: 0}
+Ticket #11: [6, 24, 25, 27, 30, 31, 41]  decades={1: 1, 2: 0, 3: 4, 4: 1, 5: 1}
+Ticket #12: [7, 16, 22, 40, 43, 44, 45]  decades={1: 1, 2: 1, 3: 1, 4: 1, 5: 3}
+Ticket #13: [3, 4, 6, 15, 18, 28, 34]  decades={1: 3, 2: 2, 3: 1, 4: 1, 5: 0}
+Ticket #14: [1, 2, 5, 21, 32, 36, 38]  decades={1: 3, 2: 0, 3: 1, 4: 3, 5: 0}
+Ticket #15: [9, 13, 14, 17, 26, 29, 33]  decades={1: 1, 2: 3, 3: 2, 4: 1, 5: 0}
+Ticket #16: [8, 11, 19, 20, 34, 37, 41]  decades={1: 1, 2: 3, 3: 0, 4: 2, 5: 1}
+Ticket #17: [4, 7, 22, 24, 27, 31, 39]  decades={1: 2, 2: 0, 3: 3, 4: 2, 5: 0}
+Ticket #18: [5, 9, 15, 25, 40, 44, 45]  decades={1: 2, 2: 1, 3: 1, 4: 1, 5: 2}
+Ticket #19: [1, 12, 13, 14, 28, 32, 35]  decades={1: 1, 2: 3, 3: 1, 4: 2, 5: 0}
+Ticket #20: [2, 3, 16, 30, 37, 38, 39]  decades={1: 2, 2: 1, 3: 1, 4: 3, 5: 0}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [1, 12, 14, 28, 35, 43, 47]
+Ticket #19: hits=5 nums=[1, 12, 14, 28, 35] supp_hit=0 supp_nums=[] near_miss=1 near_nums=[13]
+Best near-miss: Ticket #07 near_miss=2 near_nums=[2, 44]
+Generated 20/20 tickets in 57 attempts
+Generated 20/20 tickets in 57 attempts
+Generated 15/20 tickets in 30000 attempts
+Generated 20/20 tickets in 57 attempts
+Generated 20/20 tickets in 126 attempts
+Generated 20/20 tickets in 112 attempts
+Generated 20/20 tickets in 48 attempts
+Generated 18/20 tickets in 30000 attempts
+Generated 20/20 tickets in 19672 attempts
+Generated 18/20 tickets in 30000 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 11/20 tickets in 30000 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 8/20 tickets in 30000 attempts
+Generated 8/20 tickets in 30000 attempts
+Generated 8/20 tickets in 30000 attempts
+Generated 20/20 tickets in 81 attempts
+
+Strategy results for 2025-12-02:
+  GREEDY_BOOST_40K: max_hit=5 ge4=1 ge3=2
+  CONC_TOP16: max_hit=3 ge4=0 ge3=4
+  CONC_TOP18: max_hit=3 ge4=0 ge3=4
+  WINNER_SHAPE: max_hit=3 ge4=0 ge3=4
+  PATTERN_FILTER_WINDOW: max_hit=3 ge4=0 ge3=4
+  GREEDY_COVER: max_hit=3 ge4=0 ge3=3
+  BASELINE_BOOST: max_hit=3 ge4=0 ge3=3
+  TOP20_HALF: max_hit=3 ge4=0 ge3=2
+  GREEDY_BOOST_8K: max_hit=3 ge4=0 ge3=2
+  BASELINE: max_hit=3 ge4=0 ge3=1
+  RULE_TOP7_OVERDUE1: max_hit=3 ge4=0 ge3=1
+  PAIR_RANK7: max_hit=3 ge4=0 ge3=1
+  BAND_ANCHOR: max_hit=3 ge4=0 ge3=1
+  PAIR_TRIPLET_POOL: max_hit=3 ge4=0 ge3=1
+  GREEDY_BOOST_20K: max_hit=3 ge4=0 ge3=1
+  GREEDY_BOOST_MULTI: max_hit=3 ge4=0 ge3=1
+  ENSEMBLE_PORTFOLIO: max_hit=3 ge4=0 ge3=1
+  WINNER_SHAPE_WINDOW: max_hit=2 ge4=0 ge3=0
+  WINNER_SHAPE_POOL_WINDOW: max_hit=0 ge4=0 ge3=0
+Selected strategy=GREEDY_BOOST_40K for ticket display.
+
+Backtest Target: 2025-12-02
+Ticket #01: [1, 7, 17, 21, 28, 29, 39]  decades={1: 2, 2: 1, 3: 3, 4: 1, 5: 0}
+Ticket #02: [7, 17, 21, 26, 32, 38, 39]  decades={1: 1, 2: 1, 3: 2, 4: 3, 5: 0}
+Ticket #03: [24, 25, 28, 35, 39, 43, 45]  decades={1: 0, 2: 0, 3: 3, 4: 2, 5: 2}
+Ticket #04: [1, 16, 30, 34, 37, 40, 41]  decades={1: 1, 2: 1, 3: 1, 4: 3, 5: 1}
+Ticket #05: [5, 19, 21, 26, 28, 32, 38]  decades={1: 1, 2: 1, 3: 3, 4: 2, 5: 0}
+Ticket #06: [2, 7, 17, 25, 31, 33, 37]  decades={1: 2, 2: 1, 3: 1, 4: 3, 5: 0}
+Ticket #07: [1, 4, 14, 34, 35, 36, 45]  decades={1: 2, 2: 1, 3: 0, 4: 3, 5: 1}
+Ticket #08: [8, 11, 19, 24, 30, 39, 44]  decades={1: 1, 2: 2, 3: 2, 4: 1, 5: 1}
+Ticket #09: [3, 9, 12, 15, 18, 20, 43]  decades={1: 2, 2: 4, 3: 0, 4: 0, 5: 1}
+Ticket #10: [6, 16, 23, 25, 29, 32, 41]  decades={1: 1, 2: 1, 3: 3, 4: 1, 5: 1}
+Ticket #11: [17, 21, 22, 26, 28, 40, 42]  decades={1: 0, 2: 1, 3: 4, 4: 1, 5: 1}
+Ticket #12: [1, 2, 4, 5, 33, 35, 37]  decades={1: 4, 2: 0, 3: 0, 4: 3, 5: 0}
+Ticket #13: [7, 11, 18, 31, 36, 38, 44]  decades={1: 1, 2: 2, 3: 0, 4: 3, 5: 1}
+Ticket #14: [12, 16, 20, 32, 39, 43, 45]  decades={1: 0, 2: 3, 3: 0, 4: 2, 5: 2}
+Ticket #15: [4, 14, 19, 22, 24, 30, 34]  decades={1: 1, 2: 2, 3: 3, 4: 1, 5: 0}
+Ticket #16: [3, 8, 9, 23, 25, 26, 41]  decades={1: 3, 2: 0, 3: 3, 4: 0, 5: 1}
+Ticket #17: [1, 6, 17, 21, 29, 38, 40]  decades={1: 2, 2: 1, 3: 2, 4: 2, 5: 0}
+Ticket #18: [5, 7, 15, 28, 31, 42, 45]  decades={1: 2, 2: 1, 3: 1, 4: 1, 5: 2}
+Ticket #19: [2, 14, 24, 32, 33, 36, 37]  decades={1: 1, 2: 1, 3: 1, 4: 4, 5: 0}
+Ticket #20: [8, 11, 16, 18, 35, 43, 44]  decades={1: 1, 2: 3, 3: 0, 4: 1, 5: 2}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [7, 22, 26, 28, 40, 42, 43]
+Ticket #11: hits=5 nums=[22, 26, 28, 40, 42] supp_hit=0 supp_nums=[] near_miss=1 near_nums=[21]
+Ticket #18: hits=3 nums=[7, 28, 42] supp_hit=0 supp_nums=[] near_miss=0 near_nums=[]
+Best near-miss: Ticket #10 near_miss=5 near_nums=[6, 23, 25, 29, 41]
+Generated 20/20 tickets in 60 attempts
+Generated 20/20 tickets in 60 attempts
+Generated 15/20 tickets in 30000 attempts
+Generated 20/20 tickets in 60 attempts
+Generated 20/20 tickets in 51 attempts
+Generated 20/20 tickets in 73 attempts
+Generated 20/20 tickets in 57 attempts
+Generated 20/20 tickets in 340 attempts
+Generated 19/20 tickets in 30000 attempts
+Generated 18/20 tickets in 30000 attempts
+Generated 1/20 tickets in 30000 attempts
+Generated 10/20 tickets in 30000 attempts
+Generated 10/20 tickets in 30000 attempts
+Generated 10/20 tickets in 30000 attempts
+Generated 18/20 tickets in 30000 attempts
+Generated 10/20 tickets in 30000 attempts
+Generated 12/20 tickets in 30000 attempts
+Generated 20/20 tickets in 71 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 13/20 tickets in 30000 attempts
+
+Strategy results for 2025-12-09:
+  BASELINE_BOOST: max_hit=4 ge4=1 ge3=1
+  GREEDY_BOOST_8K: max_hit=4 ge4=1 ge3=1
+  WINNER_SHAPE: max_hit=3 ge4=0 ge3=5
+  ENSEMBLE_PORTFOLIO: max_hit=3 ge4=0 ge3=3
+  WINNER_SHAPE_WINDOW: max_hit=3 ge4=0 ge3=2
+  GREEDY_BOOST_40K: max_hit=3 ge4=0 ge3=2
+  BASELINE: max_hit=3 ge4=0 ge3=1
+  RULE_TOP7_OVERDUE1: max_hit=3 ge4=0 ge3=1
+  TOP20_HALF: max_hit=3 ge4=0 ge3=1
+  PAIR_TRIPLET_POOL: max_hit=3 ge4=0 ge3=1
+  GREEDY_BOOST_20K: max_hit=3 ge4=0 ge3=1
+  GREEDY_BOOST_MULTI: max_hit=3 ge4=0 ge3=1
+  PAIR_RANK7: max_hit=2 ge4=0 ge3=0
+  CONC_TOP16: max_hit=2 ge4=0 ge3=0
+  CONC_TOP18: max_hit=2 ge4=0 ge3=0
+  GREEDY_COVER: max_hit=2 ge4=0 ge3=0
+  BAND_ANCHOR: max_hit=2 ge4=0 ge3=0
+  PATTERN_FILTER_WINDOW: max_hit=2 ge4=0 ge3=0
+  WINNER_SHAPE_POOL_WINDOW: max_hit=1 ge4=0 ge3=0
+Selected strategy=BASELINE_BOOST for ticket display.
+
+Backtest Target: 2025-12-09
+Ticket #01: [2, 6, 14, 23, 29, 33, 39]  decades={1: 2, 2: 1, 3: 2, 4: 2, 5: 0}
+Ticket #02: [1, 7, 17, 18, 30, 38, 43]  decades={1: 2, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #03: [4, 10, 17, 25, 26, 35, 38]  decades={1: 2, 2: 1, 3: 2, 4: 2, 5: 0}
+Ticket #04: [3, 5, 7, 26, 32, 37, 45]  decades={1: 3, 2: 0, 3: 1, 4: 2, 5: 1}
+Ticket #05: [2, 11, 21, 27, 36, 38, 44]  decades={1: 1, 2: 1, 3: 2, 4: 2, 5: 1}
+Ticket #06: [9, 13, 23, 26, 27, 33, 38]  decades={1: 1, 2: 1, 3: 3, 4: 2, 5: 0}
+Ticket #07: [1, 19, 24, 25, 27, 28, 40]  decades={1: 1, 2: 1, 3: 4, 4: 1, 5: 0}
+Ticket #08: [8, 14, 25, 28, 33, 34, 36]  decades={1: 1, 2: 1, 3: 2, 4: 3, 5: 0}
+Ticket #09: [1, 2, 6, 20, 21, 35, 39]  decades={1: 3, 2: 1, 3: 1, 4: 2, 5: 0}
+Ticket #10: [7, 8, 17, 21, 35, 42, 45]  decades={1: 2, 2: 1, 3: 1, 4: 1, 5: 2}
+Ticket #11: [5, 8, 34, 36, 38, 41, 46]  decades={1: 2, 2: 0, 3: 0, 4: 3, 5: 2}
+Ticket #12: [5, 11, 26, 27, 36, 37, 46]  decades={1: 1, 2: 1, 3: 2, 4: 2, 5: 1}
+Ticket #13: [4, 14, 22, 25, 28, 35, 43]  decades={1: 1, 2: 1, 3: 3, 4: 1, 5: 1}
+Ticket #14: [6, 8, 9, 11, 21, 33, 42]  decades={1: 3, 2: 1, 3: 1, 4: 1, 5: 1}
+Ticket #15: [7, 8, 19, 23, 38, 39, 45]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 1}
+Ticket #16: [6, 14, 15, 22, 30, 42, 43]  decades={1: 1, 2: 2, 3: 2, 4: 0, 5: 2}
+Ticket #17: [1, 9, 15, 18, 31, 35, 46]  decades={1: 2, 2: 2, 3: 0, 4: 2, 5: 1}
+Ticket #18: [3, 14, 21, 30, 31, 39, 41]  decades={1: 1, 2: 1, 3: 2, 4: 2, 5: 1}
+Ticket #19: [4, 7, 12, 22, 28, 32, 42]  decades={1: 2, 2: 1, 3: 2, 4: 1, 5: 1}
+Ticket #20: [1, 6, 14, 27, 28, 42, 43]  decades={1: 2, 2: 1, 3: 2, 4: 0, 5: 2}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [3, 6, 9, 15, 19, 21, 33]
+Ticket #14: hits=4 nums=[6, 9, 21, 33] supp_hit=0 supp_nums=[] near_miss=1 near_nums=[8]
+Best near-miss: Ticket #19 near_miss=4 near_nums=[4, 7, 22, 32]
+Generated 20/20 tickets in 56 attempts
+Generated 20/20 tickets in 56 attempts
+Generated 14/20 tickets in 30000 attempts
+Generated 20/20 tickets in 56 attempts
+Generated 20/20 tickets in 118 attempts
+Generated 20/20 tickets in 110 attempts
+Generated 20/20 tickets in 56 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 20/20 tickets in 4457 attempts
+Generated 20/20 tickets in 4537 attempts
+Generated 7/20 tickets in 30000 attempts
+Generated 18/20 tickets in 30000 attempts
+Generated 11/20 tickets in 30000 attempts
+Generated 11/20 tickets in 30000 attempts
+Generated 11/20 tickets in 30000 attempts
+Generated 14/20 tickets in 30000 attempts
+Generated 14/20 tickets in 30000 attempts
+Generated 20/20 tickets in 70 attempts
+Generated 18/20 tickets in 30000 attempts
+
+Strategy results for 2025-12-16:
+  BASELINE: max_hit=3 ge4=0 ge3=1
+  RULE_TOP7_OVERDUE1: max_hit=3 ge4=0 ge3=1
+  PAIR_RANK7: max_hit=3 ge4=0 ge3=1
+  BAND_ANCHOR: max_hit=3 ge4=0 ge3=1
+  WINNER_SHAPE: max_hit=3 ge4=0 ge3=1
+  WINNER_SHAPE_WINDOW: max_hit=3 ge4=0 ge3=1
+  ENSEMBLE_PORTFOLIO: max_hit=3 ge4=0 ge3=1
+  TOP20_HALF: max_hit=2 ge4=0 ge3=0
+  CONC_TOP16: max_hit=2 ge4=0 ge3=0
+  CONC_TOP18: max_hit=2 ge4=0 ge3=0
+  GREEDY_COVER: max_hit=2 ge4=0 ge3=0
+  PAIR_TRIPLET_POOL: max_hit=2 ge4=0 ge3=0
+  PATTERN_FILTER_WINDOW: max_hit=2 ge4=0 ge3=0
+  BASELINE_BOOST: max_hit=2 ge4=0 ge3=0
+  GREEDY_BOOST_8K: max_hit=2 ge4=0 ge3=0
+  GREEDY_BOOST_20K: max_hit=2 ge4=0 ge3=0
+  GREEDY_BOOST_40K: max_hit=2 ge4=0 ge3=0
+  GREEDY_BOOST_MULTI: max_hit=2 ge4=0 ge3=0
+  WINNER_SHAPE_POOL_WINDOW: max_hit=0 ge4=0 ge3=0
+Selected strategy=BASELINE for ticket display.
+
+Backtest Target: 2025-12-16
+Ticket #01: [1, 8, 12, 25, 31, 39, 45]  decades={1: 2, 2: 1, 3: 1, 4: 2, 5: 1}
+Ticket #02: [5, 15, 21, 23, 24, 36, 43]  decades={1: 1, 2: 1, 3: 3, 4: 1, 5: 1}
+Ticket #03: [7, 8, 29, 32, 34, 36, 41]  decades={1: 2, 2: 0, 3: 1, 4: 3, 5: 1}
+Ticket #04: [9, 12, 28, 29, 34, 37, 44]  decades={1: 1, 2: 1, 3: 2, 4: 2, 5: 1}
+Ticket #05: [1, 5, 15, 16, 28, 32, 43]  decades={1: 2, 2: 2, 3: 1, 4: 1, 5: 1}
+Ticket #06: [3, 8, 18, 20, 30, 31, 38]  decades={1: 2, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #07: [14, 17, 18, 25, 26, 28, 32]  decades={1: 0, 2: 3, 3: 3, 4: 1, 5: 0}
+Ticket #08: [15, 19, 27, 29, 32, 36, 40]  decades={1: 0, 2: 2, 3: 2, 4: 3, 5: 0}
+Ticket #09: [1, 16, 19, 22, 38, 39, 45]  decades={1: 1, 2: 2, 3: 1, 4: 2, 5: 1}
+Ticket #10: [4, 13, 24, 36, 39, 41, 45]  decades={1: 1, 2: 1, 3: 1, 4: 2, 5: 2}
+Ticket #11: [1, 5, 7, 21, 23, 30, 42]  decades={1: 3, 2: 0, 3: 3, 4: 0, 5: 1}
+Ticket #12: [6, 7, 13, 26, 28, 30, 37]  decades={1: 2, 2: 1, 3: 3, 4: 1, 5: 0}
+Ticket #13: [4, 13, 14, 29, 33, 41, 47]  decades={1: 1, 2: 2, 3: 1, 4: 1, 5: 2}
+Ticket #14: [1, 6, 26, 32, 34, 36, 41]  decades={1: 2, 2: 0, 3: 1, 4: 3, 5: 1}
+Ticket #15: [8, 9, 14, 20, 26, 35, 37]  decades={1: 2, 2: 2, 3: 1, 4: 2, 5: 0}
+Ticket #16: [2, 24, 30, 31, 34, 39, 45]  decades={1: 1, 2: 0, 3: 2, 4: 3, 5: 1}
+Ticket #17: [6, 7, 11, 13, 23, 27, 36]  decades={1: 2, 2: 2, 3: 2, 4: 1, 5: 0}
+Ticket #18: [6, 10, 13, 25, 26, 29, 40]  decades={1: 2, 2: 1, 3: 3, 4: 1, 5: 0}
+Ticket #19: [3, 6, 23, 24, 34, 37, 44]  decades={1: 2, 2: 0, 3: 2, 4: 2, 5: 1}
+Ticket #20: [9, 10, 20, 24, 30, 40, 41]  decades={1: 2, 2: 1, 3: 2, 4: 1, 5: 1}
+
+=== REAL DRAW HIT SUMMARY ===
+REAL_DRAW: [4, 9, 19, 20, 41, 43, 46]
+Ticket #20: hits=3 nums=[9, 20, 41] supp_hit=0 supp_nums=[] near_miss=2 near_nums=[10, 40]
+Best near-miss: Ticket #06 near_miss=3 near_nums=[3, 8, 18]
+Generated 20/20 tickets in 67 attempts
+Generated 20/20 tickets in 67 attempts
+Generated 12/20 tickets in 30000 attempts
+Generated 20/20 tickets in 67 attempts
+Generated 20/20 tickets in 89 attempts
+Generated 20/20 tickets in 83 attempts
+Generated 20/20 tickets in 60 attempts
+Generated 17/20 tickets in 30000 attempts
+Generated 19/20 tickets in 30000 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 13/20 tickets in 30000 attempts
+Generated 8/20 tickets in 30000 attempts
+Generated 0/20 tickets in 30000 attempts
+Generated 18/20 tickets in 30000 attempts
