@@ -139,7 +139,7 @@ def _detect_main_cols(df: pd.DataFrame) -> List[str]:
 
 
 def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str]]:
-    df = pd.read_csv(csv_path,"#")
+    df = pd.read_csv(csv_path)
     if "Draw date" not in df.columns:
         raise ValueError("CSV must contain column: 'Draw date'")
     df = df.copy()
