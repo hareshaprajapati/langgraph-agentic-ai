@@ -42,7 +42,7 @@ import math
 CSV_PATH = "Powerball.csv"
 TARGET_DATE = "2026-01-01"   # any date, learns season around this month/day
 
-NUM_TICKETS = 10
+NUM_TICKETS = 30
 NUMBERS_PER_TICKET = 7
 
 MAIN_MIN = 1
@@ -60,7 +60,7 @@ MIN_SEASON_SAMPLES = 50
 RECENT_DRAWS_PENALTY_N = 6
 
 # Ticket diversification
-TOP_POOL = 26
+TOP_POOL = 35
 OVERLAP_CAP = 5
 RANDOM_SEED = 0
 DEBUG_PRINT = True
@@ -76,6 +76,34 @@ DECADE_TARGET_SOFT_PENALTY = 0.25
 
 # Optional: verify against a known real draw (set [] to disable)
 REAL_DRAW = [30, 9, 7, 27, 18, 15, 29]
+
+# ----------------------------
+# Ticket generation knobs
+# ----------------------------
+  # generate this many valid candidate tickets, then pick best NUM_TICKETS
+MAX_GEN_ATTEMPTS = 30000       # safety cap for candidate generation loop
+
+WEIGHT_MODE = "exp"            # "exp" recommended, or "linear"
+BREAKER_MODE = "hot"           # "hot" | "cold" | "mix"
+# WEIGHT_TEMPERATURE = 0.55      # lower => more stacked tickets (try 0.45..0.80)
+# BREAKER_PROB = 0.55            # probability per candidate ticket
+# CANDIDATE_TICKET_POOL = 2500
+# WEIGHT_TEMPERATURE = 0.45
+# BREAKER_PROB = 0.35
+# CANDIDATE_TICKET_POOL = 4000
+
+WEIGHT_TEMPERATURE = 0.70
+BREAKER_PROB = 0.30
+CANDIDATE_TICKET_POOL = 8000
+
+
+WEIGHT_FLOOR = 0.75            # keeps tail weights non-zero (stability)
+
+BREAKER_ENABLED = True
+BREAKER_TOP_K = 4              # breaker drawn from top-K by score
+BREAKER_BOTTOM_K = 3           # and/or bottom-K of the pool (cold exploration)
+
+BREAKER_BYPASS_DECADE_CHECK = False  # apply breaker AFTER decade checks (recommended)
 
 # ============================================================
 # INTERNALS
@@ -699,8 +727,8 @@ def score_main_numbers(target_date: str, csv_path: str, debug: bool):
         print(f"P25 decade mix:    {season_decades.p25}")
         print(f"P75 decade mix:    {season_decades.p75}")
 
-        print("\n=== TOP 20 SCORED NUMBERS ===")
-        for c in scored[:20]:
+        print("\n=== TOP 35 SCORED NUMBERS ===")
+        for c in scored[:35]:
             print(c)
 
     return scored, season_profile, season_decades
@@ -872,50 +900,165 @@ def score_powerball_numbers(target_date: str, csv_path: str, debug: bool):
     return scored, season_profile
 
 
+import math
+import random
+from typing import List, Dict, Tuple, Set, Optional
+
 def _weighted_sample_no_replace(items: List[int], weights: List[float], k: int, rng: random.Random) -> List[int]:
+    """
+    Weighted sampling without replacement using Efraimidis-Spirakis keys.
+    Stable and fast enough for small pools.
+    """
+    if k > len(items):
+        raise ValueError(f"_weighted_sample_no_replace: k={k} > len(items)={len(items)}")
     keyed = []
     for x, w in zip(items, weights):
-        w = max(1e-9, float(w))
+        w = float(w)
+        if w <= 0:
+            w = 1e-12
         u = rng.random()
-        key = math.log(u) / w
-        keyed.append((key, x))
+        # log(u)/w: larger (less negative) means more likely selected
+        keyed.append((math.log(u) / w, x))
     keyed.sort(reverse=True)
     return [x for _, x in keyed[:k]]
 
 
-def generate_tickets(scored: List[CandidateScoreMain], season_decades: SeasonDecadeProfile):
+def _ticket_overlap_ok(candidate: List[int], chosen: List[List[int]], overlap_cap: int) -> bool:
+    s = set(candidate)
+    for t in chosen:
+        if len(s.intersection(t)) > overlap_cap:
+            return False
+    return True
+
+
+def generate_tickets(scored, season_decades):
+    """
+    Production ticket generator:
+      1) Sample MANY valid candidate tickets from the score pool (stacking enabled)
+      2) Select the BEST NUM_TICKETS using greedy optimization under overlap cap
+
+    This fixes the failure mode where good 4-hit ingredients are spread across different tickets.
+    """
+    if not scored:
+        raise ValueError("generate_tickets(): scored list is empty")
+
     rng = random.Random(RANDOM_SEED)
 
-    pool = scored[:TOP_POOL]
+    # --- pool ---
+    pool = scored[:min(TOP_POOL, len(scored))]
+    if len(pool) < NUMBERS_PER_TICKET:
+        raise RuntimeError(
+            f"Pool too small: pool_size={len(pool)} TOP_POOL={TOP_POOL} "
+            f"NUMBERS_PER_TICKET={NUMBERS_PER_TICKET}"
+        )
+
     items = [c.n for c in pool]
+    score_map = {c.n: float(c.total_score) for c in pool}
+    min_score = min(float(c.total_score) for c in pool)
 
-    min_score = min(c.total_score for c in pool)
-    base_weights = [(c.total_score - min_score) + 0.25 for c in pool]
+    # --- weights ---
+    if WEIGHT_MODE == "exp":
+        temp = max(1e-6, float(WEIGHT_TEMPERATURE))
+        weights = [math.exp((float(c.total_score) - min_score) / temp) + float(WEIGHT_FLOOR) for c in pool]
+    else:
+        weights = [(float(c.total_score) - min_score) + float(WEIGHT_FLOOR) for c in pool]
+        weights = [w if w > 0 else 1e-12 for w in weights]
 
-    tickets: List[List[int]] = []
+    # --- decade helpers: use your existing ones if present ---
+    # We expect season_decades to provide med/p25/p75 dicts like {decade_id: count}
+    def decade_vector(nums: List[int]) -> Dict[int, int]:
+        # If your code already has _decade_vector, use it by name; otherwise fallback:
+        if "_decade_vector" in globals():
+            return globals()["_decade_vector"](nums)
+        # fallback assumes DECADE_BANDS = [(id,lo,hi),...]
+        v = {k: 0 for k in season_decades.med.keys()}
+        for n in nums:
+            did = None
+            for band_id, lo, hi in DECADE_BANDS:
+                if lo <= n <= hi:
+                    did = band_id
+                    break
+            if did in v:
+                v[did] += 1
+        return v
+
+    def decade_distance(vec: Dict[int, int], med: Dict[int, int]) -> int:
+        if "_decade_distance" in globals():
+            return globals()["_decade_distance"](vec, med)
+        return sum(abs(int(vec.get(d, 0)) - int(med.get(d, 0))) for d in med.keys())
+
+    def within_decade_band(vec: Dict[int, int], p25: Dict[int, int], p75: Dict[int, int], tol: int) -> bool:
+        if "_within_decade_band" in globals():
+            return globals()["_within_decade_band"](vec, p25, p75, tol=tol)
+        for d in p25.keys():
+            lo = max(0, int(p25[d]) - tol)
+            hi = int(p75[d]) + tol
+            if not (lo <= int(vec.get(d, 0)) <= hi):
+                return False
+        return True
+
+    # optional: if you have DECADE_TARGET_COUNTS logic in your file
+    def decade_target_distance(vec: Dict[int, int], target: Dict[int, int]) -> int:
+        if "_decade_target_distance" in globals():
+            return globals()["_decade_target_distance"](vec, target)
+        return sum(abs(int(vec.get(d, 0)) - int(target.get(d, 0))) for d in target.keys())
+
+    # --- breaker pools ---
+    top_k = max(1, min(int(BREAKER_TOP_K), len(pool)))
+    bot_k = max(1, min(int(BREAKER_BOTTOM_K), len(pool)))
+    breaker_hot = [c.n for c in pool[:top_k]]
+    breaker_cold = [c.n for c in pool[-bot_k:]]
+
+    def apply_breaker(pick_sorted: List[int]) -> List[int]:
+        if not BREAKER_ENABLED:
+            return pick_sorted
+        if rng.random() >= float(BREAKER_PROB):
+            return pick_sorted
+
+        pick_set = set(pick_sorted)
+
+        mode = BREAKER_MODE
+        if mode == "mix":
+            mode = "hot" if rng.random() < 0.70 else "cold"
+
+        candidates = breaker_hot if mode == "hot" else breaker_cold
+        candidates = [n for n in candidates if n not in pick_set]
+        if not candidates:
+            return pick_sorted
+
+        out = pick_sorted[:]
+        out[rng.randrange(len(out))] = rng.choice(candidates)
+        out = sorted(set(out))
+
+        # refill if uniqueness shrink happened
+        while len(out) < NUMBERS_PER_TICKET:
+            add = rng.choice(breaker_hot)
+            if add not in out:
+                out.append(add)
+                out.sort()
+
+        return out
+
+    # --- generate many candidates ---
+    candidates: List[List[int]] = []
+    seen: Set[Tuple[int, ...]] = set()
     attempts = 0
-    max_attempts = 12000
 
-    while len(tickets) < NUM_TICKETS and attempts < max_attempts:
+    needed = int(CANDIDATE_TICKET_POOL)
+    max_attempts = int(MAX_GEN_ATTEMPTS)
+
+    while len(candidates) < needed and attempts < max_attempts:
         attempts += 1
 
-        pick = _weighted_sample_no_replace(items, base_weights, NUMBERS_PER_TICKET, rng)
+        pick = _weighted_sample_no_replace(items, weights, NUMBERS_PER_TICKET, rng)
         pick = sorted(pick)
-
-        # overlap cap
-        ok = True
-        s_pick = set(pick)
-        for t in tickets:
-            if len(s_pick.intersection(t)) > OVERLAP_CAP:
-                ok = False
-                break
-        if not ok:
+        tkey = tuple(pick)
+        if tkey in seen:
             continue
 
-        # decade constraint
-        vec = _decade_vector(pick)
-        dist = _decade_distance(vec, season_decades.med)
-        in_band = _within_decade_band(vec, season_decades.p25, season_decades.p75, tol=DECADE_MEDIAN_TOL)
+        vec = decade_vector(pick)
+        dist = decade_distance(vec, season_decades.med)
+        in_band = within_decade_band(vec, season_decades.p25, season_decades.p75, tol=DECADE_MEDIAN_TOL)
 
         if DECADE_MODE == "hard":
             if not in_band:
@@ -923,24 +1066,66 @@ def generate_tickets(scored: List[CandidateScoreMain], season_decades: SeasonDec
             if dist > (2 * DECADE_MEDIAN_TOL):
                 continue
         else:
-            reject_prob = min(0.85, dist * DECADE_SOFT_PENALTY * 0.15)
+            # soft: probabilistic rejection (keep your existing constants if present)
+            soft_pen = globals().get("DECADE_SOFT_PENALTY", 1.0)
+            reject_prob = min(0.85, dist * float(soft_pen) * 0.15)
             if rng.random() < reject_prob:
                 continue
 
-        # soft target decade counts (exact counts preferred, not required)
-        if DECADE_TARGET_COUNTS is not None:
-            tdist = _decade_target_distance(vec, DECADE_TARGET_COUNTS)
+        # optional target decade counts (if you use it)
+        if "DECADE_TARGET_COUNTS" in globals() and globals()["DECADE_TARGET_COUNTS"] is not None:
+            target = globals()["DECADE_TARGET_COUNTS"]
+            tdist = decade_target_distance(vec, target)
             if tdist > 0:
-                reject_prob = min(0.90, tdist * DECADE_TARGET_SOFT_PENALTY)
-                if rng.random() < reject_prob:
+                tsoft = globals().get("DECADE_TARGET_SOFT_PENALTY", 0.25)
+                if rng.random() < min(0.90, tdist * float(tsoft)):
                     continue
 
-        tickets.append(pick)
+        # breaker after decade acceptance
+        if BREAKER_ENABLED and BREAKER_BYPASS_DECADE_CHECK:
+            pick = apply_breaker(pick)
+
+        # validate
+        if len(set(pick)) != NUMBERS_PER_TICKET:
+            continue
+
+        seen.add(tuple(pick))
+        candidates.append(pick)
+
+    if len(candidates) < max(NUM_TICKETS, 50):
+        raise RuntimeError(
+            f"generate_tickets(): only {len(candidates)} candidates after {attempts} attempts. "
+            f"Try DECADE_MODE='soft', increase DECADE_MEDIAN_TOL, or reduce constraints."
+        )
+
+    # --- choose best NUM_TICKETS using greedy overlap cap ---
+    def ticket_value(t: List[int]) -> float:
+        return float(sum(score_map.get(n, 0.0) for n in t))
+
+    candidates.sort(key=ticket_value, reverse=True)
+
+    tickets: List[List[int]] = []
+    for t in candidates:
+        if _ticket_overlap_ok(t, tickets, OVERLAP_CAP):
+            tickets.append(t)
+            if len(tickets) >= NUM_TICKETS:
+                break
+
+    # fallback relax overlap once
+    if len(tickets) < NUM_TICKETS:
+        relaxed = OVERLAP_CAP + 1
+        for t in candidates:
+            if t in tickets:
+                continue
+            if _ticket_overlap_ok(t, tickets, relaxed):
+                tickets.append(t)
+                if len(tickets) >= NUM_TICKETS:
+                    break
 
     if len(tickets) < NUM_TICKETS:
         raise RuntimeError(
-            f"Could only generate {len(tickets)} tickets. "
-            f"Try increasing TOP_POOL or increasing DECADE_MEDIAN_TOL or switching DECADE_MODE='soft'."
+            f"generate_tickets(): could only select {len(tickets)} tickets from {len(candidates)} candidates. "
+            f"Increase CANDIDATE_TICKET_POOL or relax OVERLAP_CAP."
         )
 
     return tickets
@@ -1001,3 +1186,22 @@ if __name__ == "__main__":
         print(f"Ticket #{i:02d}: {t}  decades={vec}")
 
     show_ticket_hits(REAL_DRAW, tickets)
+
+
+    def hit_summary(tickets, real):
+        real = set(real)
+        hits = [len(set(t) & real) for t in tickets]
+        return {
+            "max": max(hits) if hits else 0,
+            "n5": sum(h >= 5 for h in hits),
+            "n4": sum(h >= 4 for h in hits),
+            "hits": hits,
+        }
+
+
+    if REAL_DRAW:
+        s = hit_summary(tickets, REAL_DRAW)
+        print("\n=== HIT METRICS ===")
+        print("max_hit =", s["max"], "| n>=5 =", s["n5"], "| n>=4 =", s["n4"])
+        print("hits_per_ticket =", s["hits"])
+
