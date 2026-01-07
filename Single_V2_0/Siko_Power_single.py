@@ -40,9 +40,10 @@ import math
 # ============================================================
 
 CSV_PATH = "Powerball.csv"
-TARGET_DATE = "2026-01-01"   # any date, learns season around this month/day
+# TARGET_DATE = "2025-12-25"   # any date, learns season around this month/day
+# TARGET_DATE = "2026-01-01"   # any date, learns season around this month/day
 
-NUM_TICKETS = 30
+NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 7
 
 MAIN_MIN = 1
@@ -53,7 +54,7 @@ POWERBALL_MAX = 20
 POWERBALL_TOP_N = 10
 
 LOOKBACK_DAYS = 365
-SEASON_WINDOW_DAYS = 6
+SEASON_WINDOW_DAYS = 7
 SEASON_LOOKBACK_YEARS = 20
 MIN_SEASON_SAMPLES = 50
 
@@ -75,8 +76,8 @@ DECADE_TARGET_COUNTS = None
 DECADE_TARGET_SOFT_PENALTY = 0.25
 
 # Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [30, 9, 7, 27, 18, 15, 29]
-
+# REAL_DRAW = [30, 9, 7, 27, 18, 15, 29]
+# REAL_DRAW = [7,23,29,20,11,16,17]
 # ----------------------------
 # Ticket generation knobs
 # ----------------------------
@@ -1153,55 +1154,102 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
 # MAIN
 # ============================================================
 if __name__ == "__main__":
-    scored, season_profile, season_decades = score_main_numbers(
-        target_date=TARGET_DATE,
-        csv_path=CSV_PATH,
-        debug=DEBUG_PRINT,
-    )
+    df, main_cols = _load_csv(CSV_PATH)
+    N = 20
 
-    tickets = generate_tickets(scored, season_decades)
-    pb_scored, pb_season_profile = score_powerball_numbers(
-        target_date=TARGET_DATE,
-        csv_path=CSV_PATH,
-        debug=DEBUG_PRINT,
-    )
-    top_pb_scored = pb_scored[:POWERBALL_TOP_N]
+    # IMPORTANT CHOICE:
+    # If you want the first N rows AS THEY APPEAR in the CSV (your CSV is latest-first),
+    # then use descending date:
+    df_bt = df.sort_values("Date", ascending=False).head(N)
+    # If you instead want the earliest N chronologically, use ascending=True.
+    # df_bt = df.sort_values("Date", ascending=True).head(N)
 
-    print("\n=== FINAL TICKETS (season-aware decades) ===")
-    print(f"Target: {TARGET_DATE} | Tickets: {NUM_TICKETS} | Pool: top{TOP_POOL} | Overlap cap: {OVERLAP_CAP}")
-    print(f"Decade mode: {DECADE_MODE} | tol={DECADE_MEDIAN_TOL}")
-    print(f"Decade bands: {DECADE_BANDS}")
-    if DECADE_TARGET_COUNTS is not None:
-        print(f"Target decade counts (soft): {DECADE_TARGET_COUNTS}")
-    print(f"Season median decades: {season_decades.med}")
-    print(f"Season p25 decades:    {season_decades.p25}")
-    print(f"Season p75 decades:    {season_decades.p75}")
-    if top_pb_scored:
-        print(f"Top {POWERBALL_TOP_N} Powerball numbers (with scores):")
-        for c in top_pb_scored:
-            print(f"  PB {c.n:02d} score={c.total_score} freq_12mo={c.freq_12mo} rank_12mo={c.rank_12mo} ratio_12mo={c.ratio_12mo}")
+    results = []
 
-    for i, t in enumerate(tickets, 1):
-        vec = _decade_vector(t)
-        print(f"Ticket #{i:02d}: {t}  decades={vec}")
+    for i, (_, row) in enumerate(df_bt.iterrows(), 1):
+        target_date = row["Date"].strftime("%Y-%m-%d")  # format expected by algo
+        real_draw = [int(row[c]) for c in main_cols]  # ONLY 7 winning numbers
 
-    show_ticket_hits(REAL_DRAW, tickets)
+        print("\n" + "=" * 70)
+        print(f"BACKTEST #{i}  TARGET_DATE={target_date}")
+        print(f"REAL_DRAW={real_draw}  PB={int(row[POWERBALL_COL])}")
 
+        try:
+            scored, season_profile, season_decades = score_main_numbers(
+                target_date=target_date,
+                csv_path=CSV_PATH,
+                debug=DEBUG_PRINT,
+            )
+            tickets = generate_tickets(scored, season_decades)
 
-    def hit_summary(tickets, real):
-        real = set(real)
-        hits = [len(set(t) & real) for t in tickets]
-        return {
-            "max": max(hits) if hits else 0,
-            "n5": sum(h >= 5 for h in hits),
-            "n4": sum(h >= 4 for h in hits),
-            "hits": hits,
-        }
+            show_ticket_hits(real_draw, tickets)
 
+            hits = [len(set(t) & set(real_draw)) for t in tickets]
+            results.append({
+                "date": target_date,
+                "max_hit": max(hits) if hits else 0,
+                "n>=5": sum(h >= 5 for h in hits),
+                "n>=4": sum(h >= 4 for h in hits),
+            })
 
-    if REAL_DRAW:
-        s = hit_summary(tickets, REAL_DRAW)
-        print("\n=== HIT METRICS ===")
-        print("max_hit =", s["max"], "| n>=5 =", s["n5"], "| n>=4 =", s["n4"])
-        print("hits_per_ticket =", s["hits"])
+        except Exception as e:
+            print(f"ERROR on {target_date}: {e}")
+            results.append({"date": target_date, "error": str(e)})
+
+    print("\n" + "=" * 70)
+    print("BACKTEST SUMMARY")
+    for r in results:
+        print(r)
+
+    # scored, season_profile, season_decades = score_main_numbers(
+    #     target_date=TARGET_DATE,
+    #     csv_path=CSV_PATH,
+    #     debug=DEBUG_PRINT,
+    # )
+    #
+    # tickets = generate_tickets(scored, season_decades)
+    # pb_scored, pb_season_profile = score_powerball_numbers(
+    #     target_date=TARGET_DATE,
+    #     csv_path=CSV_PATH,
+    #     debug=DEBUG_PRINT,
+    # )
+    # top_pb_scored = pb_scored[:POWERBALL_TOP_N]
+    #
+    # print("\n=== FINAL TICKETS (season-aware decades) ===")
+    # print(f"Target: {TARGET_DATE} | Tickets: {NUM_TICKETS} | Pool: top{TOP_POOL} | Overlap cap: {OVERLAP_CAP}")
+    # print(f"Decade mode: {DECADE_MODE} | tol={DECADE_MEDIAN_TOL}")
+    # print(f"Decade bands: {DECADE_BANDS}")
+    # if DECADE_TARGET_COUNTS is not None:
+    #     print(f"Target decade counts (soft): {DECADE_TARGET_COUNTS}")
+    # print(f"Season median decades: {season_decades.med}")
+    # print(f"Season p25 decades:    {season_decades.p25}")
+    # print(f"Season p75 decades:    {season_decades.p75}")
+    # if top_pb_scored:
+    #     print(f"Top {POWERBALL_TOP_N} Powerball numbers (with scores):")
+    #     for c in top_pb_scored:
+    #         print(f"  PB {c.n:02d} score={c.total_score} freq_12mo={c.freq_12mo} rank_12mo={c.rank_12mo} ratio_12mo={c.ratio_12mo}")
+    #
+    # for i, t in enumerate(tickets, 1):
+    #     vec = _decade_vector(t)
+    #     print(f"Ticket #{i:02d}: {t}  decades={vec}")
+    #
+    # show_ticket_hits(REAL_DRAW, tickets)
+    #
+    #
+    # def hit_summary(tickets, real):
+    #     real = set(real)
+    #     hits = [len(set(t) & real) for t in tickets]
+    #     return {
+    #         "max": max(hits) if hits else 0,
+    #         "n5": sum(h >= 5 for h in hits),
+    #         "n4": sum(h >= 4 for h in hits),
+    #         "hits": hits,
+    #     }
+    #
+    #
+    # if REAL_DRAW:
+    #     s = hit_summary(tickets, REAL_DRAW)
+    #     print("\n=== HIT METRICS ===")
+    #     print("max_hit =", s["max"], "| n>=5 =", s["n5"], "| n>=4 =", s["n4"])
+    #     print("hits_per_ticket =", s["hits"])
 
