@@ -1,7 +1,7 @@
-import sys
-import os
 import json
-from datetime import datetime
+import os
+import sys
+
 
 class Tee:
     def __init__(self, *files):
@@ -22,9 +22,10 @@ class Tee:
             except OSError:
                 pass
 
+
 log_file_path = os.path.join(
     ".",
-    "siko_Tue_single_logs.log"   # single growing log file
+    "siko_Tue_single_logs.log"  # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
@@ -53,7 +54,7 @@ NUMBERS_PER_TICKET = 7
 MAIN_MIN = 1
 MAIN_MAX = 47
 
-TARGET_DATE = "2025-12-30"
+TARGET_DATE = "2026-01-06"
 LOOKBACK_DAYS = int(os.environ.get("LOOKBACK_DAYS", "210"))
 SEASON_WINDOW_DAYS = int(os.environ.get("SEASON_WINDOW_DAYS", "9"))
 SEASON_LOOKBACK_YEARS = int(os.environ.get("SEASON_LOOKBACK_YEARS", "20"))
@@ -125,7 +126,7 @@ DECADE_BANDS: List[Tuple[int, int, int]] = [
 ]
 
 # Force predictions to use learned winner-band pool only.
-ENFORCE_WINNER_BAND_ONLY = True
+ENFORCE_WINNER_BAND_ONLY = False
 
 # Seasonal decade weighting (date-agnostic, learned from history)
 SEASON_DECADE_WEIGHT = 0.6
@@ -156,10 +157,7 @@ DEFAULT_PRESET = "OZ_BASELINE"
 # DEFAULT_STRATEGY_NAME = "PAIR_HEAVY"
 
 # Sweep mode (strategy backtest comparison)
-SWEEP_MODE = False
-SWEEP_BACKTEST_DRAWS = 12
-VARIANT_SWEEP = False
-VARIANT_BACKTEST_DRAWS = 12
+
 WINDOW_SWEEP = False
 WINDOW_MIN_DRAWS = 3
 WINDOW_MIN_IN_BAND = 4
@@ -213,7 +211,7 @@ SUPP_FOCUS_TICKETS = int(os.environ.get("SUPP_FOCUS_TICKETS", "2"))
 SUPP_FOCUS_COUNT = int(os.environ.get("SUPP_FOCUS_COUNT", "2"))
 SUPP_FOCUS_TOP = int(os.environ.get("SUPP_FOCUS_TOP", "47"))
 SUPP_FOCUS_MODE = os.environ.get("SUPP_FOCUS_MODE", "HIGH").strip().upper()
-USE_PROFILE_FILTER = False
+USE_PROFILE_FILTER = True
 PROFILE_BAND_TICKETS = int(os.environ.get("PROFILE_BAND_TICKETS", "0"))
 PROFILE_BAND_MAX_POOL = int(os.environ.get("PROFILE_BAND_MAX_POOL", "28"))
 USE_PATTERN_FILTER = False
@@ -223,6 +221,7 @@ PATTERN_OVERDUE_DAYS = int(os.environ.get("PATTERN_OVERDUE_DAYS", "150"))
 
 # Filled at runtime after CSV load
 SUPP_COLS: List[str] = []
+
 
 # ============================================================
 # INTERNALS
@@ -258,6 +257,7 @@ def _detect_main_cols(df: pd.DataFrame) -> List[str]:
     def key(c):
         m = re.search(r"(\d+)$", c.strip())
         return int(m.group(1)) if m else 999
+
     cols = sorted(cols, key=key)
     if len(cols) < NUMBERS_PER_TICKET:
         raise ValueError(f"Expected at least {NUMBERS_PER_TICKET} main columns.")
@@ -272,6 +272,7 @@ def _detect_supp_cols(df: pd.DataFrame) -> List[str]:
     def key(c):
         m = re.search(r"(\d+)$", c.strip())
         return int(m.group(1)) if m else 999
+
     return sorted(cols, key=key)
 
 
@@ -313,7 +314,8 @@ def _explode_mains(df: pd.DataFrame, main_cols: List[str]) -> pd.Series:
     return pd.concat([df[c] for c in main_cols], ignore_index=True)
 
 
-def _counts_mains_in_window(df: pd.DataFrame, main_cols: List[str], start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
+def _counts_mains_in_window(df: pd.DataFrame, main_cols: List[str], start: pd.Timestamp,
+                            end: pd.Timestamp) -> pd.Series:
     sub = df[(df["Date"] >= start) & (df["Date"] < end)]
     nums = _explode_mains(sub, main_cols)
     return nums.value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
@@ -368,9 +370,9 @@ def _supp_score_map(df: pd.DataFrame, supp_cols: List[str], target_date: str) ->
     scores: Dict[int, float] = {}
     for n in range(MAIN_MIN, MAIN_MAX + 1):
         scores[n] = (
-            SUPP_W_RECENT * float(s_recent.get(n, 0.0)) +
-            SUPP_W_LONG * float(s_long.get(n, 0.0)) +
-            SUPP_W_SEASON * float(s_season.get(n, 0.0))
+                SUPP_W_RECENT * float(s_recent.get(n, 0.0)) +
+                SUPP_W_LONG * float(s_long.get(n, 0.0)) +
+                SUPP_W_SEASON * float(s_season.get(n, 0.0))
         )
     return scores
 
@@ -506,6 +508,7 @@ def _percentile(values: List[int], p: float) -> int:
     idx = int(round((p / 100.0) * (len(v) - 1)))
     return int(v[max(0, min(idx, len(v) - 1))])
 
+
 def _percentile(values: List[int], p: float) -> int:
     if not values:
         return 1
@@ -533,7 +536,7 @@ def _count_band(value: int, low: int, high: int) -> float:
 
 
 def _learn_winner_pattern(
-    df: pd.DataFrame, main_cols: List[str], win_dates: List[pd.Timestamp]
+        df: pd.DataFrame, main_cols: List[str], win_dates: List[pd.Timestamp]
 ) -> Dict[str, int]:
     if not win_dates:
         return {}
@@ -560,8 +563,10 @@ def _learn_winner_pattern(
         max_ranks.append(max(ranks))
     if not top5_counts:
         return {}
+
     def _band(vals: List[int]) -> Tuple[int, int]:
         return (_percentile(vals, 20), _percentile(vals, 80))
+
     t5 = _band(top5_counts)
     t7 = _band(top7_counts)
     mid = _band(mid_counts)
@@ -602,9 +607,9 @@ def _template_counts(pattern: Dict[str, int]) -> Dict[str, int]:
 
 
 def _build_rank_pools(
-    scored: List[CandidateScore],
-    allowed: Optional[set],
-    max_rank: int,
+        scored: List[CandidateScore],
+        allowed: Optional[set],
+        max_rank: int,
 ) -> Dict[str, List[int]]:
     def _pool(lo: int, hi: int) -> List[int]:
         out = []
@@ -626,64 +631,8 @@ def _build_rank_pools(
     return pools
 
 
-def _generate_pattern_template_tickets(
-    scored: List[CandidateScore],
-    pattern: Dict[str, int],
-    band: Optional[Dict[str, float]],
-    target_count: int,
-) -> List[List[int]]:
-    if not pattern:
-        return []
-    counts = _template_counts(pattern)
-    if not counts:
-        return []
-    score_map = {c.n: c.total_score for c in scored}
-    full_map = {c.n: c for c in scored}
-    min_score = min(score_map.values()) if score_map else 0.0
-    band_pool = _band_pool_from_stats(scored, band) if band else []
-    allowed = set(band_pool) if band_pool else None
-    max_rank = int(pattern.get("max_rank_max", 20))
-    pools = _build_rank_pools(scored, allowed, max_rank)
-    rng = random.Random(RANDOM_SEED)
-
-    tickets: List[List[int]] = []
-    seen = set()
-    attempts = 0
-    while len(tickets) < target_count and attempts < MAX_ATTEMPTS:
-        attempts += 1
-        pick: List[int] = []
-        ok = True
-        for key in ("top5", "top7_tail", "mid", "outside"):
-            k = counts.get(key, 0)
-            if k <= 0:
-                continue
-            pool = [n for n in pools[key] if n not in pick]
-            if len(pool) < k:
-                ok = False
-                break
-            weights = [(score_map.get(n, 0.0) - min_score) + 0.25 for n in pool]
-            pick.extend(_weighted_sample_no_replace(pool, weights, k, rng))
-        if not ok:
-            continue
-        if len(set(pick)) != NUMBERS_PER_TICKET:
-            continue
-        max_r = max(full_map[n].rank_recent for n in pick if n in full_map)
-        if max_r > max_rank:
-            continue
-        overdue = sum(1 for n in pick if full_map[n].gap_days > PATTERN_OVERDUE_DAYS)
-        if overdue > int(pattern.get("overdue_max", 1)):
-            continue
-        t = tuple(sorted(pick))
-        if t in seen:
-            continue
-        seen.add(t)
-        tickets.append(list(t))
-    print(f"Pattern template generated {len(tickets)}/{target_count} tickets in {attempts} attempts")
-    return tickets
-
-
 def _pattern_score(
-    nums: List[int], score_map: Dict[int, CandidateScore], pattern: Dict[str, int]
+        nums: List[int], score_map: Dict[int, CandidateScore], pattern: Dict[str, int]
 ) -> float:
     if not pattern:
         return 0.0
@@ -709,7 +658,7 @@ def _pattern_score(
 
 
 def _learn_winner_band_stats(
-    df: pd.DataFrame, main_cols: List[str], learn_dates: List[pd.Timestamp]
+        df: pd.DataFrame, main_cols: List[str], learn_dates: List[pd.Timestamp]
 ) -> Dict[str, float]:
     if not learn_dates:
         return {}
@@ -736,10 +685,12 @@ def _learn_winner_band_stats(
             freq_season.append(int(c.freq_season))
     if not ranks:
         return {}
+
     def _q(vals: List[float], p: float) -> float:
         v = sorted(vals)
         idx = int(round((p / 100.0) * (len(v) - 1)))
         return float(v[max(0, min(idx, len(v) - 1))])
+
     return {
         "rank_min": _q(ranks, 5),
         "rank_max": _q(ranks, 95),
@@ -757,7 +708,7 @@ def _learn_winner_band_stats(
 
 
 def _learn_winner_band_stats_relaxed(
-    df: pd.DataFrame, main_cols: List[str], learn_dates: List[pd.Timestamp]
+        df: pd.DataFrame, main_cols: List[str], learn_dates: List[pd.Timestamp]
 ) -> Dict[str, float]:
     if not learn_dates:
         return {}
@@ -781,7 +732,7 @@ def _learn_winner_band_stats_relaxed(
 
 
 def _band_pool_from_stats(
-    scored: List[CandidateScore], band: Dict[str, float]
+        scored: List[CandidateScore], band: Dict[str, float]
 ) -> List[int]:
     if not band:
         return []
@@ -804,7 +755,7 @@ def _band_pool_from_stats(
 
 
 def _band_pool_with_fallback(
-    scored: List[CandidateScore], band: Dict[str, float]
+        scored: List[CandidateScore], band: Dict[str, float]
 ) -> List[int]:
     if not band:
         return []
@@ -815,7 +766,7 @@ def _band_pool_with_fallback(
     pool = [
         c.n for c in scored
         if (band["rank_min"] <= c.rank_recent <= band["rank_max"])
-        and (band["score_min"] <= c.total_score <= band["score_max"])
+           and (band["score_min"] <= c.total_score <= band["score_max"])
     ]
     pool = list(dict.fromkeys(pool))
     if len(pool) >= NUMBERS_PER_TICKET + 6:
@@ -851,10 +802,10 @@ def _ticket_overdue_count(nums: List[int], score_map: Dict[int, CandidateScore])
 
 
 def _apply_winner_shape_rule(
-    tickets: List[List[int]],
-    score_map: Dict[int, CandidateScore],
-    min_top7: int = 4,
-    max_overdue: int = 1,
+        tickets: List[List[int]],
+        score_map: Dict[int, CandidateScore],
+        min_top7: int = 4,
+        max_overdue: int = 1,
 ) -> List[List[int]]:
     strict = []
     relaxed = []
@@ -870,7 +821,7 @@ def _apply_winner_shape_rule(
 
 
 def _merge_unique_tickets(
-    primary: List[List[int]], secondary: List[List[int]], limit: int
+        primary: List[List[int]], secondary: List[List[int]], limit: int
 ) -> List[List[int]]:
     out: List[List[int]] = []
     for t in primary + secondary:
@@ -882,10 +833,10 @@ def _merge_unique_tickets(
 
 
 def _make_band_constraint(
-    band: Dict[str, float],
-    score_map: Dict[int, CandidateScore],
-    min_in_band: int,
-    max_overdue: int,
+        band: Dict[str, float],
+        score_map: Dict[int, CandidateScore],
+        min_in_band: int,
+        max_overdue: int,
 ) -> Callable[[List[int]], bool]:
     def _ok(nums: List[int]) -> bool:
         in_band = 0
@@ -897,12 +848,12 @@ def _make_band_constraint(
             if c.gap_days > PATTERN_OVERDUE_DAYS:
                 overdue += 1
             if (
-                band["rank_min"] <= c.rank_recent <= band["rank_max"]
-                and band["gap_min"] <= c.gap_days <= band["gap_max"]
-                and band["score_min"] <= c.total_score <= band["score_max"]
-                and band["freq_recent_min"] <= c.freq_recent <= band["freq_recent_max"]
-                and band["freq_long_min"] <= c.freq_long <= band["freq_long_max"]
-                and band["freq_season_min"] <= c.freq_season <= band["freq_season_max"]
+                    band["rank_min"] <= c.rank_recent <= band["rank_max"]
+                    and band["gap_min"] <= c.gap_days <= band["gap_max"]
+                    and band["score_min"] <= c.total_score <= band["score_max"]
+                    and band["freq_recent_min"] <= c.freq_recent <= band["freq_recent_max"]
+                    and band["freq_long_min"] <= c.freq_long <= band["freq_long_max"]
+                    and band["freq_season_min"] <= c.freq_season <= band["freq_season_max"]
             ):
                 in_band += 1
         return in_band >= min_in_band and overdue <= max_overdue
@@ -911,7 +862,7 @@ def _make_band_constraint(
 
 
 def _learn_winner_shape_band(
-    df: pd.DataFrame, main_cols: List[str], learn_dates: List[pd.Timestamp]
+        df: pd.DataFrame, main_cols: List[str], learn_dates: List[pd.Timestamp]
 ) -> Dict[str, float]:
     if not learn_dates:
         return {}
@@ -961,12 +912,12 @@ def _learn_winner_shape_band(
 
 
 def _make_winner_shape_constraint(
-    band: Dict[str, float],
-    score_map: Dict[int, CandidateScore],
-    min_in_band: int = 4,
-    max_overdue: int = 1,
-    max_rank_allowed: int = 10,
-    overdue_gap: int = 150,
+        band: Dict[str, float],
+        score_map: Dict[int, CandidateScore],
+        min_in_band: int = 4,
+        max_overdue: int = 1,
+        max_rank_allowed: int = 10,
+        overdue_gap: int = 150,
 ) -> Callable[[List[int]], bool]:
     def _ok(nums: List[int]) -> bool:
         in_band = 0
@@ -981,11 +932,11 @@ def _make_winner_shape_constraint(
             if c.gap_days > overdue_gap:
                 overdue += 1
             if (
-                band["rank_min"] <= c.rank_recent <= band["rank_max"]
-                and band["gap_min"] <= c.gap_days <= band["gap_max"]
-                and band["score_min"] <= c.total_score <= band["score_max"]
-                and band["freq_recent_min"] <= c.freq_recent <= band["freq_recent_max"]
-                and band["freq_long_min"] <= c.freq_long <= band["freq_long_max"]
+                    band["rank_min"] <= c.rank_recent <= band["rank_max"]
+                    and band["gap_min"] <= c.gap_days <= band["gap_max"]
+                    and band["score_min"] <= c.total_score <= band["score_max"]
+                    and band["freq_recent_min"] <= c.freq_recent <= band["freq_recent_max"]
+                    and band["freq_long_min"] <= c.freq_long <= band["freq_long_max"]
             ):
                 in_band += 1
         return in_band >= min_in_band and overdue <= max_overdue and high_rank <= 1
@@ -994,9 +945,9 @@ def _make_winner_shape_constraint(
 
 
 def _greedy_select_tickets(
-    candidates: List[List[int]],
-    score_map: Dict[int, float],
-    target_count: int,
+        candidates: List[List[int]],
+        score_map: Dict[int, float],
+        target_count: int,
 ) -> List[List[int]]:
     selected: List[List[int]] = []
     use_count: Dict[int, int] = {}
@@ -1035,16 +986,16 @@ def _score_spread(scores: List[float]) -> float:
 
 
 def _ticket_quality(
-    nums: List[int],
-    score_map: Dict[int, float],
-    rank_map: Dict[int, int],
-    pair_counts: Dict[Tuple[int, int], int],
-    pair_base: int,
-    top_rank: int,
-    max_spread: float,
-    max_gap: int,
-    allow_outside: int,
-    weights: Dict[str, float],
+        nums: List[int],
+        score_map: Dict[int, float],
+        rank_map: Dict[int, int],
+        pair_counts: Dict[Tuple[int, int], int],
+        pair_base: int,
+        top_rank: int,
+        max_spread: float,
+        max_gap: int,
+        allow_outside: int,
+        weights: Dict[str, float],
 ) -> float:
     ranks = [rank_map.get(n, 999) for n in nums]
     outside = sum(1 for r in ranks if r > top_rank)
@@ -1069,12 +1020,13 @@ def _ticket_quality(
     rank_mass = _rank_mass_score(ranks, top_rank)
 
     return (
-        weights["spread"] * spread_score +
-        weights["pair"] * pair_score +
-        weights["rank_cont"] * cont_score +
-        weights["central"] * central_score +
-        weights["rank_mass"] * rank_mass
+            weights["spread"] * spread_score +
+            weights["pair"] * pair_score +
+            weights["rank_cont"] * cont_score +
+            weights["central"] * central_score +
+            weights["rank_mass"] * rank_mass
     )
+
 
 def _rank_continuity(ranks: List[int], max_gap: int) -> float:
     if not ranks:
@@ -1108,12 +1060,12 @@ def _ticket_pairs(nums: List[int]) -> List[Tuple[int, int]]:
 
 
 def _cohesion_score(
-    nums: List[int],
-    score_map: Dict[int, float],
-    rank_map: Dict[int, int],
-    pair_counts: Dict[Tuple[int, int], int],
-    pair_base: int,
-    weights: Dict[str, float],
+        nums: List[int],
+        score_map: Dict[int, float],
+        rank_map: Dict[int, int],
+        pair_counts: Dict[Tuple[int, int], int],
+        pair_base: int,
+        weights: Dict[str, float],
 ) -> float:
     ranks = [rank_map.get(n, 999) for n in nums]
     outside = sum(1 for r in ranks if r > COHESION_TOP_RANK)
@@ -1128,19 +1080,19 @@ def _cohesion_score(
     central_score = _centrality_score(ranks, COHESION_TOP_RANK)
 
     return (
-        weights["spread"] * spread_score +
-        weights["pair"] * pair_score +
-        weights["rank_cont"] * cont_score +
-        weights["central"] * central_score +
-        weights["rank_mass"] * rank_mass_score
+            weights["spread"] * spread_score +
+            weights["pair"] * pair_score +
+            weights["rank_cont"] * cont_score +
+            weights["central"] * central_score +
+            weights["rank_mass"] * rank_mass_score
     )
 
 
 def _build_adaptive_pool(
-    scored: List[CandidateScore],
-    pair_counts: Dict[Tuple[int, int], int],
-    pool_target: int,
-    cold_pool_size: int,
+        scored: List[CandidateScore],
+        pair_counts: Dict[Tuple[int, int], int],
+        pool_target: int,
+        cold_pool_size: int,
 ) -> List[int]:
     score_map = {c.n: c.total_score for c in scored}
     top_pairs = [p for p, _ in sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[:200]]
@@ -1177,13 +1129,13 @@ def _build_adaptive_pool(
 # ============================================================
 
 def score_numbers(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    debug: bool,
-    show_all: bool = False,
-    score_config: Dict[str, float] = None,
-    supp_cols: Optional[List[str]] = None,
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
+        debug: bool,
+        show_all: bool = False,
+        score_config: Dict[str, float] = None,
+        supp_cols: Optional[List[str]] = None,
 ) -> List[CandidateScore]:
     t = pd.Timestamp(target_date)
     if pd.isna(t):
@@ -1195,7 +1147,8 @@ def score_numbers(
 
     recent_start = t - pd.Timedelta(days=LOOKBACK_DAYS)
     recent_counts = _counts_mains_in_window(train, main_cols, recent_start, t)
-    long_counts = _explode_mains(train, main_cols).value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
+    long_counts = _explode_mains(train, main_cols).value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1),
+                                                                          fill_value=0).sort_index()
     ranks = _rank_from_counts(recent_counts)
 
     # days since last seen (gap)
@@ -1339,26 +1292,26 @@ def score_numbers(
         rank_recent = int(ranks.get(n, 999))
 
         total = (
-            w_recent * float(s_recent.get(n, 0.0)) +
-            w_long * float(s_long.get(n, 0.0)) +
-            w_season * float(s_season.get(n, 0.0)) +
-            w_rank * float(s_rank.get(n, 0.0)) +
-            w_season_rank * float(s_season_rank.get(n, 0.0)) +
-            w_pair_density * float(s_pair_density.get(n, 0.0)) +
-            w_triplet_density * float(s_triplet_density.get(n, 0.0))
+                w_recent * float(s_recent.get(n, 0.0)) +
+                w_long * float(s_long.get(n, 0.0)) +
+                w_season * float(s_season.get(n, 0.0)) +
+                w_rank * float(s_rank.get(n, 0.0)) +
+                w_season_rank * float(s_season_rank.get(n, 0.0)) +
+                w_pair_density * float(s_pair_density.get(n, 0.0)) +
+                w_triplet_density * float(s_triplet_density.get(n, 0.0))
         )
         if supp_cols:
             total += (
-                w_supp_recent * float(s_supp_recent.get(n, 0.0)) +
-                w_supp_long * float(s_supp_long.get(n, 0.0)) +
-                w_supp_season * float(s_supp_season.get(n, 0.0))
+                    w_supp_recent * float(s_supp_recent.get(n, 0.0)) +
+                    w_supp_long * float(s_supp_long.get(n, 0.0)) +
+                    w_supp_season * float(s_supp_season.get(n, 0.0))
             )
         total += min(gap_cap, w_gap * float(s_gap.get(n, 0.0)))
         if supp_cols and SUPP_SCORE_W > 0.0:
             supp_score = (
-                SUPP_W_RECENT * float(s_supp_recent.get(n, 0.0)) +
-                SUPP_W_LONG * float(s_supp_long.get(n, 0.0)) +
-                SUPP_W_SEASON * float(s_supp_season.get(n, 0.0))
+                    SUPP_W_RECENT * float(s_supp_recent.get(n, 0.0)) +
+                    SUPP_W_LONG * float(s_supp_long.get(n, 0.0)) +
+                    SUPP_W_SEASON * float(s_supp_season.get(n, 0.0))
             )
             total += SUPP_SCORE_W * supp_score
         if use_decay and w_decay > 0.0:
@@ -1461,9 +1414,9 @@ def _history_distributions(df: pd.DataFrame, main_cols: List[str], target_date: 
 
 
 def _learn_winner_profile(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    learn_dates: List[pd.Timestamp],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        learn_dates: List[pd.Timestamp],
 ) -> Optional[Dict[str, object]]:
     ranks = []
     gaps = []
@@ -1513,9 +1466,9 @@ def _learn_winner_profile(
 
 
 def _ticket_passes_profile(
-    ticket: List[int],
-    score_map: Dict[int, CandidateScore],
-    profile: Dict[str, object],
+        ticket: List[int],
+        score_map: Dict[int, CandidateScore],
+        profile: Dict[str, object],
 ) -> bool:
     if not profile:
         return True
@@ -1567,9 +1520,9 @@ def _ticket_passes_profile(
 
 
 def _ticket_passes_profile_relaxed(
-    ticket: List[int],
-    score_map: Dict[int, CandidateScore],
-    profile: Dict[str, object],
+        ticket: List[int],
+        score_map: Dict[int, CandidateScore],
+        profile: Dict[str, object],
 ) -> bool:
     if not profile:
         return True
@@ -1637,13 +1590,14 @@ def _build_profile_band_pool(scored: List[CandidateScore], profile: Dict[str, ob
 
 
 def _merge_band_tickets(
-    base_tickets: List[List[int]],
-    band_tickets: List[List[int]],
-    score_map: Dict[int, CandidateScore],
+        base_tickets: List[List[int]],
+        band_tickets: List[List[int]],
+        score_map: Dict[int, CandidateScore],
 ) -> List[List[int]]:
     if not band_tickets:
         return base_tickets[:NUM_TICKETS]
     keep = max(0, NUM_TICKETS - len(band_tickets))
+
     def _sum_score(ticket: List[int]) -> float:
         total = 0.0
         for n in ticket:
@@ -1654,117 +1608,6 @@ def _merge_band_tickets(
     scored_base = sorted(base_tickets, key=_sum_score, reverse=True)
     merged = band_tickets + [t for t in scored_base if t not in band_tickets][:keep]
     return merged[:NUM_TICKETS]
-
-
-def _build_tickets_for_date(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    run_date: str,
-    main_cfg: Dict[str, object],
-    tuner_cfg: Optional[Dict[str, object]],
-    profile: Optional[Dict[str, object]],
-    pattern: Optional[Dict[str, int]],
-    score_map: Dict[int, CandidateScore],
-    supp_candidates: List[int],
-) -> Tuple[List[List[int]], int, int]:
-    if PORTFOLIO_MODE:
-        tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
-    else:
-        if tuner_cfg and tuner_cfg.get("generator") == "portfolio":
-            tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
-        elif tuner_cfg and tuner_cfg.get("generator") == "pair_anchored":
-            tickets = generate_pair_anchored_tickets(scored, df, main_cols, run_date, pair_weight=0.50)
-        elif tuner_cfg and tuner_cfg.get("generator") == "pair_cluster":
-            tickets = generate_pair_cluster_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                pool_config=tuner_cfg.get("pool"),
-                penalty_scale=tuner_cfg.get("penalty_scale"),
-                penalty_config=tuner_cfg.get("penalty_config"),
-                cohesion_config=main_cfg,
-            )
-        elif tuner_cfg and tuner_cfg.get("generator") == "graph_cover":
-            tickets = generate_graph_coverage_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                pool_config=tuner_cfg.get("pool"),
-                penalty_scale=tuner_cfg.get("penalty_scale"),
-                penalty_config=tuner_cfg.get("penalty_config"),
-                cohesion_config=main_cfg,
-            )
-        elif tuner_cfg and tuner_cfg.get("generator") == "adaptive_pool":
-            tickets = generate_adaptive_pool_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                pool_config=tuner_cfg.get("pool"),
-                penalty_scale=tuner_cfg.get("penalty_scale"),
-                penalty_config=tuner_cfg.get("penalty_config"),
-                cohesion_config=main_cfg,
-                force_coverage=tuner_cfg.get("force_coverage", False),
-            )
-        else:
-            tickets = generate_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                use_weights=True,
-                seed_hot_overdue=(tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False),
-                force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
-                cohesion_config=main_cfg,
-                penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                supp_candidates=supp_candidates,
-                supp_min_hit=SUPP_MIN_HIT,
-            )
-    band_pool_size = 0
-    band_take = 0
-    if profile and PROFILE_BAND_TICKETS > 0:
-        band_pool = _build_profile_band_pool(scored, profile)
-        band_pool_size = len(band_pool)
-        if len(band_pool) >= NUMBERS_PER_TICKET + 3:
-            band_take = min(PROFILE_BAND_TICKETS, NUM_TICKETS)
-            band_tickets = generate_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                use_weights=True,
-                seed_hot_overdue=False,
-                force_coverage=False,
-                cohesion_config=main_cfg,
-                penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                pool_override=band_pool,
-                penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                supp_candidates=supp_candidates,
-                supp_min_hit=SUPP_MIN_HIT,
-            )[:band_take]
-            tickets = _merge_band_tickets(tickets, band_tickets, score_map)
-    if profile and USE_PROFILE_FILTER:
-        strict = [t for t in tickets if _ticket_passes_profile(t, score_map, profile)]
-        relaxed = [t for t in tickets if _ticket_passes_profile_relaxed(t, score_map, profile) and t not in strict]
-        remainder = [t for t in tickets if t not in strict and t not in relaxed]
-        tickets = (strict + relaxed + remainder)[:NUM_TICKETS]
-    if pattern:
-        scored_tickets = [(t, _pattern_score(t, score_map, pattern)) for t in tickets]
-        scored_tickets.sort(key=lambda x: x[1], reverse=True)
-        if USE_PATTERN_FILTER:
-            keep = [t for t, s in scored_tickets if s >= PATTERN_MIN_SCORE]
-            if keep:
-                tickets = (keep + [t for t, _ in scored_tickets if t not in keep])[:NUM_TICKETS]
-            else:
-                tickets = [t for t, _ in scored_tickets][:NUM_TICKETS]
-        else:
-            tickets = [t for t, _ in scored_tickets][:NUM_TICKETS]
-    return tickets, band_pool_size, band_take
 
 
 def _dynamic_band(counts: Dict[int, int], low_pct: float, high_pct: float) -> Tuple[int, int]:
@@ -1835,13 +1678,13 @@ def _ticket_penalty(nums: List[int], dist: Dict[str, object], penalty_config: Di
 
 
 def _apply_supp_soft_swap(
-    pick: List[int],
-    supp_candidates: List[int],
-    supp_scores: Dict[int, float],
-    score_map: Dict[int, float],
-    pool: List[int],
-    global_use: Dict[int, int],
-    global_max: int,
+        pick: List[int],
+        supp_candidates: List[int],
+        supp_scores: Dict[int, float],
+        score_map: Dict[int, float],
+        pool: List[int],
+        global_use: Dict[int, int],
+        global_max: int,
 ) -> List[int]:
     if not SUPP_SOFT_SWAP or not supp_candidates:
         return pick
@@ -1871,14 +1714,14 @@ def _apply_supp_soft_swap(
 
 
 def _apply_supp_soft_swaps(
-    tickets: List[List[int]],
-    supp_candidates: List[int],
-    supp_scores: Dict[int, float],
-    score_map: Dict[int, float],
-    pool: List[int],
-    global_use: Dict[int, int],
-    global_max: int,
-    overlap_cap: int,
+        tickets: List[List[int]],
+        supp_candidates: List[int],
+        supp_scores: Dict[int, float],
+        score_map: Dict[int, float],
+        pool: List[int],
+        global_use: Dict[int, int],
+        global_max: int,
+        overlap_cap: int,
 ) -> List[List[int]]:
     if not SUPP_SOFT_SWAP or not supp_candidates:
         return tickets
@@ -1940,13 +1783,13 @@ def _apply_supp_soft_swaps(
 
 
 def _apply_supp_focus_tickets(
-    tickets: List[List[int]],
-    scored: List[CandidateScore],
-    supp_scores: Dict[int, float],
-    score_map: Dict[int, float],
-    global_use: Dict[int, int],
-    global_max: int,
-    overlap_cap: int,
+        tickets: List[List[int]],
+        scored: List[CandidateScore],
+        supp_scores: Dict[int, float],
+        score_map: Dict[int, float],
+        global_use: Dict[int, int],
+        global_max: int,
+        overlap_cap: int,
 ) -> List[List[int]]:
     if SUPP_FOCUS_TICKETS <= 0 or SUPP_FOCUS_COUNT <= 0:
         return tickets
@@ -2019,24 +1862,24 @@ def _apply_supp_focus_tickets(
 
 
 def generate_tickets(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    use_weights: bool = True,
-    seed_hot_overdue: bool = True,
-    penalty_scale: float = None,
-    pool_override: List[int] = None,
-    force_coverage: bool = False,
-    fixed_seed: List[int] = None,
-    overlap_cap_override: int = None,
-    global_max_override: int = None,
-    cohesion_config: Dict[str, object] = None,
-    pool_config: Dict[str, object] = None,
-    penalty_config: Dict[str, object] = None,
-    constraint_fn: Optional[Callable[[List[int]], bool]] = None,
-    supp_candidates: Optional[List[int]] = None,
-    supp_min_hit: int = 0,
+        scored: List[CandidateScore],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
+        use_weights: bool = True,
+        seed_hot_overdue: bool = True,
+        penalty_scale: float = None,
+        pool_override: List[int] = None,
+        force_coverage: bool = False,
+        fixed_seed: List[int] = None,
+        overlap_cap_override: int = None,
+        global_max_override: int = None,
+        cohesion_config: Dict[str, object] = None,
+        pool_config: Dict[str, object] = None,
+        penalty_config: Dict[str, object] = None,
+        constraint_fn: Optional[Callable[[List[int]], bool]] = None,
+        supp_candidates: Optional[List[int]] = None,
+        supp_min_hit: int = 0,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -2227,272 +2070,23 @@ def generate_tickets(
 
 
 def _generate_variant_tickets(
-    variant: str,
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    main_cfg: Dict[str, object],
-    tuner_cfg: Optional[Dict[str, object]],
-    supp_candidates: List[int],
-    supp_min_hit: int,
-    strategy_cfgs: Dict[str, Dict[str, object]],
+        variant: str,
+        scored: List[CandidateScore],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
+        main_cfg: Dict[str, object],
+        tuner_cfg: Optional[Dict[str, object]],
+        supp_candidates: List[int],
+        supp_min_hit: int,
+        strategy_cfgs: Dict[str, Dict[str, object]],
 ) -> List[List[int]]:
     scored_use = scored
-    if variant in ("BASELINE_BOOST", "GREEDY_BOOST_8K"):
-        scored_use = score_numbers(
-            df,
-            main_cols,
-            target_date,
-            debug=False,
-            score_config=SCORE_BOOST_CONFIG,
-            supp_cols=SUPP_COLS,
-        )
     pool_cfg = tuner_cfg.get("pool") if tuner_cfg else None
     penalty_cfg = tuner_cfg.get("penalty_config") if tuner_cfg else None
     penalty_scale = tuner_cfg.get("penalty_scale") if tuner_cfg else None
     seed_hot = (tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False)
     force_cov = (tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE)
-
-    if variant == "TOP20_HALF":
-        top20 = [c.n for c in scored_use[:20]]
-        half = max(1, NUM_TICKETS // 2)
-        t_top = generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=main_cfg,
-            penalty_scale=penalty_scale,
-            pool_config=pool_cfg,
-            pool_override=top20,
-            penalty_config=penalty_cfg,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )[:half]
-        t_base = generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=main_cfg,
-            penalty_scale=penalty_scale,
-            pool_config=pool_cfg,
-            penalty_config=penalty_cfg,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-        return _merge_unique_tickets(t_top, t_base, NUM_TICKETS)
-
-    if variant == "PAIR_RANK7":
-        pool = [c.n for c in scored_use if c.rank_recent <= 7]
-        pool_override = pool if len(pool) >= NUMBERS_PER_TICKET + 4 else None
-        cohesion = strategy_cfgs.get("PAIR_HEAVY", main_cfg)
-        return generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=cohesion,
-            penalty_scale=penalty_scale,
-            pool_config=pool_cfg,
-            pool_override=pool_override,
-            penalty_config=penalty_cfg,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-
-    if variant == "CONC_TOP16":
-        pool = [c.n for c in scored_use[:16]]
-        return generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=main_cfg,
-            penalty_scale=(penalty_scale if penalty_scale is not None else 0.35),
-            pool_config=pool_cfg,
-            pool_override=pool,
-            penalty_config=penalty_cfg,
-            overlap_cap_override=NUMBERS_PER_TICKET,
-            global_max_override=NUM_TICKETS * 2,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-
-    if variant == "CONC_TOP18":
-        pool = [c.n for c in scored_use[:18]]
-        return generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=main_cfg,
-            penalty_scale=(penalty_scale if penalty_scale is not None else 0.35),
-            pool_config=pool_cfg,
-            pool_override=pool,
-            penalty_config=penalty_cfg,
-            overlap_cap_override=NUMBERS_PER_TICKET,
-            global_max_override=NUM_TICKETS * 2,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-
-    if variant == "GREEDY_COVER":
-        rng = random.Random(RANDOM_SEED)
-        candidates = _generate_candidate_pool(scored_use, 2000, rng, include_cold=False)
-        score_map = {c.n: c.total_score for c in scored_use}
-        return _greedy_select_tickets(candidates, score_map, NUM_TICKETS)
-
-    if variant == "BAND_ANCHOR":
-        train = df[df["Date"] < pd.Timestamp(target_date)].sort_values("Date").tail(LEARN_WINDOW_DRAWS)
-        learn_dates = [row["Date"] for _, row in train.iterrows()]
-        band = _learn_winner_band_stats(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
-        score_map_full = {c.n: c for c in scored_use}
-        constraint_fn = None
-        if band:
-            constraint_fn = _make_band_constraint(
-                band, score_map_full, min_in_band=4, max_overdue=1
-            )
-        top_rank = [c.n for c in scored_use[:10]]
-        pool = list(dict.fromkeys(top_rank + [c.n for c in scored_use[:28]]))
-        return generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=main_cfg,
-            penalty_scale=penalty_scale,
-            pool_config=pool_cfg,
-            pool_override=pool,
-            penalty_config=penalty_cfg,
-            constraint_fn=constraint_fn,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-
-    if variant == "PAIR_TRIPLET_POOL":
-        ranked = sorted(
-            scored_use, key=lambda c: (c.pair_density + c.triplet_density), reverse=True
-        )
-        pool = [c.n for c in ranked[:26]]
-        return generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=main_cfg,
-            penalty_scale=penalty_scale,
-            pool_config=pool_cfg,
-            pool_override=pool,
-            penalty_config=penalty_cfg,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-
-    if variant == "WINNER_SHAPE":
-        train = df[df["Date"] < pd.Timestamp(target_date)].sort_values("Date").tail(5)
-        learn_dates = [row["Date"] for _, row in train.iterrows()]
-        band = _learn_winner_shape_band(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
-        score_map_full = {c.n: c for c in scored_use}
-        constraint_fn = None
-        if band:
-            constraint_fn = _make_winner_shape_constraint(
-                band,
-                score_map_full,
-                min_in_band=4,
-                max_overdue=1,
-                max_rank_allowed=10,
-                overdue_gap=150,
-            )
-        rng = random.Random(RANDOM_SEED)
-        max_tickets = int(os.environ.get("WINNER_SHAPE_MAX_TICKETS", "200"))
-        candidates = _generate_candidate_pool(scored_use, 20000, rng, include_cold=True)
-        filtered = _filter_candidates(candidates, constraint_fn)
-        if not filtered:
-            return generate_tickets(
-                scored_use, df, main_cols, target_date,
-                use_weights=True,
-                seed_hot_overdue=seed_hot,
-                force_coverage=force_cov,
-                cohesion_config=main_cfg,
-                penalty_scale=penalty_scale,
-                pool_config=pool_cfg,
-                penalty_config=penalty_cfg,
-                supp_candidates=supp_candidates,
-                supp_min_hit=supp_min_hit,
-            )
-        return filtered[:max_tickets]
-
-    if variant == "WINNER_SHAPE_POOL_WINDOW":
-        train = df[df["Date"] < pd.Timestamp(target_date)].sort_values("Date").tail(LEARN_WINDOW_DRAWS)
-        learn_dates = [row["Date"] for _, row in train.iterrows()]
-        band = _learn_winner_band_stats_relaxed(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
-        if not band:
-            return []
-        band_pool = _band_pool_from_stats(scored_use, band)
-        if len(band_pool) < NUMBERS_PER_TICKET:
-            return []
-        return generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config={"enabled": False},
-            penalty_scale=0.0,
-            pool_config=pool_cfg,
-            pool_override=band_pool,
-            penalty_config=penalty_cfg,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-
-    if variant == "BASELINE_BOOST":
-        return generate_tickets(
-            scored_use, df, main_cols, target_date,
-            use_weights=True,
-            seed_hot_overdue=seed_hot,
-            force_coverage=force_cov,
-            cohesion_config=main_cfg,
-            penalty_scale=penalty_scale,
-            pool_config=pool_cfg,
-            penalty_config=penalty_cfg,
-            supp_candidates=supp_candidates,
-            supp_min_hit=supp_min_hit,
-        )
-
-    if variant == "GREEDY_BOOST_8K":
-        rng = random.Random(RANDOM_SEED)
-        candidates = _generate_candidate_pool(scored_use, 8000, rng, include_cold=False)
-        score_map = {c.n: c.total_score for c in scored_use}
-        return _greedy_select_tickets(candidates, score_map, NUM_TICKETS)
-
-    if variant == "GREEDY_BOOST_20K":
-        rng = random.Random(RANDOM_SEED)
-        candidates = _generate_candidate_pool(scored_use, 20000, rng, include_cold=False)
-        score_map = {c.n: c.total_score for c in scored_use}
-        return _greedy_select_tickets(candidates, score_map, NUM_TICKETS)
-
-    if variant == "GREEDY_BOOST_40K":
-        rng = random.Random(RANDOM_SEED)
-        candidates = _generate_candidate_pool(scored_use, 40000, rng, include_cold=False)
-        score_map = {c.n: c.total_score for c in scored_use}
-        return _greedy_select_tickets(candidates, score_map, NUM_TICKETS)
-
-    if variant == "GREEDY_BOOST_MULTI":
-        candidates: List[List[int]] = []
-        seen = set()
-        for seed in range(5):
-            rng = random.Random(seed + 17)
-            batch = _generate_candidate_pool(scored_use, 3000, rng, include_cold=False)
-            for t in batch:
-                key = tuple(t)
-                if key in seen:
-                    continue
-                seen.add(key)
-                candidates.append(t)
-        score_map = {c.n: c.total_score for c in scored_use}
-        return _greedy_select_tickets(candidates, score_map, NUM_TICKETS)
 
     tickets = generate_tickets(
         scored_use, df, main_cols, target_date,
@@ -2506,9 +2100,6 @@ def _generate_variant_tickets(
         supp_candidates=supp_candidates,
         supp_min_hit=supp_min_hit,
     )
-    if variant == "RULE_TOP7_OVERDUE1":
-        score_map = {c.n: c for c in scored}
-        tickets = _apply_winner_shape_rule(tickets, score_map, min_top7=4, max_overdue=1)
     return tickets
 
 
@@ -2552,11 +2143,10 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]], supp_draw: 
 
 
 def _log_winner_candidate_scores(
-    scored: List[CandidateScore],
-    winners: List[int],
-    label: str,
+        scored: List[CandidateScore],
+        winners: List[int],
+        label: str,
 ) -> None:
-
     if not scored or not winners:
         return
     score_map = {c.n: c for c in scored}
@@ -2588,386 +2178,6 @@ def _hit_summary(real_draw: List[int], tickets: List[List[int]]) -> Dict[str, in
         "total_hits": total_hits,
     }
 
-
-def _evaluate_strategy(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    bt_dates: List[pd.Timestamp],
-    strategy_name: str,
-    cohesion_config: Dict[str, object],
-    debug: bool = False,
-) -> Dict[str, object]:
-    weeks_with_5 = 0
-    weeks_with_4 = 0
-    ge3_total = 0
-    ge4_total = 0
-    ge5_total = 0
-    for d in bt_dates:
-        bt_date = d.strftime("%Y-%m-%d")
-        row = df[df["Date"] == d].iloc[0]
-        bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, debug)
-        bt_tickets = generate_tickets(
-            bt_scored,
-            df,
-            main_cols,
-            bt_date,
-            use_weights=True,
-            seed_hot_overdue=False,
-            force_coverage=FORCE_COVERAGE,
-            cohesion_config=cohesion_config,
-        )
-        summary = _hit_summary(bt_draw, bt_tickets)
-        ge3_total += summary.get("ge3", 0)
-        ge4_total += summary.get("ge4", 0)
-        ge5_total += summary.get("ge5", 0)
-        if summary.get("ge4", 0) > 0:
-            weeks_with_4 += 1
-        if summary.get("ge5", 0) > 0:
-            weeks_with_5 += 1
-    return {
-        "name": strategy_name,
-        "hits5": weeks_with_5,
-        "ge3_total": ge3_total,
-        "ge4_total": ge4_total,
-        "ge5_total": ge5_total,
-        "weeks_with_4": weeks_with_4,
-    }
-
-
-
-
-def _tune_configs(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    bt_dates: List[pd.Timestamp],
-    base_cohesion: Dict[str, object],
-) -> Dict[str, object]:
-    preset_name = os.environ.get("PRESET", "").strip().upper()
-    ga_preset_path = os.environ.get("GA_PRESET_PATH", "ga_best_config.json")
-    compare_only = os.environ.get("COMPARE_ONLY", "").strip() == "1"
-    p36 = {
-        "pool_size": 36, "mid_pool_size": 14, "cold_pool_size": 12,
-        "hot_pool_size": 10, "overdue_pool_size": 10, "season_pool_size": 10,
-        "cold_force_count": 2,
-    }
-    p40 = {
-        "pool_size": 40, "mid_pool_size": 16, "cold_pool_size": 12,
-        "hot_pool_size": 12, "overdue_pool_size": 12, "season_pool_size": 12,
-        "cold_force_count": 2,
-    }
-    p44 = {
-        "pool_size": 44, "mid_pool_size": 18, "cold_pool_size": 12,
-        "hot_pool_size": 12, "overdue_pool_size": 12, "season_pool_size": 12,
-        "cold_force_count": 2,
-    }
-    coh_soft = {
-        "enabled": True,
-        "accept_floor": 0.70,
-        "accept_span": 0.65,
-        "min_score": None,
-        "weights": {"spread": 0.30, "pair": 0.35, "rank_cont": 0.20, "central": 0.10, "rank_mass": 0.05},
-    }
-    coh_pair = {
-        "enabled": True,
-        "accept_floor": 0.72,
-        "accept_span": 0.60,
-        "min_score": 0.52,
-        "weights": {"spread": 0.22, "pair": 0.45, "rank_cont": 0.18, "central": 0.10, "rank_mass": 0.05},
-    }
-    coh_rank = {
-        "enabled": True,
-        "accept_floor": 0.68,
-        "accept_span": 0.65,
-        "min_score": None,
-        "weights": {"spread": 0.22, "pair": 0.28, "rank_cont": 0.35, "central": 0.10, "rank_mass": 0.05},
-    }
-    coh_none = {
-        "enabled": False,
-        "accept_floor": 1.0,
-        "accept_span": 0.0,
-        "min_score": None,
-        "weights": {"spread": 0.0, "pair": 0.0, "rank_cont": 0.0, "central": 0.0, "rank_mass": 0.0},
-    }
-
-    base_score = {"w_recent": 0.55, "w_long": 0.20, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.25, "gap_cap": 0.30, "cold_boost": 0.25}
-    decay_score = {"w_recent": 0.40, "w_long": 0.15, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.30, "gap_cap": 0.35, "cold_boost": 0.20, "use_decay": True, "w_decay": 0.25, "decay_half_life": 60}
-    pair_score = {"w_recent": 0.50, "w_long": 0.15, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.25, "gap_cap": 0.30, "cold_boost": 0.20, "use_pairnum": True, "w_pairnum": 0.20}
-    decay_pair_score = {"w_recent": 0.35, "w_long": 0.15, "w_season": 0.15, "w_rank": 0.10, "w_gap": 0.25, "gap_cap": 0.30, "cold_boost": 0.20, "use_decay": True, "w_decay": 0.20, "decay_half_life": 60, "use_pairnum": True, "w_pairnum": 0.15}
-
-    def _load_ga_preset() -> Dict[str, object]:
-        if not os.path.exists(ga_preset_path):
-            return None
-        try:
-            with open(ga_preset_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            return None
-        if not isinstance(data, dict):
-            return None
-        data.setdefault("name", "GA_BEST")
-        return data
-
-    def _save_ga_preset(cfg: Dict[str, object]) -> None:
-        try:
-            with open(ga_preset_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, indent=2, sort_keys=True)
-        except OSError:
-            pass
-
-    configs = []
-    base_cfg = {
-        "name": "BASE",
-        "pool": p36,
-        "penalty_scale": 0.50,
-        "cohesion": coh_soft,
-        "score_config": base_score,
-        "penalty_config": {"dynamic_bands": False},
-        "generator": "standard",
-    }
-
-    # One-by-one variants (single changes from BASE)
-    configs.extend([
-        base_cfg,
-        {**base_cfg, "name": "POOL_P40", "pool": p40},
-        {**base_cfg, "name": "POOL_P44", "pool": p44},
-        {**base_cfg, "name": "PENALTY_035", "penalty_scale": 0.35},
-        {**base_cfg, "name": "PENALTY_065", "penalty_scale": 0.65},
-        {**base_cfg, "name": "COH_PAIR", "cohesion": coh_pair},
-        {**base_cfg, "name": "COH_RANK", "cohesion": coh_rank},
-        {**base_cfg, "name": "COH_NONE", "cohesion": coh_none},
-        {**base_cfg, "name": "SCORE_DECAY", "score_config": decay_score},
-        {**base_cfg, "name": "SCORE_PAIR", "score_config": pair_score},
-        {**base_cfg, "name": "SCORE_DECAY_PAIR", "score_config": decay_pair_score},
-        {**base_cfg, "name": "DYN_BANDS", "penalty_config": {"dynamic_bands": True}},
-        {**base_cfg, "name": "SUM_BAND_TIGHT", "penalty_config": {"dynamic_bands": False, "sum_quantiles": (0.25, 0.75)}},
-        {**base_cfg, "name": "SUM_BAND_WIDE", "penalty_config": {"dynamic_bands": False, "sum_quantiles": (0.15, 0.85)}},
-        {**base_cfg, "name": "CONSEC_1", "penalty_config": {"dynamic_bands": False, "consec_max": 1}},
-        {**base_cfg, "name": "CONSEC_3", "penalty_config": {"dynamic_bands": False, "consec_max": 3}},
-        {**base_cfg, "name": "PORTFOLIO", "generator": "portfolio"},
-        {**base_cfg, "name": "PAIR_ANCHOR", "generator": "pair_anchored"},
-        {**base_cfg, "name": "PAIR_CLUSTER", "generator": "pair_cluster"},
-        {**base_cfg, "name": "GRAPH_COVER", "generator": "graph_cover"},
-        {**base_cfg, "name": "ADAPT_POOL", "generator": "adaptive_pool"},
-        {**base_cfg, "name": "ADAPT_POOL_FORCE", "generator": "adaptive_pool", "force_coverage": True},
-    ])
-
-    if preset_name == "BASE":
-        print("Preset selected: BASE")
-        return base_cfg
-    if preset_name == "GA_BEST":
-        cached = _load_ga_preset()
-        if cached:
-            print(f"Preset selected: GA_BEST (loaded from {ga_preset_path})")
-            return cached
-        print("Preset GA_BEST not found; running GA search.")
-
-    if compare_only:
-        configs = [base_cfg]
-    # Combination grid (small, systematic cross-product)
-    combo_generators = ["standard", "adaptive_pool"]
-    combo_scores = [base_score, decay_pair_score]
-    combo_pools = [p36]
-    combo_cohesion = [coh_soft, coh_pair]
-    combo_penalties = [
-        {"dynamic_bands": False},
-        {"dynamic_bands": True},
-    ]
-    combo_penalty_scale = [0.50]
-    combo_force = [False, True]
-
-    if not compare_only:
-        for gen in combo_generators:
-            for sc in combo_scores:
-                for pool in combo_pools:
-                    for coh in combo_cohesion:
-                        for pen in combo_penalties:
-                            for ps in combo_penalty_scale:
-                                for force in combo_force:
-                                    if gen == "standard" and force:
-                                        continue
-                                    if gen != "adaptive_pool" and force:
-                                        continue
-                                    name = f"COMBO_{gen}_sc{combo_scores.index(sc)}_p{combo_pools.index(pool)}_c{combo_cohesion.index(coh)}_d{combo_penalties.index(pen)}_s{combo_penalty_scale.index(ps)}_f{int(force)}"
-                                    configs.append({
-                                        "name": name,
-                                        "pool": pool,
-                                        "penalty_scale": ps,
-                                        "cohesion": coh,
-                                        "score_config": sc,
-                                        "penalty_config": pen,
-                                        "generator": gen,
-                                        "force_coverage": force,
-                                    })
-
-    def _genetic_tune_config() -> Dict[str, object]:
-        rng = random.Random(RANDOM_SEED + 17)
-        ga_quick = os.environ.get("GA_QUICK", "").strip() == "1"
-        pop_size = 6 if ga_quick else (10 if compare_only else 18)
-        generations = 3 if ga_quick else (6 if compare_only else 10)
-
-        def _rand_gene() -> Dict[str, object]:
-            return {
-                "w_recent": rng.uniform(0.25, 0.70),
-                "w_long": rng.uniform(0.05, 0.30),
-                "w_season": rng.uniform(0.05, 0.25),
-                "w_rank": rng.uniform(0.05, 0.20),
-                "w_gap": rng.uniform(0.10, 0.35),
-                "gap_cap": rng.uniform(0.20, 0.40),
-                "cold_boost": rng.uniform(0.00, 0.30),
-                "use_decay": rng.choice([True, False]),
-                "w_decay": rng.uniform(0.00, 0.30),
-                "decay_half_life": rng.randint(40, 120),
-                "use_pairnum": rng.choice([True, False]),
-                "w_pairnum": rng.uniform(0.00, 0.30),
-                "penalty_scale": rng.uniform(0.30, 0.70),
-                "dynamic_bands": rng.choice([True, False]),
-                "sum_quant": rng.choice([None, (0.20, 0.80), (0.25, 0.75)]),
-                "consec_max": rng.choice([1, 2, 3]),
-                "pool_size": rng.randint(32, 40),
-                "mid_pool_size": rng.randint(10, 18),
-                "cold_pool_size": rng.randint(8, 14),
-            }
-
-        def _decode_gene(gene: Dict[str, object]) -> Dict[str, object]:
-            score_config = {
-                "w_recent": gene["w_recent"],
-                "w_long": gene["w_long"],
-                "w_season": gene["w_season"],
-                "w_rank": gene["w_rank"],
-                "w_gap": gene["w_gap"],
-                "gap_cap": gene["gap_cap"],
-                "cold_boost": gene["cold_boost"],
-                "use_decay": gene["use_decay"],
-                "w_decay": gene["w_decay"],
-                "decay_half_life": gene["decay_half_life"],
-                "use_pairnum": gene["use_pairnum"],
-                "w_pairnum": gene["w_pairnum"],
-            }
-            penalty_config = {"dynamic_bands": gene["dynamic_bands"], "consec_max": gene["consec_max"]}
-            if gene["sum_quant"]:
-                penalty_config["sum_quantiles"] = gene["sum_quant"]
-            pool_cfg = {
-                "pool_size": gene["pool_size"],
-                "mid_pool_size": gene["mid_pool_size"],
-                "cold_pool_size": gene["cold_pool_size"],
-                "hot_pool_size": 10,
-                "overdue_pool_size": 10,
-                "season_pool_size": 10,
-                "cold_force_count": 2,
-            }
-            return {
-                "name": "GA_BEST",
-                "pool": pool_cfg,
-                "penalty_scale": gene["penalty_scale"],
-                "cohesion": coh_soft,
-                "score_config": score_config,
-                "penalty_config": penalty_config,
-                "generator": "standard",
-            }
-
-        def _mutate(gene: Dict[str, object]) -> Dict[str, object]:
-            g = dict(gene)
-            key = rng.choice(list(g.keys()))
-            if key in ("use_decay", "use_pairnum", "dynamic_bands"):
-                g[key] = not g[key]
-                return g
-            if key == "sum_quant":
-                g[key] = rng.choice([None, (0.20, 0.80), (0.25, 0.75)])
-                return g
-            if key == "consec_max":
-                g[key] = rng.choice([1, 2, 3])
-                return g
-            if key in ("decay_half_life", "pool_size", "mid_pool_size", "cold_pool_size"):
-                if key == "decay_half_life":
-                    g[key] = rng.randint(40, 120)
-                elif key == "pool_size":
-                    g[key] = rng.randint(32, 40)
-                elif key == "mid_pool_size":
-                    g[key] = rng.randint(10, 18)
-                else:
-                    g[key] = rng.randint(8, 14)
-                return g
-            lo, hi = {
-                "w_recent": (0.25, 0.70),
-                "w_long": (0.05, 0.30),
-                "w_season": (0.05, 0.25),
-                "w_rank": (0.05, 0.20),
-                "w_gap": (0.10, 0.35),
-                "gap_cap": (0.20, 0.40),
-                "cold_boost": (0.00, 0.30),
-                "w_decay": (0.00, 0.30),
-                "w_pairnum": (0.00, 0.30),
-                "penalty_scale": (0.30, 0.70),
-            }[key]
-            g[key] = rng.uniform(lo, hi)
-            return g
-
-        def _crossover(a: Dict[str, object], b: Dict[str, object]) -> Dict[str, object]:
-            child = {}
-            for k in a.keys():
-                child[k] = a[k] if rng.random() < 0.5 else b[k]
-            return child
-
-        pop = [_rand_gene() for _ in range(pop_size)]
-        best_gene = None
-        best_key = None
-        for _ in range(generations):
-            scored_pop = []
-            for gene in pop:
-                cfg = _decode_gene(gene)
-                w4, minhit, g4, g5, g3, total_hits = _evaluate_cfg_with_profile(df, main_cols, bt_dates, cfg)
-                key = (w4, minhit, g4, g5, g3, total_hits)
-                scored_pop.append((key, gene))
-                if best_key is None or key > best_key:
-                    best_key = key
-                    best_gene = gene
-            scored_pop.sort(key=lambda x: x[0], reverse=True)
-            survivors = [g for _, g in scored_pop[: max(4, pop_size // 3)]]
-            next_pop = survivors[:]
-            while len(next_pop) < pop_size:
-                p1 = rng.choice(survivors)
-                p2 = rng.choice(survivors)
-                child = _crossover(p1, p2)
-                if rng.random() < 0.35:
-                    child = _mutate(child)
-                next_pop.append(child)
-            pop = next_pop
-
-        if best_gene is None:
-            return base_cfg
-        best_cfg = _decode_gene(best_gene)
-        best_cfg["name"] = "GA_BEST"
-        return best_cfg
-
-    best = None
-    best_key = None
-    results = []
-    target_weeks = len(bt_dates)
-    ga_best = _genetic_tune_config()
-    ga_key = _evaluate_cfg_with_profile(df, main_cols, bt_dates, ga_best)
-    _save_ga_preset(ga_best)
-    results.append((ga_best["name"], *ga_key))
-    best = ga_best
-    best_key = ga_key
-    for cfg in configs:
-        key = _evaluate_cfg_with_profile(df, main_cols, bt_dates, cfg)
-        results.append((cfg["name"], *key))
-        if best_key is None or key > best_key:
-            best_key = key
-            best = cfg
-        if key[0] >= target_weeks:
-            best = cfg
-            break
-
-    print("\n=== TUNER RESULTS ===")
-    for name, w4, minhit, g4, g5, g3, total_hits in results:
-        print(f"{name}: weeks_with_4={w4} min_week_maxhit={minhit} ge4_total={g4} ge5_total={g5} ge3_total={g3} total_hits={total_hits}")
-    if ga_best:
-        print("GA best parameters are included as GA_BEST.")
-    if best:
-        print(f"Selected strategy: {best['name']}")
-    return best or configs[0]
 
 def _strategy_configs() -> List[Dict[str, object]]:
     return [
@@ -3090,10 +2300,10 @@ def _build_sampling_pool(scored: List[CandidateScore], include_cold: bool) -> Tu
 
 
 def _generate_candidate_pool(
-    scored: List[CandidateScore],
-    count: int,
-    rng: random.Random,
-    include_cold: bool,
+        scored: List[CandidateScore],
+        count: int,
+        rng: random.Random,
+        include_cold: bool,
 ) -> List[List[int]]:
     pool, weights = _build_sampling_pool(scored, include_cold=include_cold)
     candidates: List[List[int]] = []
@@ -3112,8 +2322,8 @@ def _generate_candidate_pool(
 
 
 def _filter_candidates(
-    candidates: List[List[int]],
-    constraint_fn: Optional[Callable[[List[int]], bool]],
+        candidates: List[List[int]],
+        constraint_fn: Optional[Callable[[List[int]], bool]],
 ) -> List[List[int]]:
     if not constraint_fn:
         return candidates
@@ -3121,10 +2331,10 @@ def _filter_candidates(
 
 
 def _pattern_filtered_tickets(
-    scored: List[CandidateScore],
-    pattern: Dict[str, int],
-    count: int,
-    rng: random.Random,
+        scored: List[CandidateScore],
+        pattern: Dict[str, int],
+        count: int,
+        rng: random.Random,
 ) -> List[List[int]]:
     if not pattern:
         return []
@@ -3166,10 +2376,10 @@ def _top_pairs(pair_counts: Dict[Tuple[int, int], int], top_k: int) -> List[Tupl
 
 
 def _pair_anchored_candidates(
-    scored: List[CandidateScore],
-    pair_counts: Dict[Tuple[int, int], int],
-    rng: random.Random,
-    count: int,
+        scored: List[CandidateScore],
+        pair_counts: Dict[Tuple[int, int], int],
+        rng: random.Random,
+        count: int,
 ) -> List[List[int]]:
     pool, weights = _build_sampling_pool(scored, include_cold=False)
     top_pairs = _top_pairs(pair_counts, top_k=min(60, len(pair_counts)))
@@ -3203,10 +2413,10 @@ def _pair_anchored_candidates(
 
 
 def _swap_variants(
-    base_ticket: List[int],
-    scored: List[CandidateScore],
-    rng: random.Random,
-    variants: int,
+        base_ticket: List[int],
+        scored: List[CandidateScore],
+        rng: random.Random,
+        variants: int,
 ) -> List[List[int]]:
     top_candidates = [c.n for c in scored[:SWAP_CANDIDATE_BAND]]
     out = []
@@ -3226,11 +2436,11 @@ def _swap_variants(
 
 
 def _select_portfolio(
-    candidates: List[Tuple[List[int], float]],
-    target_count: int,
-    core_numbers: List[int],
-    diversity_penalty: float,
-    non_core_penalty: float,
+        candidates: List[Tuple[List[int], float]],
+        target_count: int,
+        core_numbers: List[int],
+        diversity_penalty: float,
+        non_core_penalty: float,
 ) -> List[List[int]]:
     selected: List[List[int]] = []
     selected_set = set()
@@ -3278,10 +2488,10 @@ def _select_portfolio(
 
 
 def generate_portfolio_tickets(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
+        scored: List[CandidateScore],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -3343,11 +2553,11 @@ def generate_portfolio_tickets(
 
 
 def generate_pair_anchored_tickets(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    pair_weight: float = 0.45,
+        scored: List[CandidateScore],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
+        pair_weight: float = 0.45,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -3375,15 +2585,15 @@ def generate_pair_anchored_tickets(
 
 
 def generate_pair_cluster_tickets(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    pool_config: Dict[str, object] = None,
-    penalty_scale: float = None,
-    penalty_config: Dict[str, object] = None,
-    cohesion_config: Dict[str, object] = None,
-    seed_recent_days: int = 120,
+        scored: List[CandidateScore],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
+        pool_config: Dict[str, object] = None,
+        penalty_scale: float = None,
+        penalty_config: Dict[str, object] = None,
+        cohesion_config: Dict[str, object] = None,
+        seed_recent_days: int = 120,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     t = pd.Timestamp(target_date)
@@ -3512,15 +2722,15 @@ def generate_pair_cluster_tickets(
 
 
 def generate_adaptive_pool_tickets(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    pool_config: Dict[str, object] = None,
-    penalty_scale: float = None,
-    penalty_config: Dict[str, object] = None,
-    cohesion_config: Dict[str, object] = None,
-    force_coverage: bool = False,
+        scored: List[CandidateScore],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
+        pool_config: Dict[str, object] = None,
+        penalty_scale: float = None,
+        penalty_config: Dict[str, object] = None,
+        cohesion_config: Dict[str, object] = None,
+        force_coverage: bool = False,
 ) -> List[List[int]]:
     t = pd.Timestamp(target_date)
     train = df[df["Date"] < t]
@@ -3550,13 +2760,13 @@ def generate_adaptive_pool_tickets(
 
 
 def _coverage_select(
-    candidates: List[List[int]],
-    num_tickets: int,
-    top_numbers: set,
-    top_pairs: set,
-    pair_weight: float = 1.0,
-    num_weight: float = 0.5,
-    overlap_weight: float = 0.25,
+        candidates: List[List[int]],
+        num_tickets: int,
+        top_numbers: set,
+        top_pairs: set,
+        pair_weight: float = 1.0,
+        num_weight: float = 0.5,
+        overlap_weight: float = 0.25,
 ) -> List[List[int]]:
     selected: List[List[int]] = []
     covered_nums = set()
@@ -3589,14 +2799,14 @@ def _coverage_select(
 
 
 def generate_graph_coverage_tickets(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    pool_config: Dict[str, object] = None,
-    penalty_scale: float = None,
-    penalty_config: Dict[str, object] = None,
-    cohesion_config: Dict[str, object] = None,
+        scored: List[CandidateScore],
+        df: pd.DataFrame,
+        main_cols: List[str],
+        target_date: str,
+        pool_config: Dict[str, object] = None,
+        penalty_scale: float = None,
+        penalty_config: Dict[str, object] = None,
+        cohesion_config: Dict[str, object] = None,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     t = pd.Timestamp(target_date)
@@ -3724,155 +2934,6 @@ def generate_graph_coverage_tickets(
     return selected[:NUM_TICKETS]
 
 
-def _evaluate_variant(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    bt_dates: List[pd.Timestamp],
-    variant_name: str,
-    variant_fn,
-) -> Dict[str, object]:
-    weeks_with_5 = 0
-    weeks_with_4 = 0
-    ge3_total = 0
-    ge4_total = 0
-    ge5_total = 0
-    for d in bt_dates:
-        bt_date = d.strftime("%Y-%m-%d")
-        row = df[df["Date"] == d].iloc[0]
-        bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, debug=False)
-        bt_tickets = variant_fn(bt_scored, df, main_cols, bt_date)
-        summary = _hit_summary(bt_draw, bt_tickets)
-        ge3_total += summary.get("ge3", 0)
-        ge4_total += summary.get("ge4", 0)
-        ge5_total += summary.get("ge5", 0)
-        if summary.get("ge4", 0) > 0:
-            weeks_with_4 += 1
-        if summary.get("ge5", 0) > 0:
-            weeks_with_5 += 1
-    return {
-        "name": variant_name,
-        "hits5": weeks_with_5,
-        "ge3_total": ge3_total,
-        "ge4_total": ge4_total,
-        "ge5_total": ge5_total,
-        "weeks_with_4": weeks_with_4,
-    }
-
-
-def _evaluate_cfg_with_profile(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    bt_dates: List[pd.Timestamp],
-    cfg: Dict[str, object],
-) -> Tuple[int, int, int, int, int, int]:
-    weeks_with_4 = 0
-    ge3_total = 0
-    ge4_total = 0
-    ge5_total = 0
-    total_hits = 0
-    min_week_maxhit = 99
-    if len(bt_dates) >= 10:
-        start_idx = 5
-    else:
-        start_idx = 0
-    for i in range(start_idx, len(bt_dates)):
-        d = bt_dates[i]
-        learn_dates = bt_dates[:i]
-        profile = _learn_winner_profile(df, main_cols, learn_dates) if len(learn_dates) >= 5 else None
-        bt_date = d.strftime("%Y-%m-%d")
-        row = df[df["Date"] == d].iloc[0]
-        bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, debug=False, score_config=cfg.get("score_config"))
-        score_map = {c.n: c for c in bt_scored}
-        if cfg.get("generator") == "portfolio":
-            bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
-        elif cfg.get("generator") == "pair_anchored":
-            bt_tickets = generate_pair_anchored_tickets(bt_scored, df, main_cols, bt_date, pair_weight=0.50)
-        elif cfg.get("generator") == "pair_cluster":
-            bt_tickets = generate_pair_cluster_tickets(
-                bt_scored,
-                df,
-                main_cols,
-                bt_date,
-                pool_config=cfg.get("pool"),
-                penalty_scale=cfg.get("penalty_scale"),
-                penalty_config=cfg.get("penalty_config"),
-                cohesion_config=cfg.get("cohesion"),
-            )
-        elif cfg.get("generator") == "graph_cover":
-            bt_tickets = generate_graph_coverage_tickets(
-                bt_scored,
-                df,
-                main_cols,
-                bt_date,
-                pool_config=cfg.get("pool"),
-                penalty_scale=cfg.get("penalty_scale"),
-                penalty_config=cfg.get("penalty_config"),
-                cohesion_config=cfg.get("cohesion"),
-            )
-        elif cfg.get("generator") == "adaptive_pool":
-            bt_tickets = generate_adaptive_pool_tickets(
-                bt_scored,
-                df,
-                main_cols,
-                bt_date,
-                pool_config=cfg.get("pool"),
-                penalty_scale=cfg.get("penalty_scale"),
-                penalty_config=cfg.get("penalty_config"),
-                cohesion_config=cfg.get("cohesion"),
-                force_coverage=cfg.get("force_coverage", False),
-            )
-        else:
-            bt_tickets = generate_tickets(
-                bt_scored,
-                df,
-                main_cols,
-                bt_date,
-                use_weights=True,
-                seed_hot_overdue=cfg.get("seed_hot_overdue", False),
-                force_coverage=cfg.get("force_coverage", False),
-                cohesion_config=cfg.get("cohesion"),
-                penalty_scale=cfg.get("penalty_scale"),
-                pool_config=cfg.get("pool"),
-                penalty_config=cfg.get("penalty_config"),
-            )
-        if profile and PROFILE_BAND_TICKETS > 0:
-            band_pool = _build_profile_band_pool(bt_scored, profile)
-            if len(band_pool) >= NUMBERS_PER_TICKET + 3:
-                band_take = min(PROFILE_BAND_TICKETS, NUM_TICKETS)
-                band_tickets = generate_tickets(
-                    bt_scored,
-                    df,
-                    main_cols,
-                    bt_date,
-                    use_weights=True,
-                    seed_hot_overdue=False,
-                    force_coverage=False,
-                    cohesion_config=cfg.get("cohesion"),
-                    penalty_scale=cfg.get("penalty_scale"),
-                    pool_override=band_pool,
-                    penalty_config=cfg.get("penalty_config"),
-                )[:band_take]
-                bt_tickets = _merge_band_tickets(bt_tickets, band_tickets, score_map)
-        if profile and USE_PROFILE_FILTER:
-            strict = [t for t in bt_tickets if _ticket_passes_profile(t, score_map, profile)]
-            relaxed = [t for t in bt_tickets if _ticket_passes_profile_relaxed(t, score_map, profile) and t not in strict]
-            remainder = [t for t in bt_tickets if t not in strict and t not in relaxed]
-            bt_tickets = (strict + relaxed + remainder)[:NUM_TICKETS]
-        summary = _hit_summary(bt_draw, bt_tickets)
-        ge3_total += summary.get("ge3", 0)
-        ge4_total += summary.get("ge4", 0)
-        ge5_total += summary.get("ge5", 0)
-        total_hits += summary.get("total_hits", 0)
-        if summary.get("ge4", 0) > 0:
-            weeks_with_4 += 1
-        rd_set = set(bt_draw)
-        max_hit = 0
-        for t in bt_tickets:
-            max_hit = max(max_hit, len(set(t).intersection(rd_set)))
-        min_week_maxhit = min(min_week_maxhit, max_hit)
-    return weeks_with_4, min_week_maxhit, ge4_total, ge5_total, ge3_total, total_hits
 
 
 # ============================================================
@@ -3889,84 +2950,6 @@ if __name__ == "__main__":
         raise ValueError("TARGET_DATE must be parseable (YYYY-MM-DD)")
     df_target = df[df["Date"] == t_target]
 
-    if SWEEP_MODE:
-        backtest_rows = df.sort_values("Date").tail(SWEEP_BACKTEST_DRAWS)
-        bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
-        print(f"\n=== SWEEP (LAST {len(bt_dates)} DRAWS) ===")
-        for s in _strategy_configs():
-            result = _evaluate_strategy(
-                df,
-                main_cols,
-                bt_dates,
-                s["name"],
-                s["cohesion"],
-                debug=False,
-            )
-            print(
-                f"{result['name']}:",
-                f"weeks_with_4={result['weeks_with_4']}",
-                f"weeks_with_5={result['hits5']}",
-                f"ge3_total={result['ge3_total']}",
-                f"ge4_total={result['ge4_total']}",
-                f"ge5_total={result['ge5_total']}",
-            )
-        raise SystemExit
-
-    if VARIANT_SWEEP:
-        backtest_rows = df.sort_values("Date").tail(VARIANT_BACKTEST_DRAWS)
-        bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
-        print(f"\n=== VARIANT SWEEP (LAST {len(bt_dates)} DRAWS) ===")
-        strategies = _strategy_configs()
-        cohesion_soft = next((s["cohesion"] for s in strategies if s["name"] == "COHESION_SOFT"), None)
-        pair_heavy = next((s["cohesion"] for s in strategies if s["name"] == "PAIR_HEAVY"), None)
-        variants = [
-            ("GEN_BASELINE", lambda scored, dff, cols, d: generate_tickets(
-                scored, dff, cols, d, use_weights=True, seed_hot_overdue=False,
-                force_coverage=FORCE_COVERAGE, cohesion_config=None
-            )),
-            ("GEN_COHESION_SOFT", lambda scored, dff, cols, d: generate_tickets(
-                scored, dff, cols, d, use_weights=True, seed_hot_overdue=False,
-                force_coverage=FORCE_COVERAGE, cohesion_config=cohesion_soft
-            )),
-            ("GEN_PAIR_HEAVY", lambda scored, dff, cols, d: generate_tickets(
-                scored, dff, cols, d, use_weights=True, seed_hot_overdue=False,
-                force_coverage=FORCE_COVERAGE, cohesion_config=pair_heavy
-            )),
-            ("PORTFOLIO_DEFAULT", generate_portfolio_tickets),
-            ("PAIR_ANCHORED", lambda scored, dff, cols, d: generate_pair_anchored_tickets(
-                scored, dff, cols, d, pair_weight=0.50
-            )),
-        ]
-        for name, fn in variants:
-            result = _evaluate_variant(df, main_cols, bt_dates, name, fn)
-            print(
-                f"{result['name']}:",
-                f"weeks_with_4={result['weeks_with_4']}",
-                f"weeks_with_5={result['hits5']}",
-                f"ge3_total={result['ge3_total']}",
-                f"ge4_total={result['ge4_total']}",
-                f"ge5_total={result['ge5_total']}",
-            )
-        raise SystemExit
-
-    def _build_consensus_seed(scored_list: List[CandidateScore]) -> List[int]:
-        if not scored_list:
-            return []
-        seed = []
-        top_scores = [c.n for c in scored_list[:6]]
-        top_gap = max(scored_list, key=lambda x: x.gap_days).n
-        top_season = max(scored_list, key=lambda x: x.freq_season).n
-        for n in top_scores[:3] + [top_gap, top_season]:
-            if n not in seed:
-                seed.append(n)
-        if len(seed) < 4:
-            for n in top_scores:
-                if n not in seed:
-                    seed.append(n)
-                if len(seed) >= 4:
-                    break
-        return seed[:4]
-
     run_date = t_target.strftime("%Y-%m-%d")
 
     # Backtest: run on the last 10 available draws excluding TARGET_DATE (oldest to newest).
@@ -3981,11 +2964,7 @@ if __name__ == "__main__":
     if main_cfg is None:
         raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
 
-    tuner_cfg = None
-    use_ga_preset = os.environ.get("USE_GA_PRESET", "1").strip() == "1"
-    if use_ga_preset:
-        if DEFAULT_PRESET == "OZ_BASELINE":
-            tuner_cfg = {
+    tuner_cfg =  {
                 "name": "OZ_BASELINE",
                 "pool": {
                     "pool_size": 36, "mid_pool_size": 14, "cold_pool_size": 12,
@@ -3996,25 +2975,6 @@ if __name__ == "__main__":
                 "force_coverage": False,
                 "cohesion": main_cfg,
             }
-            print("Using OZ_BASELINE preset (no tuner).")
-        else:
-            ga_preset_path = os.environ.get("GA_PRESET_PATH", "ga_best_config.json")
-            tuner_cfg = _load_ga_preset_file(ga_preset_path)
-            if tuner_cfg:
-                tuner_cfg.setdefault("name", DEFAULT_PRESET)
-                print(f"Using {DEFAULT_PRESET} preset (no tuner): {ga_preset_path}")
-                if tuner_cfg.get("cohesion"):
-                    main_cfg = tuner_cfg["cohesion"]
-            else:
-                print(f"GA_BEST preset not found at {ga_preset_path}; falling back to tuner.")
-                tuner_cfg = None
-
-    if TUNER_MODE and tuner_cfg is None:
-        tuner_rows = df[df["Date"] != t_target].sort_values("Date").tail(TUNER_BACKTEST_DRAWS)
-        tuner_dates = [row["Date"] for _, row in tuner_rows.iterrows()]
-        tuner_cfg = _tune_configs(df, main_cols, tuner_dates, main_cfg)
-        if tuner_cfg.get("cohesion"):
-            main_cfg = tuner_cfg["cohesion"]
 
     if len(bt_dates) >= 10:
         start_idx = 5
@@ -4026,25 +2986,7 @@ if __name__ == "__main__":
     )
     strategy_cfgs = {s["name"]: s["cohesion"] for s in _strategy_configs() if s.get("name")}
     variant_names = [
-        "BASELINE",
-        "RULE_TOP7_OVERDUE1",
-        "TOP20_HALF",
-        "PAIR_RANK7",
-        "CONC_TOP16",
-        "CONC_TOP18",
-        "GREEDY_COVER",
-        "BAND_ANCHOR",
-        "PAIR_TRIPLET_POOL",
-        "WINNER_SHAPE",
-        "PATTERN_FILTER_WINDOW",
-        "WINNER_SHAPE_POOL_WINDOW",
-        "WINNER_SHAPE_WINDOW",
-        "BASELINE_BOOST",
-        "GREEDY_BOOST_8K",
-        "GREEDY_BOOST_20K",
-        "GREEDY_BOOST_40K",
-        "GREEDY_BOOST_MULTI",
-        "ENSEMBLE_PORTFOLIO",
+        "BASELINE"
     ]
     summary_rows: List[Dict[str, object]] = []
     window_totals: Dict[int, Dict[str, int]] = {}
@@ -4090,181 +3032,24 @@ if __name__ == "__main__":
                     )
             results = []
             for variant in variant_names:
-                if variant == "ENSEMBLE_PORTFOLIO":
-                    continue
-                if variant == "WINNER_SHAPE_WINDOW":
-                    prior_dates = learn_dates
-                    max_window = len(prior_dates)
-                    best = None
-                    for w in range(WINDOW_MIN_DRAWS, max_window + 1):
-                        window_dates = prior_dates[-w:]
-                        band = _learn_winner_band_stats_relaxed(df, main_cols, window_dates) if len(window_dates) >= 3 else None
-                        if not band:
-                            continue
-                        constraint_fn = _make_winner_shape_constraint(
-                            band,
-                            score_map,
-                            min_in_band=WINDOW_MIN_IN_BAND,
-                            max_overdue=WINDOW_MAX_OVERDUE,
-                            max_rank_allowed=10,
-                            overdue_gap=150,
-                        )
-                        bt_tickets = generate_tickets(
-                            bt_scored,
-                            df,
-                            main_cols,
-                            bt_date,
-                            use_weights=True,
-                            seed_hot_overdue=False,
-                            force_coverage=False,
-                            cohesion_config=main_cfg,
-                            penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                            pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                            penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                            supp_candidates=supp_candidates,
-                            supp_min_hit=SUPP_MIN_HIT,
-                            constraint_fn=constraint_fn,
-                        )
-                        summary = _hit_summary(bt_draw, bt_tickets)
-                        rd_set = set(bt_draw)
-                        max_hit = 0
-                        for t in bt_tickets:
-                            max_hit = max(max_hit, len(set(t).intersection(rd_set)))
-                        cur = (w, max_hit, summary, bt_tickets)
-                        if best is None:
-                            best = cur
-                        else:
-                            _, b_hit, b_sum, _ = best
-                            if (max_hit, summary.get("ge4", 0), summary.get("ge3", 0)) > (
-                                b_hit, b_sum.get("ge4", 0), b_sum.get("ge3", 0)
-                            ):
-                                best = cur
-                        totals = window_totals.setdefault(w, {"ge5": 0, "ge4": 0, "ge3": 0, "max_hit_sum": 0})
-                        totals["ge5"] += int(summary.get("ge5", 0))
-                        totals["ge4"] += int(summary.get("ge4", 0))
-                        totals["ge3"] += int(summary.get("ge3", 0))
-                        totals["max_hit_sum"] += int(max_hit)
-                    if best is None:
-                        bt_tickets = []
-                        summary = {}
-                        max_hit = 0
-                    else:
-                        _, max_hit, summary, bt_tickets = best
-                    results.append((variant, max_hit, summary, bt_tickets))
-                elif variant == "WINNER_SHAPE_POOL_WINDOW":
-                    prior_dates = learn_dates
-                    max_window = len(prior_dates)
-                    best = None
-                    for w in range(WINDOW_MIN_DRAWS, max_window + 1):
-                        window_dates = prior_dates[-w:]
-                        band = _learn_winner_shape_band(df, main_cols, window_dates) if len(window_dates) >= 3 else None
-                        if not band:
-                            continue
-                        band_pool = _band_pool_from_stats(bt_scored, band)
-                        if len(band_pool) < NUMBERS_PER_TICKET:
-                            continue
-                        bt_tickets = generate_tickets(
-                            bt_scored,
-                            df,
-                            main_cols,
-                            bt_date,
-                            use_weights=True,
-                            seed_hot_overdue=False,
-                            force_coverage=False,
-                            cohesion_config={"enabled": False},
-                            penalty_scale=0.0,
-                            pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                            penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                            pool_override=band_pool,
-                            supp_candidates=supp_candidates,
-                            supp_min_hit=SUPP_MIN_HIT,
-                        )
-                        summary = _hit_summary(bt_draw, bt_tickets)
-                        rd_set = set(bt_draw)
-                        max_hit = 0
-                        for t in bt_tickets:
-                            max_hit = max(max_hit, len(set(t).intersection(rd_set)))
-                        cur = (w, max_hit, summary, bt_tickets)
-                        if best is None:
-                            best = cur
-                        else:
-                            _, b_hit, b_sum, _ = best
-                            if (max_hit, summary.get("ge4", 0), summary.get("ge3", 0)) > (
-                                b_hit, b_sum.get("ge4", 0), b_sum.get("ge3", 0)
-                            ):
-                                best = cur
-                        totals = window_totals_pool.setdefault(
-                            w, {"ge5": 0, "ge4": 0, "ge3": 0, "max_hit_sum": 0}
-                        )
-                        totals["ge5"] += int(summary.get("ge5", 0))
-                        totals["ge4"] += int(summary.get("ge4", 0))
-                        totals["ge3"] += int(summary.get("ge3", 0))
-                        totals["max_hit_sum"] += int(max_hit)
-                    if best is None:
-                        bt_tickets = []
-                        summary = {}
-                        max_hit = 0
-                    else:
-                        _, max_hit, summary, bt_tickets = best
-                    results.append((variant, max_hit, summary, bt_tickets))
-                elif variant == "PATTERN_FILTER_WINDOW":
-                    prior_dates = learn_dates
-                    max_window = len(prior_dates)
-                    best = None
-                    for w in range(WINDOW_MIN_DRAWS, max_window + 1):
-                        window_dates = prior_dates[-w:]
-                        pattern = _learn_winner_pattern(df, main_cols, window_dates) if len(window_dates) >= 3 else None
-                        if not pattern:
-                            continue
-                        rng = random.Random(RANDOM_SEED)
-                        bt_tickets = _pattern_filtered_tickets(bt_scored, pattern, NUM_TICKETS, rng)
-                        summary = _hit_summary(bt_draw, bt_tickets)
-                        rd_set = set(bt_draw)
-                        max_hit = 0
-                        for t in bt_tickets:
-                            max_hit = max(max_hit, len(set(t).intersection(rd_set)))
-                        cur = (w, max_hit, summary, bt_tickets)
-                        if best is None:
-                            best = cur
-                        else:
-                            _, b_hit, b_sum, _ = best
-                            if (max_hit, summary.get("ge4", 0), summary.get("ge3", 0)) > (
-                                b_hit, b_sum.get("ge4", 0), b_sum.get("ge3", 0)
-                            ):
-                                best = cur
-                        totals = window_totals_filter.setdefault(
-                            w, {"ge5": 0, "ge4": 0, "ge3": 0, "max_hit_sum": 0}
-                        )
-                        totals["ge5"] += int(summary.get("ge5", 0))
-                        totals["ge4"] += int(summary.get("ge4", 0))
-                        totals["ge3"] += int(summary.get("ge3", 0))
-                        totals["max_hit_sum"] += int(max_hit)
-                    if best is None:
-                        bt_tickets = []
-                        summary = {}
-                        max_hit = 0
-                    else:
-                        _, max_hit, summary, bt_tickets = best
-                    results.append((variant, max_hit, summary, bt_tickets))
-                else:
-                    bt_tickets = _generate_variant_tickets(
-                        variant,
-                        bt_scored,
-                        df,
-                        main_cols,
-                        bt_date,
-                        main_cfg,
-                        tuner_cfg,
-                        supp_candidates,
-                        SUPP_MIN_HIT,
-                        strategy_cfgs,
-                    )
-                    summary = _hit_summary(bt_draw, bt_tickets)
-                    rd_set = set(bt_draw)
-                    max_hit = 0
-                    for t in bt_tickets:
-                        max_hit = max(max_hit, len(set(t).intersection(rd_set)))
-                    results.append((variant, max_hit, summary, bt_tickets))
+                bt_tickets = _generate_variant_tickets(
+                    variant,
+                    bt_scored,
+                    df,
+                    main_cols,
+                    bt_date,
+                    main_cfg,
+                    tuner_cfg,
+                    supp_candidates,
+                    SUPP_MIN_HIT,
+                    strategy_cfgs,
+                )
+                summary = _hit_summary(bt_draw, bt_tickets)
+                rd_set = set(bt_draw)
+                max_hit = 0
+                for t in bt_tickets:
+                    max_hit = max(max_hit, len(set(t).intersection(rd_set)))
+                results.append((variant, max_hit, summary, bt_tickets))
                 summary_rows.append(
                     {
                         "date": bt_date,
@@ -4300,17 +3085,7 @@ if __name__ == "__main__":
             rd_set = set(bt_draw)
             for t in ens_tickets:
                 ens_max_hit = max(ens_max_hit, len(set(t).intersection(rd_set)))
-            results.append(("ENSEMBLE_PORTFOLIO", ens_max_hit, ens_summary, ens_tickets))
-            summary_rows.append(
-                {
-                    "date": bt_date,
-                    "strategy": "ENSEMBLE_PORTFOLIO",
-                    "max_hit": ens_max_hit,
-                    "ge4": ens_summary.get("ge4", 0),
-                    "ge3": ens_summary.get("ge3", 0),
-                    "band_pool": band_pool_len,
-                }
-            )
+
             results.sort(key=lambda r: (r[1], r[2].get("ge4", 0), r[2].get("ge3", 0)), reverse=True)
             print(f"\nStrategy results for {bt_date}:")
             for s_name, max_hit, summary, _ in results:
@@ -4319,51 +3094,7 @@ if __name__ == "__main__":
                 )
             best_name, _, _, bt_tickets = results[0]
             print(f"Selected strategy={best_name} for ticket display.")
-        else:
-            prior_dates = learn_dates
-            max_window = len(prior_dates)
-            results = []
-            for w in range(WINDOW_MIN_DRAWS, max_window + 1):
-                window_dates = prior_dates[-w:]
-                band = _learn_winner_band_stats(df, main_cols, window_dates) if len(window_dates) >= 3 else None
-                if not band:
-                    continue
-                constraint_fn = _make_band_constraint(
-                    band, score_map, WINDOW_MIN_IN_BAND, max_overdue=WINDOW_MAX_OVERDUE
-                )
-                bt_tickets = generate_tickets(
-                    bt_scored,
-                    df,
-                    main_cols,
-                    bt_date,
-                    use_weights=True,
-                    seed_hot_overdue=False,
-                    force_coverage=False,
-                    cohesion_config=main_cfg,
-                    penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                    pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                    penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                    supp_candidates=supp_candidates,
-                    supp_min_hit=SUPP_MIN_HIT,
-                    constraint_fn=constraint_fn,
-                )
-                summary = _hit_summary(bt_draw, bt_tickets)
-                rd_set = set(bt_draw)
-                max_hit = 0
-                for t in bt_tickets:
-                    max_hit = max(max_hit, len(set(t).intersection(rd_set)))
-                results.append((w, max_hit, summary, bt_tickets))
-                totals = window_totals.setdefault(w, {"ge4": 0, "ge3": 0, "max_hit_sum": 0})
-                totals["ge4"] += int(summary.get("ge4", 0))
-                totals["ge3"] += int(summary.get("ge3", 0))
-                totals["max_hit_sum"] += int(max_hit)
-            results.sort(key=lambda r: (r[1], r[2].get("ge4", 0), r[2].get("ge3", 0)), reverse=True)
-            print(f"\nWindow sweep results for {bt_date}:")
-            for w, max_hit, summary, _ in results:
-                print(f"  window={w}: max_hit={max_hit} ge4={summary.get('ge4', 0)} ge3={summary.get('ge3', 0)}")
-            if results:
-                best_w, _, _, bt_tickets = results[0]
-                print(f"Selected window={best_w} for ticket display.")
+
         print(f"\nBacktest Target: {bt_date}")
         _log_winner_candidate_scores(bt_scored, bt_draw, bt_date)
         for i, t in enumerate(bt_tickets, 1):
@@ -4394,6 +3125,7 @@ if __name__ == "__main__":
             key=lambda kv: (kv[1]["ge4"], kv[1]["ge3"], kv[1]["max_hit_sum"]),
             reverse=True,
         )[0][0]
+        # best_variant = "GREEDY_BOOST_40K"
         print(f"\nBest variant by backtest totals: {best_variant}")
     best_window = None
     if window_totals:
@@ -4470,141 +3202,86 @@ if __name__ == "__main__":
     target_score_map = {c.n: c for c in scored}
 
     band_pool = []
-    if ENABLE_WINNER_BAND:
-        target_band = _learn_winner_band_stats(df, main_cols, target_learn_dates) if len(target_learn_dates) >= 3 else None
-        band_pool = _band_pool_with_fallback(scored, target_band) if target_band else []
-        if target_band:
-            print(
-                f"\nLearned winner band from last {len(target_learn_dates)} draws:"
-                f" rank={target_band['rank_min']:.1f}-{target_band['rank_max']:.1f}"
-                f" gap={target_band['gap_min']:.1f}-{target_band['gap_max']:.1f}"
-                f" score={target_band['score_min']:.3f}-{target_band['score_max']:.3f}"
-                f" freq_recent={target_band['freq_recent_min']:.1f}-{target_band['freq_recent_max']:.1f}"
-                f" freq_long={target_band['freq_long_min']:.1f}-{target_band['freq_long_max']:.1f}"
-                f" freq_season={target_band['freq_season_min']:.1f}-{target_band['freq_season_max']:.1f}"
-                f" | band_pool={len(band_pool)}"
-            )
 
-    if PORTFOLIO_MODE:
-        tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
+    selected_variant = best_variant or "BASELINE"
+    print(f"Using target variant: {selected_variant}")
+    if ENFORCE_WINNER_BAND_ONLY:
+        selected_variant = "WINNER_SHAPE_POOL_WINDOW"
+        print("Enforcing winner-band-only prediction.")
+    if selected_variant == "PATTERN_FILTER_WINDOW" and best_window_filter:
+        tickets = []
+        for w in range(best_window_filter, WINDOW_MIN_DRAWS - 1, -1):
+            learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(w)
+            learn_dates = [row["Date"] for _, row in learn_rows.iterrows()]
+            pattern = _learn_winner_pattern(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
+            if not pattern:
+                continue
+            rng = random.Random(RANDOM_SEED)
+            tickets = _pattern_filtered_tickets(scored, pattern, NUM_TICKETS, rng)
+            if tickets:
+                break
+    elif selected_variant == "WINNER_SHAPE_POOL_WINDOW" and best_window_pool:
+        tickets = []
+        for w in range(best_window_pool, WINDOW_MIN_DRAWS - 1, -1):
+            learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(w)
+            learn_dates = [row["Date"] for _, row in learn_rows.iterrows()]
+            band = _learn_winner_band_stats_relaxed(df, main_cols, learn_dates) if len(
+                learn_dates) >= 3 else None
+            if not band:
+                continue
+            band_pool = _band_pool_from_stats(scored, band)
+            if len(band_pool) < NUMBERS_PER_TICKET:
+                continue
+            tickets = generate_tickets(
+                scored,
+                df,
+                main_cols,
+                run_date,
+                use_weights=True,
+                seed_hot_overdue=(tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False),
+                force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
+                cohesion_config={"enabled": False},
+                penalty_scale=0.0,
+                pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
+                penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
+                pool_override=band_pool,
+                supp_candidates=target_supp_candidates,
+                supp_min_hit=SUPP_MIN_HIT,
+            )
+            if tickets:
+                break
+    elif selected_variant == "WINNER_SHAPE_WINDOW" and best_window:
+        learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(best_window)
+        learn_dates = [row["Date"] for _, row in learn_rows.iterrows()]
+        band = _learn_winner_shape_band(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
+        score_map_full = {c.n: c for c in scored}
+        constraint_fn = None
+        if band:
+            constraint_fn = _make_winner_shape_constraint(
+                band,
+                score_map_full,
+                min_in_band=WINDOW_MIN_IN_BAND,
+                max_overdue=WINDOW_MAX_OVERDUE,
+                max_rank_allowed=10,
+                overdue_gap=150,
+            )
+        tickets = generate_tickets(
+            scored,
+            df,
+            main_cols,
+            run_date,
+            use_weights=True,
+            seed_hot_overdue=(tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False),
+            force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
+            cohesion_config=main_cfg,
+            penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
+            pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
+            penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
+            supp_candidates=target_supp_candidates,
+            supp_min_hit=SUPP_MIN_HIT,
+            constraint_fn=constraint_fn,
+        )
     else:
-        if tuner_cfg and tuner_cfg.get("generator") == "portfolio":
-            tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
-        elif tuner_cfg and tuner_cfg.get("generator") == "pair_anchored":
-            tickets = generate_pair_anchored_tickets(scored, df, main_cols, run_date, pair_weight=0.50)
-        elif tuner_cfg and tuner_cfg.get("generator") == "pair_cluster":
-            tickets = generate_pair_cluster_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                pool_config=tuner_cfg.get("pool"),
-                penalty_scale=tuner_cfg.get("penalty_scale"),
-                penalty_config=tuner_cfg.get("penalty_config"),
-                cohesion_config=main_cfg,
-            )
-        elif tuner_cfg and tuner_cfg.get("generator") == "graph_cover":
-            tickets = generate_graph_coverage_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                pool_config=tuner_cfg.get("pool"),
-                penalty_scale=tuner_cfg.get("penalty_scale"),
-                penalty_config=tuner_cfg.get("penalty_config"),
-                cohesion_config=main_cfg,
-            )
-        elif tuner_cfg and tuner_cfg.get("generator") == "adaptive_pool":
-            tickets = generate_adaptive_pool_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                pool_config=tuner_cfg.get("pool"),
-                penalty_scale=tuner_cfg.get("penalty_scale"),
-                penalty_config=tuner_cfg.get("penalty_config"),
-                cohesion_config=main_cfg,
-                force_coverage=tuner_cfg.get("force_coverage", False),
-            )
-        else:
-            selected_variant = best_variant or "BASELINE"
-            print(f"Using target variant: {selected_variant}")
-            if ENFORCE_WINNER_BAND_ONLY:
-                selected_variant = "WINNER_SHAPE_POOL_WINDOW"
-                print("Enforcing winner-band-only prediction.")
-            if selected_variant == "PATTERN_FILTER_WINDOW" and best_window_filter:
-                tickets = []
-                for w in range(best_window_filter, WINDOW_MIN_DRAWS - 1, -1):
-                    learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(w)
-                    learn_dates = [row["Date"] for _, row in learn_rows.iterrows()]
-                    pattern = _learn_winner_pattern(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
-                    if not pattern:
-                        continue
-                    rng = random.Random(RANDOM_SEED)
-                    tickets = _pattern_filtered_tickets(scored, pattern, NUM_TICKETS, rng)
-                    if tickets:
-                        break
-            elif selected_variant == "WINNER_SHAPE_POOL_WINDOW" and best_window_pool:
-                tickets = []
-                for w in range(best_window_pool, WINDOW_MIN_DRAWS - 1, -1):
-                    learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(w)
-                    learn_dates = [row["Date"] for _, row in learn_rows.iterrows()]
-                    band = _learn_winner_band_stats_relaxed(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
-                    if not band:
-                        continue
-                    band_pool = _band_pool_from_stats(scored, band)
-                    if len(band_pool) < NUMBERS_PER_TICKET:
-                        continue
-                    tickets = generate_tickets(
-                        scored,
-                        df,
-                        main_cols,
-                        run_date,
-                        use_weights=True,
-                        seed_hot_overdue=(tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False),
-                        force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
-                        cohesion_config={"enabled": False},
-                        penalty_scale=0.0,
-                        pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                        penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                        pool_override=band_pool,
-                        supp_candidates=target_supp_candidates,
-                        supp_min_hit=SUPP_MIN_HIT,
-                    )
-                    if tickets:
-                        break
-            elif selected_variant == "WINNER_SHAPE_WINDOW" and best_window:
-                learn_rows = df[df["Date"] < t_target].sort_values("Date").tail(best_window)
-                learn_dates = [row["Date"] for _, row in learn_rows.iterrows()]
-                band = _learn_winner_shape_band(df, main_cols, learn_dates) if len(learn_dates) >= 3 else None
-                score_map_full = {c.n: c for c in scored}
-                constraint_fn = None
-                if band:
-                    constraint_fn = _make_winner_shape_constraint(
-                        band,
-                        score_map_full,
-                        min_in_band=WINDOW_MIN_IN_BAND,
-                        max_overdue=WINDOW_MAX_OVERDUE,
-                        max_rank_allowed=10,
-                        overdue_gap=150,
-                    )
-                tickets = generate_tickets(
-                    scored,
-                    df,
-                    main_cols,
-                    run_date,
-                    use_weights=True,
-                    seed_hot_overdue=(tuner_cfg.get("seed_hot_overdue") if tuner_cfg else False),
-                    force_coverage=(tuner_cfg.get("force_coverage") if tuner_cfg else FORCE_COVERAGE),
-                    cohesion_config=main_cfg,
-                    penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                    pool_config=(tuner_cfg.get("pool") if tuner_cfg else None),
-                    penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                    supp_candidates=target_supp_candidates,
-                    supp_min_hit=SUPP_MIN_HIT,
-                    constraint_fn=constraint_fn,
-                )
-            else:
                 tickets = _generate_variant_tickets(
                     selected_variant,
                     scored,
@@ -4617,30 +3294,10 @@ if __name__ == "__main__":
                     SUPP_MIN_HIT,
                     strategy_cfgs,
                 )
-    if target_profile and PROFILE_BAND_TICKETS > 0:
-        band_pool = _build_profile_band_pool(scored, target_profile)
-        if len(band_pool) >= NUMBERS_PER_TICKET + 3:
-            band_take = min(PROFILE_BAND_TICKETS, NUM_TICKETS)
-            band_tickets = generate_tickets(
-                scored,
-                df,
-                main_cols,
-                run_date,
-                use_weights=True,
-                seed_hot_overdue=False,
-                force_coverage=False,
-                cohesion_config=main_cfg,
-                penalty_scale=(tuner_cfg.get("penalty_scale") if tuner_cfg else None),
-                pool_override=band_pool,
-                penalty_config=(tuner_cfg.get("penalty_config") if tuner_cfg else None),
-                supp_candidates=target_supp_candidates,
-                supp_min_hit=SUPP_MIN_HIT,
-            )[:band_take]
-            print(f"Winner-band pool size={len(band_pool)}; injecting {len(band_tickets)} tickets.")
-            tickets = _merge_band_tickets(tickets, band_tickets, target_score_map)
     if target_profile and USE_PROFILE_FILTER:
         strict = [t for t in tickets if _ticket_passes_profile(t, target_score_map, target_profile)]
-        relaxed = [t for t in tickets if _ticket_passes_profile_relaxed(t, target_score_map, target_profile) and t not in strict]
+        relaxed = [t for t in tickets if
+                   _ticket_passes_profile_relaxed(t, target_score_map, target_profile) and t not in strict]
         remainder = [t for t in tickets if t not in strict and t not in relaxed]
         tickets = (strict + relaxed + remainder)[:NUM_TICKETS]
     # pattern filter is only used in backtests; skip for target prediction
