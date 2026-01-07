@@ -106,6 +106,36 @@ BREAKER_BOTTOM_K = 3           # and/or bottom-K of the pool (cold exploration)
 
 BREAKER_BYPASS_DECADE_CHECK = False  # apply breaker AFTER decade checks (recommended)
 
+TOTAL_TICKETS = 20
+
+MODE_SPLIT = {
+    "stack": 8,
+    "structure": 8,
+    "chaos": 4
+}
+
+MODE_PARAMS = {
+    "stack": {
+        "TEMP": 0.38,
+        "BREAKERS": 0,
+        "DECADE_MODE": "hard",
+        "OVERLAP_CAP": 6
+    },
+    "structure": {
+        "TEMP": 0.55,
+        "BREAKERS": 1,
+        "DECADE_MODE": "hard",
+        "OVERLAP_CAP": 4
+    },
+    "chaos": {
+        "TEMP": 0.85,
+        "BREAKERS": 2,
+        "DECADE_MODE": "ignore",
+        "OVERLAP_CAP": 99
+    }
+}
+
+
 # ============================================================
 # INTERNALS
 # ============================================================
@@ -1149,13 +1179,112 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
 
     print("Hit distribution:", dict(sorted(hit_counts.items())))
 
+from collections import Counter
+from itertools import combinations
+
+def extract_pairs_triplets(draws, top_pairs=30, top_triplets=10):
+    pair_cnt = Counter()
+    trip_cnt = Counter()
+
+    for d in draws:
+        for p in combinations(sorted(d), 2):
+            pair_cnt[p] += 1
+        for t in combinations(sorted(d), 3):
+            trip_cnt[t] += 1
+
+    return (
+        set(p for p,_ in pair_cnt.most_common(top_pairs)),
+        set(t for t,_ in trip_cnt.most_common(top_triplets))
+    )
+
+
+def generate_mode_tickets(
+    scored, season_decades, count,
+    temp, breakers, decade_mode,
+    overlap_cap, pairs, triplets
+):
+    rng = random.Random(RANDOM_SEED)
+    pool = scored[:TOP_POOL]
+    items = [c.n for c in pool]
+    min_s = min(c.total_score for c in pool)
+
+    weights = [
+        math.exp((c.total_score - min_s) / temp) + 0.6
+        for c in pool
+    ]
+
+    tickets = []
+    seen = set()
+
+    def valid_structure(t):
+        s = set(t)
+        return any(set(p).issubset(s) for p in pairs) or \
+               any(set(tr).issubset(s) for tr in triplets)
+
+    attempts = 0
+    while len(tickets) < count and attempts < 40000:
+        attempts += 1
+        pick = sorted(_weighted_sample_no_replace(items, weights, NUMBERS_PER_TICKET, rng))
+
+        if tuple(pick) in seen:
+            continue
+
+        # decade control
+        if decade_mode != "ignore":
+            vec = _decade_vector(pick)
+            if not _within_decade_band(vec, season_decades.p25, season_decades.p75, DECADE_MEDIAN_TOL):
+                continue
+
+        # enforce structure
+        if not valid_structure(pick):
+            continue
+
+        # breakers
+        for _ in range(breakers):
+            outlaw = rng.choice(pool[:3] + pool[-3:])
+            pick[rng.randrange(len(pick))] = outlaw.n
+            pick = sorted(set(pick))
+            if len(pick) < NUMBERS_PER_TICKET:
+                continue
+
+        if any(len(set(pick)&set(t)) > overlap_cap for t in tickets):
+            continue
+
+        tickets.append(pick)
+        seen.add(tuple(pick))
+
+    return tickets
+
+def generate_20_ticket_portfolio(scored, season_decades, history_draws):
+    pairs, triplets = extract_pairs_triplets(history_draws)
+
+    final = []
+
+    for mode, cnt in MODE_SPLIT.items():
+        p = MODE_PARAMS[mode]
+        tks = generate_mode_tickets(
+            scored,
+            season_decades,
+            cnt,
+            temp=p["TEMP"],
+            breakers=p["BREAKERS"],
+            decade_mode=p["DECADE_MODE"],
+            overlap_cap=p["OVERLAP_CAP"],
+            pairs=pairs,
+            triplets=triplets
+        )
+        final.extend(tks)
+
+    return final[:TOTAL_TICKETS]
+
+
 
 # ============================================================
 # MAIN
 # ============================================================
 if __name__ == "__main__":
     df, main_cols = _load_csv(CSV_PATH)
-    N = 20
+    N = 10
 
     # IMPORTANT CHOICE:
     # If you want the first N rows AS THEY APPEAR in the CSV (your CSV is latest-first),
@@ -1180,7 +1309,18 @@ if __name__ == "__main__":
                 csv_path=CSV_PATH,
                 debug=DEBUG_PRINT,
             )
-            tickets = generate_tickets(scored, season_decades)
+            # tickets = generate_tickets(scored, season_decades)
+            # Build past_main_numbers: ONLY draws before target_date
+            past_df = df[df["Date"] < row["Date"]].sort_values("Date")
+
+            past_main_numbers = [
+                [int(past_row[c]) for c in main_cols]
+                for _, past_row in past_df.iterrows()
+            ]
+
+            historical_draws = [list(row) for row in past_main_numbers]
+
+            tickets = generate_20_ticket_portfolio(scored, season_decades, historical_draws)
 
             show_ticket_hits(real_draw, tickets)
 
