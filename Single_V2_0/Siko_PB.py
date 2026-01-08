@@ -751,20 +751,22 @@ if __name__ == "__main__":
     # for r in res:
     #     print(r)
 
-    # New year target (debug prints ON)
-    # res2 = predict_powerball(
-    #     "2026-01-01",
-    #     csv_path,
-    #     top_k=10,
-    #     debug=True,
-    #     seasonal_hits_last_years=4
-    # )
-    # print("\nTop candidates for 2026-01-01:")
-    # for r in res2:
-    #     print(r)
+    targate_date = "2026-01-08"
+    res2 = predict_powerball(
+        targate_date,
+        csv_path,
+        top_k=10,
+        debug=True,
+        seasonal_hits_last_years=4
+    )
+    print(f"\nTop candidates for {targate_date}:")
+    for r in res2:
+        print(r)
+
     run_predictions_for_first_n_csv_rows(
         csv_path=csv_path,
         n=10,
         top_k=20,
         debug=False
     )
+
