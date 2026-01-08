@@ -20,7 +20,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    f"siko_pb_logs.log"   # single growing log file
+    f"siko_pb_copylogs.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
@@ -685,6 +685,54 @@ def predict_powerball(
     return scored[:top_k]
 
 
+def run_predictions_for_first_n_csv_rows(
+    csv_path: str,
+    n: int,
+    top_k: int = 5,
+    debug: bool = False,
+):
+    """
+    Uses the FIRST N rows exactly as they appear in the CSV file (no sorting),
+    """
+    raw = pd.read_csv(csv_path)
+
+    if "Draw date" not in raw.columns or "Powerball Number" not in raw.columns:
+        raise ValueError("CSV must contain columns: 'Draw date' and 'Powerball Number'")
+
+    raw = raw.copy()
+    raw["Date"] = raw["Draw date"].apply(_parse_date)
+    raw = raw.dropna(subset=["Date"])
+    raw["PB"] = raw["Powerball Number"].astype(int)
+
+    # FIRST N rows as-is (file order)
+    target_rows = raw.head(n).reset_index(drop=True)
+
+    print(f"CSV rows total: {len(raw)}")
+    print(f"Running FIRST {len(target_rows)} rows AS-IS from CSV (no date sorting)\n")
+    print(f"First target row date: {target_rows.iloc[0]['Date'].date()} | "
+          f"Last target row date: {target_rows.iloc[-1]['Date'].date()}")
+
+    for i, row in target_rows.iterrows():
+        target_date = pd.Timestamp(row["Date"]).strftime("%Y-%m-%d")
+        real_pb = int(row["PB"])
+
+        print("\n" + "=" * 70)
+        print(f"[CSV ROW #{i+1}] TARGET DATE: {target_date} | REAL PB: {real_pb}")
+        print("=" * 70)
+
+        preds = predict_powerball(
+            target_date,
+            csv_path,
+            top_k=top_k,
+            debug=True,
+            seasonal_hits_last_years=4
+        )
+
+        print("Top predictions:")
+        for r in preds:
+            hit = "🎯 HIT" if r.pb == real_pb else ""
+            print(f"  PB {r.pb:>2} | score={r.total_score:>6} {hit}")
+
 # ----------------------------
 # Example usage
 # ----------------------------
@@ -704,13 +752,19 @@ if __name__ == "__main__":
     #     print(r)
 
     # New year target (debug prints ON)
-    res2 = predict_powerball(
-        "2026-01-01",
-        csv_path,
-        top_k=10,
-        debug=True,
-        seasonal_hits_last_years=4
+    # res2 = predict_powerball(
+    #     "2026-01-01",
+    #     csv_path,
+    #     top_k=10,
+    #     debug=True,
+    #     seasonal_hits_last_years=4
+    # )
+    # print("\nTop candidates for 2026-01-01:")
+    # for r in res2:
+    #     print(r)
+    run_predictions_for_first_n_csv_rows(
+        csv_path=csv_path,
+        n=5,
+        top_k=20,
+        debug=False
     )
-    print("\nTop candidates for 2026-01-01:")
-    for r in res2:
-        print(r)
