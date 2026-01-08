@@ -20,7 +20,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    f"siko_pb_copylogs.log"   # single growing log file
+    f"siko_pb_logs.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
@@ -764,7 +764,7 @@ if __name__ == "__main__":
     #     print(r)
     run_predictions_for_first_n_csv_rows(
         csv_path=csv_path,
-        n=5,
+        n=10,
         top_k=20,
         debug=False
     )
