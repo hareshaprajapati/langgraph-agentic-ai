@@ -739,14 +739,14 @@ def score_main_numbers(target_date: str, csv_path: str, debug: bool):
             f"Anchor: {season_profile.anchor_month:02}/{season_profile.anchor_day:02} | "
             f"Samples: years={season_profile.sample_years}, draws={season_profile.sample_draws}"
         )
-        print(
-            f"Ratio band (p25..p75): {season_profile.ratio_low:.3f}..{season_profile.ratio_high:.3f} | "
-            f"ideal={season_profile.ratio_ideal:.3f}"
-        )
-        print(
-            f"Rank band (p25..p75): {season_profile.rank_low}..{season_profile.rank_high} | "
-            f"leader_rate={season_profile.leader_rate:.3f} | allow_leader={allow_leader}"
-        )
+        # print(
+        #     f"Ratio band (p25..p75): {season_profile.ratio_low:.3f}..{season_profile.ratio_high:.3f} | "
+        #     f"ideal={season_profile.ratio_ideal:.3f}"
+        # )
+        # print(
+        #     f"Rank band (p25..p75): {season_profile.rank_low}..{season_profile.rank_high} | "
+        #     f"leader_rate={season_profile.leader_rate:.3f} | allow_leader={allow_leader}"
+        # )
 
         print("\n=== SEASON DECADE PROFILE (YOUR BANDS) ===")
         print(
@@ -758,7 +758,7 @@ def score_main_numbers(target_date: str, csv_path: str, debug: bool):
         print(f"P25 decade mix:    {season_decades.p25}")
         print(f"P75 decade mix:    {season_decades.p75}")
 
-        print("\n=== TOP 35 SCORED NUMBERS ===")
+        print("\n=== SCORED NUMBERS ===")
         for c in scored[:35]:
             print(c)
 
@@ -1255,6 +1255,218 @@ def generate_mode_tickets(
 
     return tickets
 
+from dataclasses import dataclass
+from typing import List, Dict, Tuple
+
+
+# ----- CONFIG (LOCKED DEFAULTS) -----
+BAND_B_LEADER = (1, 5)
+BAND_A_CORE   = (6, 22)
+BAND_C_TAIL   = (23, 27)
+
+
+def _band_of_rank(rank: int,
+                  band_b: Tuple[int, int] = BAND_B_LEADER,
+                  band_a: Tuple[int, int] = BAND_A_CORE,
+                  band_c: Tuple[int, int] = BAND_C_TAIL) -> str:
+    if band_b[0] <= rank <= band_b[1]:
+        return "B_LEADER"
+    if band_a[0] <= rank <= band_a[1]:
+        return "A_CORE"
+    if band_c[0] <= rank <= band_c[1]:
+        return "C_TAIL"
+    return "OTHER"
+
+
+@dataclass
+class DrawBandStats:
+    date: str
+    counts: Dict[str, int]
+    has_leader: bool
+    has_tail: bool
+
+
+def build_winner_rank_score_table_block(
+    target_date: str,
+    real_draw: List[int],
+    scored: List["CandidateScoreMain"],
+    band_b: Tuple[int, int] = BAND_B_LEADER,
+    band_a: Tuple[int, int] = BAND_A_CORE,
+    band_c: Tuple[int, int] = BAND_C_TAIL,
+) -> Tuple[str, DrawBandStats]:
+    """
+    Returns:
+      (1) formatted per-date table block (exact format)
+      (2) per-date band stats for the end summary
+    """
+    # number -> (rank, score) where rank is position in scored list (1-indexed)
+    rank_map: Dict[int, Tuple[int, float]] = {
+        int(c.n): (i, float(c.total_score))
+        for i, c in enumerate(scored, 1)
+    }
+
+    counts = {"A_CORE": 0, "B_LEADER": 0, "C_TAIL": 0, "OTHER": 0}
+
+    lines = []
+    lines.append("=== WINNER RANK+SCORE TABLE (by REAL_DRAW, based on SCORED list) ===")
+    lines.append(f"Target: {target_date} | REAL_DRAW={sorted(real_draw)}")
+    lines.append(f"Bands: B_LEADER={band_b}, A_CORE={band_a}, C_TAIL={band_c}")
+    lines.append("n | rank | score | band")
+    lines.append("--+------+-------+--------")
+
+    for n in sorted(real_draw):
+        if n in rank_map:
+            rnk, sc = rank_map[n]
+        else:
+            rnk, sc = 999, 0.0  # winner not present in scored list
+        band = _band_of_rank(rnk, band_b=band_b, band_a=band_a, band_c=band_c)
+        counts[band] += 1
+        lines.append(f"{n:>2} | {rnk:>4} | {sc:>5.4f} | {band}")
+
+    has_leader = counts["B_LEADER"] > 0
+    has_tail = counts["C_TAIL"] > 0
+
+    return "\n".join(lines), DrawBandStats(
+        date=target_date,
+        counts=counts,
+        has_leader=has_leader,
+        has_tail=has_tail
+    )
+
+
+def collect_winner_tables_and_stats(
+    blocks: List[str],
+    stats: List[DrawBandStats],
+    target_date: str,
+    real_draw: List[int],
+    scored: List["CandidateScoreMain"],
+    band_b: Tuple[int, int] = BAND_B_LEADER,
+    band_a: Tuple[int, int] = BAND_A_CORE,
+    band_c: Tuple[int, int] = BAND_C_TAIL,
+) -> None:
+    """
+    Call inside each backtest iteration AFTER `scored` exists.
+    Stores block+stats; prints nothing.
+    """
+    block, st = build_winner_rank_score_table_block(
+        target_date=target_date,
+        real_draw=real_draw,
+        scored=scored,
+        band_b=band_b,
+        band_a=band_a,
+        band_c=band_c,
+    )
+    blocks.append(block)
+    stats.append(st)
+
+
+def print_all_winner_tables_at_end(blocks: List[str]) -> None:
+    print("\n" + "=" * 78)
+    print("=== ALL WINNER RANK+SCORE TABLES (GROUPED AT END) ===")
+    print("=" * 78)
+    for b in blocks:
+        print("\n" + b)
+        print("-" * 78)
+
+
+def print_band_summary_at_end(
+    stats: List[DrawBandStats],
+    band_b: Tuple[int, int] = BAND_B_LEADER,
+    band_a: Tuple[int, int] = BAND_A_CORE,
+    band_c: Tuple[int, int] = BAND_C_TAIL,
+    print_rank_sample_sorted: bool = False,  # keep False to avoid noise unless you want it
+) -> None:
+    if not stats:
+        print("\n=== BAND SUMMARY (ACROSS BACKTEST DRAWS) ===")
+        print("No backtest draws were collected.")
+        return
+
+    total_counts = {"A_CORE": 0, "B_LEADER": 0, "C_TAIL": 0, "OTHER": 0}
+    leader_draws = 0
+    tail_draws = 0
+    both_draws = 0
+
+    for s in stats:
+        for k in total_counts:
+            total_counts[k] += int(s.counts.get(k, 0))
+        if s.has_leader:
+            leader_draws += 1
+        if s.has_tail:
+            tail_draws += 1
+        if s.has_leader and s.has_tail:
+            both_draws += 1
+
+    n_draws = len(stats)
+    n_winners = sum(total_counts.values())
+
+    print("\n" + "=" * 78)
+    print("=== BAND SUMMARY (ACROSS BACKTEST DRAWS) ===")
+    print(f"Draws analyzed: {n_draws} | Winner numbers total: {n_winners}")
+    print(f"Bands: B_LEADER={band_b}, A_CORE={band_a}, C_TAIL={band_c}\n")
+
+    print("Total winner-number counts by band:")
+    for k, v in total_counts.items():
+        pct = (100.0 * v / n_winners) if n_winners else 0.0
+        print(f"  {k:8s}: {v:>3}  ({pct:>5.1f}%)")
+
+    print("\nPer-draw presence:")
+    print(f"  Draws with >=1 leader-band winner: {leader_draws}/{n_draws} ({100.0*leader_draws/n_draws:.1f}%)")
+    print(f"  Draws with >=1 tail-band winner:   {tail_draws}/{n_draws} ({100.0*tail_draws/n_draws:.1f}%)")
+    print(f"  Draws with BOTH leader+tail:       {both_draws}/{n_draws} ({100.0*both_draws/n_draws:.1f}%)")
+
+from datetime import datetime
+from typing import List, Tuple, Dict
+
+def print_date_by_date_band_counts_ascending(band_stats):
+    """
+    Prints date-by-date band counts in ascending order.
+
+    Expected DrawBandStats shape (as per your traceback):
+      - s.date
+      - s.counts  (dict holding band counts)
+      - s.has_leader (optional)
+      - s.has_tail   (optional)
+
+    bands expected in s.counts:
+      B_LEADER, A_CORE, C_TAIL, OTHER
+    """
+
+    # Sort by date asc (YYYY-MM-DD sorts correctly as string)
+    stats_sorted = sorted(band_stats, key=lambda s: str(s.date))
+
+    def get_count(s, key, default=0):
+        c = getattr(s, "counts", None)
+        if isinstance(c, dict):
+            # try exact key first
+            if key in c:
+                return int(c[key])
+            # fallback: accept lowercase keys
+            k2 = key.lower()
+            if k2 in c:
+                return int(c[k2])
+        return int(default)
+
+    print()
+    print("Date        | B_LEADER | A_CORE | C_TAIL | OTHER")
+    print("------------+----------+--------+--------+------")
+
+    for s in stats_sorted:
+        b = get_count(s, "B_LEADER")
+        a = get_count(s, "A_CORE")
+        t = get_count(s, "C_TAIL")
+        o = get_count(s, "OTHER")
+
+        print(
+            f"{str(s.date):<12}|"
+            f"{b:>10} |"
+            f"{a:>7} |"
+            f"{t:>7} |"
+            f"{o:>6}"
+        )
+
+    print()
+
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -1264,39 +1476,12 @@ if __name__ == "__main__":
 
     df_bt = df.sort_values("Date", ascending=False).head(N)
     results = []
-    TARGET_DATE = "2026-01-08"
-    scored, season_profile, season_decades = score_main_numbers(
-        target_date=TARGET_DATE,
-        csv_path=CSV_PATH,
-        debug=DEBUG_PRINT,
-    )
 
-    tickets = generate_tickets(scored, season_decades)
-    # pb_scored, pb_season_profile = score_powerball_numbers(
-    #     target_date=TARGET_DATE,
-    #     csv_path=CSV_PATH,
-    #     debug=DEBUG_PRINT,
-    # )
-    # top_pb_scored = pb_scored[:POWERBALL_TOP_N]
 
-    print("\n=== FINAL TICKETS (season-aware decades) ===")
-    print(f"Target: {TARGET_DATE} | Tickets: {NUM_TICKETS} | Pool: top{TOP_POOL} | Overlap cap: {OVERLAP_CAP}")
-    print(f"Decade mode: {DECADE_MODE} | tol={DECADE_MEDIAN_TOL}")
-    print(f"Decade bands: {DECADE_BANDS}")
-    if DECADE_TARGET_COUNTS is not None:
-        print(f"Target decade counts (soft): {DECADE_TARGET_COUNTS}")
-    print(f"Season median decades: {season_decades.med}")
-    print(f"Season p25 decades:    {season_decades.p25}")
-    print(f"Season p75 decades:    {season_decades.p75}")
-    # if top_pb_scored:
-    #     print(f"Top {POWERBALL_TOP_N} Powerball numbers (with scores):")
-    #     for c in top_pb_scored:
-    #         print(f"  PB {c.n:02d} score={c.total_score} freq_12mo={c.freq_12mo} rank_12mo={c.rank_12mo} ratio_12mo={c.ratio_12mo}")
 
-    for i, t in enumerate(tickets, 1):
-        vec = _decade_vector(t)
-        print(f"Ticket #{i:02d}: {t}  decades={vec}")
-
+    # backtest
+    winner_blocks = []
+    band_stats = []
     for i, (_, row) in enumerate(df_bt.iterrows(), 1):
         target_date = row["Date"].strftime("%Y-%m-%d")  # format expected by algo
         real_draw = [int(row[c]) for c in main_cols]  # ONLY 7 winning numbers
@@ -1314,6 +1499,14 @@ if __name__ == "__main__":
             )
 
             tickets = generate_tickets(scored, season_decades)
+
+            collect_winner_tables_and_stats(
+                blocks=winner_blocks,
+                stats=band_stats,
+                target_date=target_date,
+                real_draw=real_draw,
+                scored=scored
+            )
 
             # pb_scored, pb_season_profile = score_powerball_numbers(
             #     target_date=target_date,
@@ -1363,9 +1556,51 @@ if __name__ == "__main__":
             results.append({"date": target_date, "error": str(e)})
 
     print("\n" + "=" * 70)
+    print_all_winner_tables_at_end(winner_blocks)
+    print_date_by_date_band_counts_ascending(band_stats)
+
+    print_band_summary_at_end(band_stats)
+    print("\n" + "=" * 70)
+
+
+    print("\n" + "=" * 70)
     print("BACKTEST SUMMARY")
     for r in results:
         print(r)
+    print("\n Current draw prediction " + "=" * 70)
+    # current draw prediction
+    TARGET_DATE = "2026-01-08"
+    scored, season_profile, season_decades = score_main_numbers(
+        target_date=TARGET_DATE,
+        csv_path=CSV_PATH,
+        debug=DEBUG_PRINT,
+    )
+
+    tickets = generate_tickets(scored, season_decades)
+    # pb_scored, pb_season_profile = score_powerball_numbers(
+    #     target_date=TARGET_DATE,
+    #     csv_path=CSV_PATH,
+    #     debug=DEBUG_PRINT,
+    # )
+    # top_pb_scored = pb_scored[:POWERBALL_TOP_N]
+
+    print("\n=== FINAL TICKETS (season-aware decades) ===")
+    print(f"Target: {TARGET_DATE} | Tickets: {NUM_TICKETS} | Pool: top{TOP_POOL} | Overlap cap: {OVERLAP_CAP}")
+    print(f"Decade mode: {DECADE_MODE} | tol={DECADE_MEDIAN_TOL}")
+    print(f"Decade bands: {DECADE_BANDS}")
+    if DECADE_TARGET_COUNTS is not None:
+        print(f"Target decade counts (soft): {DECADE_TARGET_COUNTS}")
+    print(f"Season median decades: {season_decades.med}")
+    print(f"Season p25 decades:    {season_decades.p25}")
+    print(f"Season p75 decades:    {season_decades.p75}")
+
+    for i, t in enumerate(tickets, 1):
+        vec = _decade_vector(t)
+        print(f"Ticket #{i:02d}: {t}  decades={vec}")
+    # if top_pb_scored:
+    #     print(f"Top {POWERBALL_TOP_N} Powerball numbers (with scores):")
+    #     for c in top_pb_scored:
+    #         print(f"  PB {c.n:02d} score={c.total_score} freq_12mo={c.freq_12mo} rank_12mo={c.rank_12mo} ratio_12mo={c.ratio_12mo}")
 
     # scored, season_profile, season_decades = score_main_numbers(
     #     target_date=TARGET_DATE,
