@@ -43,7 +43,8 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-3"
+TARGET_DATE = "2026-1-10"
+# TARGET_DATE = "2026-1-3"
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -1676,7 +1677,8 @@ if __name__ == "__main__":
     show_ticket_hits(real_draw, tickets)
 
     # Backtest: run on the last 5 available draws in the CSV.
-    backtest_rows = df.sort_values("Date").tail(5)
+    N = 5
+    backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
 
     strategies = _strategy_configs()
@@ -1684,7 +1686,7 @@ if __name__ == "__main__":
     winner_blocks = []
     band_stats = []
 
-    print("\n=== BACKTEST (LAST 5 DRAWS) ===")
+    print(f"\n=== BACKTEST (LAST {N} DRAWS) ===")
     for d in bt_dates:
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]

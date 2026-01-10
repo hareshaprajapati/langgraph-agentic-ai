@@ -123,10 +123,10 @@ LEARNING_DRAW_COUNT = 8
 MAX_TICKETS_TO_PRINT = 10
 COHORT_USAGE_CAP_FRAC = 0.40      # e.g. 0.40 to cap cohort repeats
 COHORT_AUTOPRED_EVAL_LAST_N = None  # e.g. 2 or 3 for auto predictor window
-# OVERRIDE_COHORT_HWC = None         # e.g. (0, 2, 4)
-OVERRIDE_COHORT_HWC = (0, 4, 1)          # e.g. (0, 2, 4)
-# OVERRIDE_COHORT_DECADES = None      # e.g. {1:1, 2:2, 3:0, 4:2, 5:1}
-OVERRIDE_COHORT_DECADES = {1:2, 2:1, 3:1, 4:1, 5:0}      # e.g. {1:1, 2:2, 3:0, 4:2, 5:1}
+OVERRIDE_COHORT_HWC = None         # e.g. (0, 2, 4)
+# OVERRIDE_COHORT_HWC = (0, 4, 1)          # e.g. (0, 2, 4)
+OVERRIDE_COHORT_DECADES = None      # e.g. {1:1, 2:2, 3:0, 4:2, 5:1}
+# OVERRIDE_COHORT_DECADES = {1:2, 2:1, 3:1, 4:1, 5:0}      # e.g. {1:1, 2:2, 3:0, 4:2, 5:1}
 # OVERRIDE_RANK_MIN = 5            # e.g. 12
 # OVERRIDE_RANK_MAX = 39            # e.g. 40
 OVERRIDE_RANK_MIN = None           # e.g. 12
@@ -137,7 +137,8 @@ OVERRIDE_P_MAX = None               # e.g. 0.030
 
 if __name__ == "__main__":
 
-    today = datetime.date.today() # - datetime.timedelta(days=1)
+    # today = datetime.date.today() # - datetime.timedelta(days=1)
+    today = datetime.date(2026, 1, 3)  # keep explicit & reproducible
     # today = datetime.date(2025, 12, 27)  # keep explicit & reproducible
     saturday_dates = last_n_saturdays(today, 6)
 
