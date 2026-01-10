@@ -23,7 +23,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "siko_sat_single_logs.log"   # single growing log file
+    "siko_sat_single_5_hit_logs.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
@@ -43,7 +43,6 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-# TARGET_DATE = "2025-12-27"
 TARGET_DATE = "2026-1-3"
 
 NUM_TICKETS = 20
@@ -53,8 +52,11 @@ MAIN_MIN = 1
 MAIN_MAX = 45
 
 LOOKBACK_DAYS = 210
+LOOKBACK_DAYS_12MO = 365
 SEASON_WINDOW_DAYS = 9
 SEASON_LOOKBACK_YEARS = 20
+MIN_SEASON_SAMPLES = 50
+RECENT_DRAWS_PENALTY_N = 6
 
 # Candidate pool
 POOL_SIZE = 30
@@ -69,7 +71,6 @@ COLD_FORCE_COUNT = 2
 FORCE_COVERAGE = False
 RANDOM_SEED = 0
 DEBUG_PRINT = True
-PRINT_ALL_SCORES_WHEN_REAL = True
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -80,6 +81,9 @@ COLD_BOOST = 0.25
 # Overdue gap boost (date-agnostic)
 W_GAP = 0.25
 GAP_CAP = 0.30
+
+# Use Power-style CandidateScoreMain totals for ranking/selection
+USE_POWER_STYLE_SCORE = False
 
 # Ticket constraints (soft)
 OVERLAP_CAP = 5
@@ -112,6 +116,7 @@ DECADE_TARGET_COUNTS = None
 PENALTY_SCALE = 0.65
 MAX_ATTEMPTS = 30000
 
+
 # Cohesion strategy (3+ hit traits)
 COHESION_ENABLED = True
 COHESION_TOP_RANK = 25
@@ -124,24 +129,16 @@ COHESION_W_SPREAD = 0.30
 COHESION_W_PAIR = 0.35
 COHESION_W_RANK_CONT = 0.20
 COHESION_W_CENTRAL = 0.15
-# DEFAULT_STRATEGY_NAME = "RANK_CONT_HEAVY"
 DEFAULT_STRATEGY_NAME = "COHESION_SOFT"
-# DEFAULT_STRATEGY_NAME = "PAIR_HEAVY"
-
-# Sweep mode (strategy backtest comparison)
-SWEEP_MODE = False
-SWEEP_BACKTEST_DRAWS = 12
-VARIANT_SWEEP = False
-VARIANT_BACKTEST_DRAWS = 12
 
 # Portfolio selection (20-ticket optimizer)
 PORTFOLIO_MODE = False
-PORTFOLIO_CANDIDATES = 50000
-COHESIVE_TICKETS = 56
-DIFFUSE_TICKETS = 24
-CORE_SIZE = 20
-CORE_MIN_USE = 14
-CORE_MAX_USE = 26
+PORTFOLIO_CANDIDATES = 20000
+COHESIVE_TICKETS = 14
+DIFFUSE_TICKETS = 6
+CORE_SIZE = 16
+CORE_MIN_USE = 6
+CORE_MAX_USE = 10
 BASE_TICKET_COUNT = 3
 BASE_SWAP_VARIANTS = 6
 SWAP_CANDIDATE_BAND = 20
@@ -170,6 +167,214 @@ class CandidateScore:
     freq_season: int
     rank_recent: int
     gap_days: int
+
+
+# ----- Power-style CandidateScoreMain (logging) -----
+@dataclass
+class SeasonProfile:
+    anchor_month: int
+    anchor_day: int
+    sample_years: int
+    sample_draws: int
+    ratio_low: float
+    ratio_high: float
+    ratio_ideal: float
+    rank_low: int
+    rank_high: int
+    leader_rate: float
+
+
+@dataclass
+class CandidateScoreMain:
+    n: int
+    total_score: float
+    freq_12mo: int
+    rank_12mo: int
+    ratio_12mo: float
+    seasonal_count: int
+    seasonal_success: int
+    penalties: Dict[str, float]
+    components: Dict[str, float]
+
+
+# ----- WINNER BAND SUMMARY (Powerball-style logging) -----
+BAND_B_LEADER = (1, 5)
+BAND_A_CORE = (6, 22)
+BAND_C_TAIL = (23, 27)
+
+
+def _band_of_rank(rank: int,
+                  band_b: Tuple[int, int] = BAND_B_LEADER,
+                  band_a: Tuple[int, int] = BAND_A_CORE,
+                  band_c: Tuple[int, int] = BAND_C_TAIL) -> str:
+    if band_b[0] <= rank <= band_b[1]:
+        return "B_LEADER"
+    if band_a[0] <= rank <= band_a[1]:
+        return "A_CORE"
+    if band_c[0] <= rank <= band_c[1]:
+        return "C_TAIL"
+    return "OTHER"
+
+
+@dataclass
+class DrawBandStats:
+    date: str
+    counts: Dict[str, int]
+    has_leader: bool
+    has_tail: bool
+
+
+def build_winner_rank_score_table_block(
+    target_date: str,
+    real_draw: List[int],
+    scored: List["CandidateScore"],
+    band_b: Tuple[int, int] = BAND_B_LEADER,
+    band_a: Tuple[int, int] = BAND_A_CORE,
+    band_c: Tuple[int, int] = BAND_C_TAIL,
+) -> Tuple[str, DrawBandStats]:
+    # number -> (rank, score) where rank is position in scored list (1-indexed)
+    rank_map: Dict[int, Tuple[int, float]] = {
+        int(c.n): (i, float(c.total_score))
+        for i, c in enumerate(scored, 1)
+    }
+
+    counts = {"A_CORE": 0, "B_LEADER": 0, "C_TAIL": 0, "OTHER": 0}
+
+    lines = []
+    lines.append("=== WINNER RANK+SCORE TABLE (by REAL_DRAW, based on SCORED list) ===")
+    lines.append(f"Target: {target_date} | REAL_DRAW={sorted(real_draw)}")
+    lines.append(f"Bands: B_LEADER={band_b}, A_CORE={band_a}, C_TAIL={band_c}")
+    lines.append("n | rank | score | band")
+    lines.append("--+------+-------+--------")
+
+    for n in sorted(real_draw):
+        if n in rank_map:
+            rnk, sc = rank_map[n]
+        else:
+            rnk, sc = 999, 0.0
+        band = _band_of_rank(rnk, band_b=band_b, band_a=band_a, band_c=band_c)
+        counts[band] += 1
+        lines.append(f"{n:>2} | {rnk:>4} | {sc:>5.4f} | {band}")
+
+    has_leader = counts["B_LEADER"] > 0
+    has_tail = counts["C_TAIL"] > 0
+
+    return "\n".join(lines), DrawBandStats(
+        date=target_date,
+        counts=counts,
+        has_leader=has_leader,
+        has_tail=has_tail
+    )
+
+
+def collect_winner_tables_and_stats(
+    blocks: List[str],
+    stats: List[DrawBandStats],
+    target_date: str,
+    real_draw: List[int],
+    scored: List["CandidateScore"],
+    band_b: Tuple[int, int] = BAND_B_LEADER,
+    band_a: Tuple[int, int] = BAND_A_CORE,
+    band_c: Tuple[int, int] = BAND_C_TAIL,
+) -> None:
+    block, st = build_winner_rank_score_table_block(
+        target_date=target_date,
+        real_draw=real_draw,
+        scored=scored,
+        band_b=band_b,
+        band_a=band_a,
+        band_c=band_c,
+    )
+    blocks.append(block)
+    stats.append(st)
+
+
+def print_all_winner_tables_at_end(blocks: List[str]) -> None:
+    print("\n" + "=" * 78)
+    print("=== ALL WINNER RANK+SCORE TABLES (GROUPED AT END) ===")
+    print("=" * 78)
+    for b in blocks:
+        print("\n" + b)
+        print("-" * 78)
+
+
+def print_band_summary_at_end(
+    stats: List[DrawBandStats],
+    band_b: Tuple[int, int] = BAND_B_LEADER,
+    band_a: Tuple[int, int] = BAND_A_CORE,
+    band_c: Tuple[int, int] = BAND_C_TAIL,
+) -> None:
+    if not stats:
+        print("\n=== BAND SUMMARY (ACROSS BACKTEST DRAWS) ===")
+        print("No backtest draws were collected.")
+        return
+
+    total_counts = {"A_CORE": 0, "B_LEADER": 0, "C_TAIL": 0, "OTHER": 0}
+    leader_draws = 0
+    tail_draws = 0
+    both_draws = 0
+
+    for s in stats:
+        for k in total_counts:
+            total_counts[k] += int(s.counts.get(k, 0))
+        if s.has_leader:
+            leader_draws += 1
+        if s.has_tail:
+            tail_draws += 1
+        if s.has_leader and s.has_tail:
+            both_draws += 1
+
+    n_draws = len(stats)
+    n_winners = sum(total_counts.values())
+
+    print("\n" + "=" * 78)
+    print("=== BAND SUMMARY (ACROSS BACKTEST DRAWS) ===")
+    print(f"Draws analyzed: {n_draws} | Winner numbers total: {n_winners}")
+    print(f"Bands: B_LEADER={band_b}, A_CORE={band_a}, C_TAIL={band_c}\n")
+
+    print("Total winner-number counts by band:")
+    for k, v in total_counts.items():
+        pct = (100.0 * v / n_winners) if n_winners else 0.0
+        print(f"  {k:8s}: {v:>3}  ({pct:>5.1f}%)")
+
+    print("\nPer-draw presence:")
+    print(f"  Draws with >=1 leader-band winner: {leader_draws}/{n_draws} ({100.0*leader_draws/n_draws:.1f}%)")
+    print(f"  Draws with >=1 tail-band winner:   {tail_draws}/{n_draws} ({100.0*tail_draws/n_draws:.1f}%)")
+    print(f"  Draws with BOTH leader+tail:       {both_draws}/{n_draws} ({100.0*both_draws/n_draws:.1f}%)")
+
+
+def print_date_by_date_band_counts_ascending(band_stats: List[DrawBandStats]) -> None:
+    stats_sorted = sorted(band_stats, key=lambda s: str(s.date))
+
+    def get_count(s, key, default=0):
+        c = getattr(s, "counts", None)
+        if isinstance(c, dict):
+            if key in c:
+                return int(c[key])
+            k2 = key.lower()
+            if k2 in c:
+                return int(c[k2])
+        return int(default)
+
+    print()
+    print("Date        | B_LEADER | A_CORE | C_TAIL | OTHER")
+    print("------------+----------+--------+--------+------")
+
+    for s in stats_sorted:
+        b = get_count(s, "B_LEADER")
+        a = get_count(s, "A_CORE")
+        t = get_count(s, "C_TAIL")
+        o = get_count(s, "OTHER")
+
+        print(
+            f"{str(s.date):<12}|"
+            f"{b:>10} |"
+            f"{a:>7} |"
+            f"{t:>7} |"
+            f"{o:>6}"
+        )
+
+    print()
 
 
 def _parse_date(d: str) -> pd.Timestamp:
@@ -252,6 +457,103 @@ def _season_window_dates(anchor: date, window_days: int) -> Tuple[pd.Timestamp, 
     start = pd.Timestamp(anchor) - pd.Timedelta(days=window_days)
     end = pd.Timestamp(anchor) + pd.Timedelta(days=window_days + 1)
     return start, end
+
+
+def _learn_season_profile_mains(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_ts: pd.Timestamp,
+    lookback_days: int,
+    season_window_days: int,
+    season_lookback_years: int,
+    min_samples: int,
+) -> SeasonProfile:
+    target_d = target_ts.date()
+    start_year = target_d.year - season_lookback_years
+    end_year = target_d.year - 1
+
+    ratios, ranks, leader_flags = [], [], []
+    seen_years = set()
+    draw_count = 0
+
+    for y in range(start_year, end_year + 1):
+        anchor = _anchor_for_year(target_d, y)
+        win_start, win_end = _season_window_dates(anchor, season_window_days)
+        near = df[(df["Date"] >= win_start) & (df["Date"] < win_end)]
+        if near.empty:
+            continue
+        seen_years.add(y)
+
+        for _, row in near.iterrows():
+            d = row["Date"]
+            mains = [int(row[c]) for c in main_cols]
+
+            hist_train = df[df["Date"] < d]
+            hist_start = d - pd.Timedelta(days=lookback_days)
+            hist_counts = _counts_mains_in_window(hist_train, main_cols, hist_start, d)
+            if hist_counts.empty:
+                continue
+            hist_max = int(hist_counts.max())
+            if hist_max <= 0:
+                continue
+            hist_ranks = _rank_from_counts(hist_counts)
+
+            for n in mains:
+                freq = int(hist_counts.get(n, 0))
+                rnk = int(hist_ranks.get(n, 999))
+                ratio = (freq / hist_max) if hist_max > 0 else 0.0
+                ratios.append(ratio)
+                ranks.append(rnk)
+                leader_flags.append(1 if rnk == 1 else 0)
+
+            draw_count += 1
+
+    if len(ratios) < min_samples:
+        return SeasonProfile(
+            anchor_month=target_d.month,
+            anchor_day=target_d.day,
+            sample_years=len(seen_years),
+            sample_draws=draw_count,
+            ratio_low=0.40,
+            ratio_high=0.80,
+            ratio_ideal=0.55,
+            rank_low=2,
+            rank_high=8,
+            leader_rate=float(sum(leader_flags) / len(leader_flags)) if leader_flags else 0.0,
+        )
+
+    s_ratios = pd.Series(ratios)
+    s_ranks = pd.Series(ranks)
+
+    ratio_p25 = float(s_ratios.quantile(0.25))
+    ratio_p75 = float(s_ratios.quantile(0.75))
+    ratio_med = float(s_ratios.median())
+
+    rank_p25 = float(s_ranks.quantile(0.25))
+    rank_p75 = float(s_ranks.quantile(0.75))
+
+    learned_ratio_low = max(0.0, min(1.0, ratio_p25))
+    learned_ratio_high = max(0.0, min(1.0, ratio_p75))
+    if learned_ratio_high < learned_ratio_low:
+        learned_ratio_low, learned_ratio_high = learned_ratio_high, learned_ratio_low
+
+    learned_rank_low = max(1, int(round(rank_p25)))
+    learned_rank_high = max(learned_rank_low, int(round(rank_p75)))
+
+    leader_rate = float(sum(leader_flags) / len(leader_flags)) if leader_flags else 0.0
+
+    return SeasonProfile(
+        anchor_month=target_d.month,
+        anchor_day=target_d.day,
+        sample_years=len(seen_years),
+        sample_draws=draw_count,
+        ratio_low=learned_ratio_low,
+        ratio_high=learned_ratio_high,
+        ratio_ideal=ratio_med,
+        rank_low=learned_rank_low,
+        rank_high=learned_rank_high,
+        leader_rate=leader_rate,
+    )
 
 
 DECADE_IDS = [d[0] for d in DECADE_BANDS]
@@ -467,13 +769,7 @@ def _cohesion_score(
 # Scoring + ticketing
 # ============================================================
 
-def score_numbers(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    debug: bool,
-    show_all: bool = False,
-) -> List[CandidateScore]:
+def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debug: bool) -> List[CandidateScore]:
     t = pd.Timestamp(target_date)
     if pd.isna(t):
         raise ValueError("TARGET_DATE must be parseable (YYYY-MM-DD)")
@@ -551,17 +847,162 @@ def score_numbers(
 
     scored.sort(key=lambda x: x.total_score, reverse=True)
 
+    scored_main = compute_candidate_score_main(df, main_cols, target_date)
+    if USE_POWER_STYLE_SCORE and scored_main:
+        power_score_map = {c.n: float(c.total_score) for c in scored_main}
+        for c in scored:
+            if c.n in power_score_map:
+                c.total_score = round(power_score_map[c.n], 6)
+        scored.sort(key=lambda x: x.total_score, reverse=True)
+
+    if scored_main:
+        main_map = {c.n: c for c in scored_main}
+        scored_main = [main_map[n.n] for n in scored if n.n in main_map]
+
     if debug:
-        if show_all:
-            print("\n=== ALL SCORED NUMBERS ===")
-            for c in scored:
-                print(c)
-        else:
-            print("\n=== TOP 20 SCORED NUMBERS ===")
-            for c in scored[:20]:
+        if scored_main:
+            print("\n=== CANDIDATE SCORE MAIN (POWER-STYLE) ===")
+            for c in scored_main[:45]:
                 print(c)
 
     return scored
+
+
+def compute_candidate_score_main(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+) -> List[CandidateScoreMain]:
+    t = pd.Timestamp(target_date)
+    if pd.isna(t):
+        raise ValueError("TARGET_DATE must be parseable (YYYY-MM-DD)")
+
+    train = df[df["Date"] < t].copy()
+    if train.empty:
+        return []
+
+    season_profile = _learn_season_profile_mains(
+        df=df,
+        main_cols=main_cols,
+        target_ts=t,
+        lookback_days=LOOKBACK_DAYS_12MO,
+        season_window_days=SEASON_WINDOW_DAYS,
+        season_lookback_years=SEASON_LOOKBACK_YEARS,
+        min_samples=MIN_SEASON_SAMPLES,
+    )
+    allow_leader = season_profile.leader_rate >= 0.20
+
+    recent_start = t - pd.Timedelta(days=LOOKBACK_DAYS_12MO)
+    recent_counts = _counts_mains_in_window(train, main_cols, recent_start, t)
+    maxfreq = int(recent_counts.max()) if not recent_counts.empty else 0
+    ranks = _rank_from_counts(recent_counts) if maxfreq > 0 else {}
+
+    last_n_draws = train.sort_values("Date").tail(RECENT_DRAWS_PENALTY_N)
+    last_n_counts = _explode_mains(last_n_draws, main_cols).value_counts()
+
+    target_dt = t.date()
+    start_year = target_dt.year - SEASON_LOOKBACK_YEARS
+    end_year = target_dt.year - 1
+
+    seasonal_counts = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    seasonal_success = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+
+    for y in range(start_year, end_year + 1):
+        anchor = _anchor_for_year(target_dt, y)
+        win_start, win_end = _season_window_dates(anchor, SEASON_WINDOW_DAYS)
+        near = df[(df["Date"] >= win_start) & (df["Date"] < win_end)]
+        if near.empty:
+            continue
+
+        for _, row in near.iterrows():
+            d = row["Date"]
+            mains = [int(row[c]) for c in main_cols]
+
+            for n in mains:
+                if MAIN_MIN <= n <= MAIN_MAX:
+                    seasonal_counts[n] += 1
+
+            hist_train = df[df["Date"] < d]
+            hist_start = d - pd.Timedelta(days=LOOKBACK_DAYS_12MO)
+            hist_counts = _counts_mains_in_window(hist_train, main_cols, hist_start, d)
+            if hist_counts.empty:
+                continue
+            hist_max = int(hist_counts.max())
+            if hist_max <= 0:
+                continue
+            hist_ranks = _rank_from_counts(hist_counts)
+
+            for n in mains:
+                if not (MAIN_MIN <= n <= MAIN_MAX):
+                    continue
+                freq = int(hist_counts.get(n, 0))
+                rnk = int(hist_ranks.get(n, 999))
+                ratio = (freq / hist_max) if hist_max > 0 else 0.0
+                if (
+                    (season_profile.rank_low <= rnk <= season_profile.rank_high)
+                    and (season_profile.ratio_low <= ratio <= season_profile.ratio_high)
+                    and (freq >= 2)
+                    and (allow_leader or rnk != 1)
+                ):
+                    seasonal_success[n] += 1
+
+    scored: List[CandidateScoreMain] = []
+    for n in range(MAIN_MIN, MAIN_MAX + 1):
+        freq = int(recent_counts.get(n, 0))
+        rank = int(ranks.get(n, 999))
+        ratio = (freq / maxfreq) if maxfreq > 0 else 0.0
+
+        components: Dict[str, float] = {}
+        penalties: Dict[str, float] = {}
+
+        if (rank == 1) and (not allow_leader):
+            penalties["leader_penalty"] = 2.0
+        elif season_profile.rank_low <= rank <= season_profile.rank_high:
+            width = max(1, (season_profile.rank_high - season_profile.rank_low))
+            components["rank_bonus"] = 2.0 - (0.75 * (rank - season_profile.rank_low) / width)
+        elif (season_profile.rank_high + 1) <= rank <= (season_profile.rank_high + 5):
+            components["rank_bonus"] = 0.6
+        else:
+            components["rank_bonus"] = 0.0
+
+        if ratio != 0.0:
+            components["ratio_bonus"] = max(0.0, 1.5 - abs(ratio - season_profile.ratio_ideal) * 4.0)
+        else:
+            components["ratio_bonus"] = 0.0
+
+        if freq <= 1:
+            penalties["cold_penalty"] = 1.5
+        elif freq == 2:
+            penalties["low_freq_penalty"] = 0.5
+
+        recent_hits = int(last_n_counts.get(n, 0))
+        if recent_hits > 0:
+            penalties["recent_repeat_penalty"] = 0.20 * recent_hits
+
+        season_ct = int(seasonal_counts.get(n, 0))
+        season_succ = int(seasonal_success.get(n, 0))
+        components["seasonal_count_bonus"] = min(1.2, 0.20 * season_ct)
+        components["seasonal_success_bonus"] = min(1.8, 0.45 * season_succ)
+
+        total = sum(components.values()) - sum(penalties.values())
+        scored.append(
+            CandidateScoreMain(
+                n=n,
+                total_score=round(total, 4),
+                freq_12mo=freq,
+                rank_12mo=rank,
+                ratio_12mo=round(ratio, 3),
+                seasonal_count=season_ct,
+                seasonal_success=season_succ,
+                penalties=penalties,
+                components=components,
+            )
+        )
+
+    scored.sort(key=lambda x: x.total_score, reverse=True)
+    return scored
+
+
 
 
 def _history_distributions(df: pd.DataFrame, main_cols: List[str], target_date: str):
@@ -678,6 +1119,7 @@ def generate_tickets(
     overlap_cap_override: int = None,
     global_max_override: int = None,
     cohesion_config: Dict[str, object] = None,
+    ticket_count: int = None,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -728,13 +1170,15 @@ def generate_tickets(
             },
         }
 
+    if ticket_count is None:
+        ticket_count = NUM_TICKETS
     tickets: List[List[int]] = []
     global_use = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
     overlap_cap = OVERLAP_CAP if overlap_cap_override is None else int(overlap_cap_override)
     global_max = GLOBAL_MAX_USES if global_max_override is None else int(global_max_override)
 
     attempts = 0
-    while len(tickets) < NUM_TICKETS and attempts < MAX_ATTEMPTS:
+    while len(tickets) < ticket_count and attempts < MAX_ATTEMPTS:
         attempts += 1
 
         if fixed_seed:
@@ -841,7 +1285,7 @@ def generate_tickets(
         for n in pick:
             global_use[n] += 1
 
-    print(f"Generated {len(tickets)}/{NUM_TICKETS} tickets in {attempts} attempts")
+    print(f"Generated {len(tickets)}/{ticket_count} tickets in {attempts} attempts")
     # if len(tickets) < NUM_TICKETS:
     #     raise RuntimeError("Could not generate enough tickets. Increase POOL_SIZE or relax constraints.")
 
@@ -891,8 +1335,6 @@ def _hit_summary(real_draw: List[int], tickets: List[List[int]]) -> Dict[str, in
         total_hits += hit_n
     return {
         "ge3": sum(counts[h] for h in counts if h >= 3),
-        "ge4": sum(counts[h] for h in counts if h >= 4),
-        "ge5": sum(counts[h] for h in counts if h >= 5),
         "ge2": sum(counts[h] for h in counts if h >= 2),
         "total_hits": total_hits,
     }
@@ -904,18 +1346,14 @@ def _evaluate_strategy(
     bt_dates: List[pd.Timestamp],
     strategy_name: str,
     cohesion_config: Dict[str, object],
-    debug: bool = False,
 ) -> Dict[str, object]:
     weeks_with_5 = 0
-    weeks_with_4 = 0
     ge3_total = 0
-    ge4_total = 0
-    ge5_total = 0
     for d in bt_dates:
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]
         bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, debug)
+        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
         bt_tickets = generate_tickets(
             bt_scored,
             df,
@@ -928,19 +1366,12 @@ def _evaluate_strategy(
         )
         summary = _hit_summary(bt_draw, bt_tickets)
         ge3_total += summary.get("ge3", 0)
-        ge4_total += summary.get("ge4", 0)
-        ge5_total += summary.get("ge5", 0)
-        if summary.get("ge4", 0) > 0:
-            weeks_with_4 += 1
-        if summary.get("ge5", 0) > 0:
+        if any(len(set(t).intersection(set(bt_draw))) >= 5 for t in bt_tickets):
             weeks_with_5 += 1
     return {
         "name": strategy_name,
         "hits5": weeks_with_5,
         "ge3_total": ge3_total,
-        "ge4_total": ge4_total,
-        "ge5_total": ge5_total,
-        "weeks_with_4": weeks_with_4,
     }
 
 
@@ -967,62 +1398,12 @@ def _strategy_configs() -> List[Dict[str, object]]:
             },
         },
         {
-            "name": "SOFT_PAIR_PLUS",
-            "cohesion": {
-                "enabled": True,
-                "accept_floor": 0.70,
-                "accept_span": 0.60,
-                "min_score": None,
-                "weights": {"spread": 0.25, "pair": 0.40, "rank_cont": 0.20, "central": 0.10, "rank_mass": 0.05},
-            },
-        },
-        {
-            "name": "SOFT_RANK_PLUS",
-            "cohesion": {
-                "enabled": True,
-                "accept_floor": 0.70,
-                "accept_span": 0.60,
-                "min_score": None,
-                "weights": {"spread": 0.30, "pair": 0.33, "rank_cont": 0.25, "central": 0.07, "rank_mass": 0.05},
-            },
-        },
-        {
-            "name": "SOFT_SPREAD_PLUS",
-            "cohesion": {
-                "enabled": True,
-                "accept_floor": 0.70,
-                "accept_span": 0.60,
-                "min_score": None,
-                "weights": {"spread": 0.35, "pair": 0.32, "rank_cont": 0.18, "central": 0.10, "rank_mass": 0.05},
-            },
-        },
-        {
-            "name": "SOFT_CENTRAL_PLUS",
-            "cohesion": {
-                "enabled": True,
-                "accept_floor": 0.70,
-                "accept_span": 0.60,
-                "min_score": None,
-                "weights": {"spread": 0.28, "pair": 0.33, "rank_cont": 0.19, "central": 0.15, "rank_mass": 0.05},
-            },
-        },
-        {
-            "name": "SOFT_BALANCED",
-            "cohesion": {
-                "enabled": True,
-                "accept_floor": 0.70,
-                "accept_span": 0.60,
-                "min_score": None,
-                "weights": {"spread": 0.29, "pair": 0.34, "rank_cont": 0.21, "central": 0.11, "rank_mass": 0.05},
-            },
-        },
-        {
             "name": "PAIR_HEAVY",
             "cohesion": {
                 "enabled": True,
-                "accept_floor": 0.72,
-                "accept_span": 0.60,
-                "min_score": 0.55,
+                "accept_floor": 0.65,
+                "accept_span": 0.70,
+                "min_score": None,
                 "weights": {"spread": 0.20, "pair": 0.50, "rank_cont": 0.15, "central": 0.10, "rank_mass": 0.05},
             },
         },
@@ -1078,49 +1459,6 @@ def _generate_candidate_pool(
     while len(candidates) < count and attempts < max_attempts:
         attempts += 1
         pick = sorted(_weighted_sample_no_replace(pool, weights, NUMBERS_PER_TICKET, rng))
-        key = tuple(pick)
-        if key in seen:
-            continue
-        seen.add(key)
-        candidates.append(pick)
-    return candidates
-
-
-def _top_pairs(pair_counts: Dict[Tuple[int, int], int], top_k: int) -> List[Tuple[int, int]]:
-    if not pair_counts:
-        return []
-    return [p for p, _ in sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[:top_k]]
-
-
-def _pair_anchored_candidates(
-    scored: List[CandidateScore],
-    pair_counts: Dict[Tuple[int, int], int],
-    rng: random.Random,
-    count: int,
-) -> List[List[int]]:
-    pool, weights = _build_sampling_pool(scored, include_cold=False)
-    top_pairs = _top_pairs(pair_counts, top_k=min(60, len(pair_counts)))
-    candidates: List[List[int]] = []
-    seen = set()
-
-    if not top_pairs:
-        return _generate_candidate_pool(scored, count, rng, include_cold=False)
-
-    attempts = 0
-    max_attempts = max(count * 10, 5000)
-    while len(candidates) < count and attempts < max_attempts:
-        attempts += 1
-        pair = rng.choice(top_pairs)
-        base = list(pair)
-        remaining_k = NUMBERS_PER_TICKET - len(base)
-        remaining_items = [n for n in pool if n not in base]
-        remaining_weights = [w for n, w in zip(pool, weights) if n not in base]
-        if remaining_k <= 0 or not remaining_items:
-            continue
-        rest = _weighted_sample_no_replace(remaining_items, remaining_weights, remaining_k, rng)
-        pick = sorted(dict.fromkeys(base + rest))
-        if len(pick) != NUMBERS_PER_TICKET:
-            continue
         key = tuple(pick)
         if key in seen:
             continue
@@ -1269,74 +1607,6 @@ def generate_portfolio_tickets(
     return tickets[:NUM_TICKETS]
 
 
-def generate_pair_anchored_tickets(
-    scored: List[CandidateScore],
-    df: pd.DataFrame,
-    main_cols: List[str],
-    target_date: str,
-    pair_weight: float = 0.45,
-) -> List[List[int]]:
-    rng = random.Random(RANDOM_SEED)
-    train = df[df["Date"] < pd.Timestamp(target_date)]
-    score_map = {c.n: c.total_score for c in scored}
-    rank_map = {c.n: c.rank_recent for c in scored}
-    pair_counts = _build_pair_counts(train, main_cols)
-    pair_base = _percentile(list(pair_counts.values()), COHESION_PAIR_BASE_PCTL) if pair_counts else 0
-    core_numbers = _build_core_numbers(scored, CORE_SIZE)
-
-    candidates = _pair_anchored_candidates(scored, pair_counts, rng, PORTFOLIO_CANDIDATES)
-    weights = {"spread": 0.25, "pair": pair_weight, "rank_cont": 0.20, "central": 0.10, "rank_mass": 0.05}
-    scored_candidates: List[Tuple[List[int], float]] = []
-    for t in candidates:
-        q = _ticket_quality(
-            t, score_map, rank_map, pair_counts, pair_base,
-            COHESION_TOP_RANK, STRICT_MAX_SPREAD, STRICT_MAX_GAP, 0, weights
-        )
-        if q >= 0.0:
-            scored_candidates.append((t, q))
-    scored_candidates.sort(key=lambda x: x[1], reverse=True)
-    selected = _select_portfolio(
-        scored_candidates, NUM_TICKETS, core_numbers, COHESIVE_DIVERSITY_PENALTY, 0.08
-    )
-    return selected[:NUM_TICKETS]
-
-
-def _evaluate_variant(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    bt_dates: List[pd.Timestamp],
-    variant_name: str,
-    variant_fn,
-) -> Dict[str, object]:
-    weeks_with_5 = 0
-    weeks_with_4 = 0
-    ge3_total = 0
-    ge4_total = 0
-    ge5_total = 0
-    for d in bt_dates:
-        bt_date = d.strftime("%Y-%m-%d")
-        row = df[df["Date"] == d].iloc[0]
-        bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, debug=False)
-        bt_tickets = variant_fn(bt_scored, df, main_cols, bt_date)
-        summary = _hit_summary(bt_draw, bt_tickets)
-        ge3_total += summary.get("ge3", 0)
-        ge4_total += summary.get("ge4", 0)
-        ge5_total += summary.get("ge5", 0)
-        if summary.get("ge4", 0) > 0:
-            weeks_with_4 += 1
-        if summary.get("ge5", 0) > 0:
-            weeks_with_5 += 1
-    return {
-        "name": variant_name,
-        "hits5": weeks_with_5,
-        "ge3_total": ge3_total,
-        "ge4_total": ge4_total,
-        "ge5_total": ge5_total,
-        "weeks_with_4": weeks_with_4,
-    }
-
-
 # ============================================================
 # MAIN
 # ============================================================
@@ -1348,66 +1618,6 @@ if __name__ == "__main__":
     if pd.isna(t_target):
         raise ValueError("TARGET_DATE must be parseable (YYYY-MM-DD)")
     df_target = df[df["Date"] == t_target]
-
-    if SWEEP_MODE:
-        backtest_rows = df.sort_values("Date").tail(SWEEP_BACKTEST_DRAWS)
-        bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
-        print(f"\n=== SWEEP (LAST {len(bt_dates)} DRAWS) ===")
-        for s in _strategy_configs():
-            result = _evaluate_strategy(
-                df,
-                main_cols,
-                bt_dates,
-                s["name"],
-                s["cohesion"],
-                debug=False,
-            )
-            print(
-                f"{result['name']}:",
-                f"weeks_with_4={result['weeks_with_4']}",
-                f"weeks_with_5={result['hits5']}",
-                f"ge3_total={result['ge3_total']}",
-                f"ge4_total={result['ge4_total']}",
-                f"ge5_total={result['ge5_total']}",
-            )
-        raise SystemExit
-
-    if VARIANT_SWEEP:
-        backtest_rows = df.sort_values("Date").tail(VARIANT_BACKTEST_DRAWS)
-        bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
-        print(f"\n=== VARIANT SWEEP (LAST {len(bt_dates)} DRAWS) ===")
-        strategies = _strategy_configs()
-        cohesion_soft = next((s["cohesion"] for s in strategies if s["name"] == "COHESION_SOFT"), None)
-        pair_heavy = next((s["cohesion"] for s in strategies if s["name"] == "PAIR_HEAVY"), None)
-        variants = [
-            ("GEN_BASELINE", lambda scored, dff, cols, d: generate_tickets(
-                scored, dff, cols, d, use_weights=True, seed_hot_overdue=False,
-                force_coverage=FORCE_COVERAGE, cohesion_config=None
-            )),
-            ("GEN_COHESION_SOFT", lambda scored, dff, cols, d: generate_tickets(
-                scored, dff, cols, d, use_weights=True, seed_hot_overdue=False,
-                force_coverage=FORCE_COVERAGE, cohesion_config=cohesion_soft
-            )),
-            ("GEN_PAIR_HEAVY", lambda scored, dff, cols, d: generate_tickets(
-                scored, dff, cols, d, use_weights=True, seed_hot_overdue=False,
-                force_coverage=FORCE_COVERAGE, cohesion_config=pair_heavy
-            )),
-            ("PORTFOLIO_DEFAULT", generate_portfolio_tickets),
-            ("PAIR_ANCHORED", lambda scored, dff, cols, d: generate_pair_anchored_tickets(
-                scored, dff, cols, d, pair_weight=0.50
-            )),
-        ]
-        for name, fn in variants:
-            result = _evaluate_variant(df, main_cols, bt_dates, name, fn)
-            print(
-                f"{result['name']}:",
-                f"weeks_with_4={result['weeks_with_4']}",
-                f"weeks_with_5={result['hits5']}",
-                f"ge3_total={result['ge3_total']}",
-                f"ge4_total={result['ge4_total']}",
-                f"ge5_total={result['ge5_total']}",
-            )
-        raise SystemExit
 
     def _build_consensus_seed(scored_list: List[CandidateScore]) -> List[int]:
         if not scored_list:
@@ -1428,40 +1638,6 @@ if __name__ == "__main__":
         return seed[:4]
 
     run_date = t_target.strftime("%Y-%m-%d")
-
-    # Backtest: run on the last 5 available draws excluding TARGET_DATE (oldest to newest).
-    backtest_rows = df[df["Date"] != t_target].sort_values("Date").tail(5)
-    bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
-
-    strategies = _strategy_configs()
-    main_cfg = next((s["cohesion"] for s in strategies if s["name"] == DEFAULT_STRATEGY_NAME), None)
-    if main_cfg is None:
-        raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
-
-    print("\n=== BACKTEST (LAST 5 DRAWS) ===")
-    for d in bt_dates:
-        bt_date = d.strftime("%Y-%m-%d")
-        row = df[df["Date"] == d].iloc[0]
-        bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(
-            df,
-            main_cols,
-            bt_date,
-            DEBUG_PRINT,
-            show_all=PRINT_ALL_SCORES_WHEN_REAL,
-        )
-        if PORTFOLIO_MODE:
-            bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
-        else:
-            bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
-                                          use_weights=True, seed_hot_overdue=False,
-                                          force_coverage=FORCE_COVERAGE, cohesion_config=main_cfg)
-        print(f"\nBacktest Target: {bt_date}")
-        for i, t in enumerate(bt_tickets, 1):
-            vec = _decade_vector(t)
-            print(f"Ticket #{i:02d}: {t}  decades={vec}")
-        show_ticket_hits(bt_draw, bt_tickets)
-
     if not df_target.empty:
         row = df_target.iloc[0]
         real_draw = [int(row[c]) for c in main_cols]
@@ -1472,13 +1648,12 @@ if __name__ == "__main__":
         else:
             print("TARGET_DATE not found in CSV; generating prediction without hit summary.")
 
-    scored = score_numbers(
-        df,
-        main_cols,
-        run_date,
-        DEBUG_PRINT,
-        show_all=(not df_target.empty) and PRINT_ALL_SCORES_WHEN_REAL,
-    )
+    scored = score_numbers(df, main_cols, run_date, DEBUG_PRINT)
+
+    strategies = _strategy_configs()
+    main_cfg = next((s["cohesion"] for s in strategies if s["name"] == DEFAULT_STRATEGY_NAME), None)
+    if main_cfg is None:
+        raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
 
     if PORTFOLIO_MODE:
         tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
@@ -1499,3 +1674,42 @@ if __name__ == "__main__":
         print(f"Ticket #{i:02d}: {t}  decades={vec}")
 
     show_ticket_hits(real_draw, tickets)
+
+    # Backtest: run on the last 5 available draws in the CSV.
+    backtest_rows = df.sort_values("Date").tail(5)
+    bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
+
+    strategies = _strategy_configs()
+
+    winner_blocks = []
+    band_stats = []
+
+    print("\n=== BACKTEST (LAST 5 DRAWS) ===")
+    for d in bt_dates:
+        bt_date = d.strftime("%Y-%m-%d")
+        row = df[df["Date"] == d].iloc[0]
+        bt_draw = [int(row[c]) for c in main_cols]
+        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
+        if PORTFOLIO_MODE:
+            bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
+        else:
+            bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
+                                          use_weights=True, seed_hot_overdue=False,
+                                          force_coverage=FORCE_COVERAGE, cohesion_config=main_cfg)
+        print(f"\nTarget: {bt_date}")
+        for i, t in enumerate(bt_tickets, 1):
+            vec = _decade_vector(t)
+            print(f"Ticket #{i:02d}: {t}  decades={vec}")
+        show_ticket_hits(bt_draw, bt_tickets)
+
+        collect_winner_tables_and_stats(
+            blocks=winner_blocks,
+            stats=band_stats,
+            target_date=bt_date,
+            real_draw=bt_draw,
+            scored=bt_scored
+        )
+
+    print_all_winner_tables_at_end(winner_blocks)
+    print_date_by_date_band_counts_ascending(band_stats)
+    print_band_summary_at_end(band_stats)
