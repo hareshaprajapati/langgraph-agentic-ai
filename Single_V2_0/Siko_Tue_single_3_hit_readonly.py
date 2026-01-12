@@ -24,7 +24,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "siko_Tue_single_3_hits_logs.log"   # single growing log file
+    "siko_Tue_single_3_hits_readonly_logs.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")

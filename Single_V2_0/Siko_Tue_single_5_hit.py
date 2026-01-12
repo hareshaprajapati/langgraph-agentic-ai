@@ -23,7 +23,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "siko_sat_single_5_hit_logs.log"   # single growing log file
+    "siko_tue_single_5_hit_logs.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
@@ -37,24 +37,31 @@ from datetime import date
 from typing import List, Dict, Tuple
 import random
 import math
+import io
+import time
+import contextlib
 
 # ============================================================
 # USER CONFIG (edit only these)
 # ============================================================
 
-CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-10"
+CSV_PATH = "Oz_Lotto_transformed.csv"
+TARGET_DATE = "2026-01-06"
 # TARGET_DATE = "2026-1-3"
+# Optional: verify against a known real draw (set [] to disable)
+REAL_DRAW = [45, 30, 17, 13, 14, 19, 2]
+# If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
+USE_REAL_DRAW_FALLBACK = True
 
 NUM_TICKETS = 20
-NUMBERS_PER_TICKET = 6
+NUMBERS_PER_TICKET = 7
 
 MAIN_MIN = 1
-MAIN_MAX = 45
+MAIN_MAX = 47
 
 LOOKBACK_DAYS = 210
 LOOKBACK_DAYS_12MO = 365
-SEASON_WINDOW_DAYS = 9
+SEASON_WINDOW_DAYS = 5
 SEASON_LOOKBACK_YEARS = 20
 MIN_SEASON_SAMPLES = 50
 RECENT_DRAWS_PENALTY_N = 6
@@ -71,7 +78,7 @@ COLD_FORCE_COUNT = 2
 # Hard-force coverage mix
 FORCE_COVERAGE = False
 RANDOM_SEED = 0
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -84,7 +91,13 @@ W_GAP = 0.25
 GAP_CAP = 0.30
 
 # Use Power-style CandidateScoreMain totals for ranking/selection
-USE_POWER_STYLE_SCORE = False
+USE_POWER_STYLE_SCORE = True
+POWER_SCORE_WEIGHT = 0.35
+
+# Supplementary number influence (Oz Lotto has 3)
+W_SUPP_RECENT = 0.12
+W_SUPP_LONG = 0.08
+W_SUPP_SEASON = 0.06
 
 # Ticket constraints (soft)
 OVERLAP_CAP = 5
@@ -103,7 +116,7 @@ DECADE_BANDS: List[Tuple[int, int, int]] = [
     (2, 11, 20),
     (3, 21, 30),
     (4, 31, 40),
-    (5, 41, 45),
+    (5, 41, 47),
 ]
 
 # Seasonal decade weighting (date-agnostic, learned from history)
@@ -150,10 +163,25 @@ DIFFUSE_MAX_GAP = 12
 COHESIVE_DIVERSITY_PENALTY = 0.30
 DIFFUSE_DIVERSITY_PENALTY = 0.15
 
-# Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [3, 5, 20, 26, 28, 40]
-# If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
-USE_REAL_DRAW_FALLBACK = False
+# Greedy ticket builder (score-first incremental selection)
+GREEDY_MODE = True
+GREEDY_POOL_SIZE = 36
+
+# Auto-tune config (walk-forward) for ge4 hits
+AUTO_TUNE_MODE = True
+AUTO_TUNE_TRAIN_DRAWS = 3
+AUTO_TUNE_MAX_SECONDS = 300
+AUTO_TUNE_LOOKBACK_DAYS = [180, 210]
+AUTO_TUNE_LOOKBACK_12MO = [365]
+AUTO_TUNE_SEASON_WINDOWS = [5, 9]
+
+# Faster tuning for backtests only
+AUTO_TUNE_BACKTEST_MAX_SECONDS = 30
+AUTO_TUNE_BACKTEST_LOOKBACK_DAYS = [180, 210]
+AUTO_TUNE_BACKTEST_LOOKBACK_12MO = [365]
+AUTO_TUNE_BACKTEST_SEASON_WINDOWS = [5, 9]
+
+
 
 # ============================================================
 # INTERNALS
@@ -202,6 +230,12 @@ class CandidateScoreMain:
 BAND_B_LEADER = (1, 5)
 BAND_A_CORE = (6, 22)
 BAND_C_TAIL = (23, 27)
+
+# Rank-band coverage for ticket composition (based on scored list ranks)
+BAND_COVERAGE = True
+BAND_HISTORY_DRAWS = 30
+BAND_MIN_PCT = 0.10
+BAND_WEIGHT_FACTOR = 0.15
 
 
 def _band_of_rank(rank: int,
@@ -395,8 +429,18 @@ def _detect_main_cols(df: pd.DataFrame) -> List[str]:
         raise ValueError(f"Expected at least {NUMBERS_PER_TICKET} main columns.")
     return cols[:NUMBERS_PER_TICKET]
 
+def _detect_supp_cols(df: pd.DataFrame) -> List[str]:
+    cols = [c for c in df.columns if "Supplementary Number" in c]
+    if not cols:
+        return []
+    import re
+    def key(c):
+        m = re.search(r"(\d+)$", c.strip())
+        return int(m.group(1)) if m else 999
+    return sorted(cols, key=key)
 
-def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str]]:
+
+def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str], List[str]]:
     df = pd.read_csv(csv_path)
     date_col = "Date" if "Date" in df.columns else "Draw date"
     if date_col not in df.columns:
@@ -406,26 +450,44 @@ def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str]]:
     df = df.dropna(subset=["Date"]).copy()
 
     main_cols = _detect_main_cols(df)
+    supp_cols = _detect_supp_cols(df)
     for c in main_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=main_cols).copy()
     for c in main_cols:
         df[c] = df[c].astype(int)
+    for c in supp_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+        df.loc[(df[c] < MAIN_MIN) | (df[c] > MAIN_MAX), c] = pd.NA
 
     for c in main_cols:
         df = df[(df[c] >= MAIN_MIN) & (df[c] <= MAIN_MAX)]
 
     df = df.sort_values("Date").reset_index(drop=True)
-    return df, main_cols
+    return df, main_cols, supp_cols
 
 
 def _explode_mains(df: pd.DataFrame, main_cols: List[str]) -> pd.Series:
     return pd.concat([df[c] for c in main_cols], ignore_index=True)
 
+def _explode_cols(df: pd.DataFrame, cols: List[str]) -> pd.Series:
+    if not cols:
+        return pd.Series([], dtype="float64")
+    s = pd.concat([df[c] for c in cols], ignore_index=True)
+    s = s.dropna()
+    if s.empty:
+        return s
+    return s.astype(int)
+
 
 def _counts_mains_in_window(df: pd.DataFrame, main_cols: List[str], start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
     sub = df[(df["Date"] >= start) & (df["Date"] < end)]
     nums = _explode_mains(sub, main_cols)
+    return nums.value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
+
+def _counts_cols_in_window(df: pd.DataFrame, cols: List[str], start: pd.Timestamp, end: pd.Timestamp) -> pd.Series:
+    sub = df[(df["Date"] >= start) & (df["Date"] < end)]
+    nums = _explode_cols(sub, cols)
     return nums.value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
 
 
@@ -766,11 +828,39 @@ def _cohesion_score(
     )
 
 
+def _greedy_ticket_score(
+    nums: List[int],
+    score_map: Dict[int, float],
+    rank_map: Dict[int, int],
+    pair_counts: Dict[Tuple[int, int], int],
+    pair_base: int,
+    max_score: float,
+) -> float:
+    if not nums:
+        return -1e9
+    scores = [score_map.get(n, 0.0) for n in nums]
+    ranks = [rank_map.get(n, 999) for n in nums]
+    avg_score = sum(scores) / float(len(scores)) if scores else 0.0
+    score_norm = (avg_score / max_score) if max_score > 0 else 0.0
+    spread = _score_spread(scores)
+    spread_score = 1.0 - min(spread / COHESION_MAX_SCORE_SPREAD, 1.0)
+    pair_score = _pair_density(nums, pair_counts, pair_base)
+    cont_score = _rank_continuity(ranks, COHESION_MAX_RANK_GAP)
+    central_score = _centrality_score(ranks, COHESION_TOP_RANK)
+    return (
+        (0.50 * score_norm) +
+        (0.20 * pair_score) +
+        (0.15 * cont_score) +
+        (0.10 * central_score) +
+        (0.05 * spread_score)
+    )
+
+
 # ============================================================
 # Scoring + ticketing
 # ============================================================
 
-def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debug: bool) -> List[CandidateScore]:
+def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debug: bool, supp_cols: List[str] = None) -> List[CandidateScore]:
     t = pd.Timestamp(target_date)
     if pd.isna(t):
         raise ValueError("TARGET_DATE must be parseable (YYYY-MM-DD)")
@@ -781,7 +871,9 @@ def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debu
 
     recent_start = t - pd.Timedelta(days=LOOKBACK_DAYS)
     recent_counts = _counts_mains_in_window(train, main_cols, recent_start, t)
+    supp_recent_counts = _counts_cols_in_window(train, supp_cols or [], recent_start, t)
     long_counts = _explode_mains(train, main_cols).value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
+    supp_long_counts = _explode_cols(train, supp_cols or []).value_counts().reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0).sort_index()
     ranks = _rank_from_counts(recent_counts)
 
     # days since last seen (gap)
@@ -804,6 +896,7 @@ def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debu
     start_year = target_dt.year - SEASON_LOOKBACK_YEARS
     end_year = target_dt.year - 1
     seasonal_counts = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    supp_season_counts = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
 
     for y in range(start_year, end_year + 1):
         anchor = _anchor_for_year(target_dt, y)
@@ -816,10 +909,18 @@ def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debu
             for n in mains:
                 if MAIN_MIN <= n <= MAIN_MAX:
                     seasonal_counts[n] += 1
+            if supp_cols:
+                supps = [int(row[c]) for c in supp_cols if pd.notna(row[c])]
+                for n in supps:
+                    if MAIN_MIN <= n <= MAIN_MAX:
+                        supp_season_counts[n] += 1
 
     s_recent = _normalize_series(recent_counts)
     s_long = _normalize_series(long_counts)
     s_season = _normalize_series(pd.Series(seasonal_counts).sort_index())
+    s_supp_recent = _normalize_series(supp_recent_counts)
+    s_supp_long = _normalize_series(supp_long_counts)
+    s_supp_season = _normalize_series(pd.Series(supp_season_counts).sort_index())
 
     inv_rank = pd.Series({n: 1.0 / float(ranks.get(n, 999)) for n in range(MAIN_MIN, MAIN_MAX + 1)})
     s_rank = _normalize_series(inv_rank)
@@ -837,6 +938,11 @@ def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debu
             W_SEASON * float(s_season.get(n, 0.0)) +
             W_RANK * float(s_rank.get(n, 0.0))
         )
+        total += (
+            W_SUPP_RECENT * float(s_supp_recent.get(n, 0.0)) +
+            W_SUPP_LONG * float(s_supp_long.get(n, 0.0)) +
+            W_SUPP_SEASON * float(s_supp_season.get(n, 0.0))
+        )
         total += min(GAP_CAP, W_GAP * float(s_gap.get(n, 0.0)))
         if freq_recent <= 1:
             total += COLD_BOOST
@@ -848,12 +954,12 @@ def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debu
 
     scored.sort(key=lambda x: x.total_score, reverse=True)
 
-    scored_main = compute_candidate_score_main(df, main_cols, target_date)
-    if USE_POWER_STYLE_SCORE and scored_main:
-        power_score_map = {c.n: float(c.total_score) for c in scored_main}
+    scored_main = compute_candidate_score_main(df, main_cols, target_date, supp_cols=supp_cols)
+    if USE_POWER_STYLE_SCORE and scored_main and POWER_SCORE_WEIGHT > 0.0:
+        power_scores = {c.n: float(c.total_score) for c in scored_main}
+        s_power = _normalize_series(pd.Series(power_scores).reindex(range(MAIN_MIN, MAIN_MAX + 1), fill_value=0.0).sort_index())
         for c in scored:
-            if c.n in power_score_map:
-                c.total_score = round(power_score_map[c.n], 6)
+            c.total_score = round(c.total_score + (POWER_SCORE_WEIGHT * float(s_power.get(c.n, 0.0))), 6)
         scored.sort(key=lambda x: x.total_score, reverse=True)
 
     if scored_main:
@@ -873,6 +979,7 @@ def compute_candidate_score_main(
     df: pd.DataFrame,
     main_cols: List[str],
     target_date: str,
+    supp_cols: List[str] = None,
 ) -> List[CandidateScoreMain]:
     t = pd.Timestamp(target_date)
     if pd.isna(t):
@@ -895,6 +1002,7 @@ def compute_candidate_score_main(
 
     recent_start = t - pd.Timedelta(days=LOOKBACK_DAYS_12MO)
     recent_counts = _counts_mains_in_window(train, main_cols, recent_start, t)
+    supp_recent_counts = _counts_cols_in_window(train, supp_cols or [], recent_start, t)
     maxfreq = int(recent_counts.max()) if not recent_counts.empty else 0
     ranks = _rank_from_counts(recent_counts) if maxfreq > 0 else {}
 
@@ -907,6 +1015,7 @@ def compute_candidate_score_main(
 
     seasonal_counts = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
     seasonal_success = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    supp_season_counts = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
 
     for y in range(start_year, end_year + 1):
         anchor = _anchor_for_year(target_dt, y)
@@ -922,6 +1031,11 @@ def compute_candidate_score_main(
             for n in mains:
                 if MAIN_MIN <= n <= MAIN_MAX:
                     seasonal_counts[n] += 1
+            if supp_cols:
+                supps = [int(row[c]) for c in supp_cols if pd.notna(row[c])]
+                for n in supps:
+                    if MAIN_MIN <= n <= MAIN_MAX:
+                        supp_season_counts[n] += 1
 
             hist_train = df[df["Date"] < d]
             hist_start = d - pd.Timedelta(days=LOOKBACK_DAYS_12MO)
@@ -984,6 +1098,10 @@ def compute_candidate_score_main(
         season_succ = int(seasonal_success.get(n, 0))
         components["seasonal_count_bonus"] = min(1.2, 0.20 * season_ct)
         components["seasonal_success_bonus"] = min(1.8, 0.45 * season_succ)
+        supp_recent = int(supp_recent_counts.get(n, 0))
+        supp_season = int(supp_season_counts.get(n, 0))
+        components["supp_recent_bonus"] = min(0.8, 0.10 * supp_recent)
+        components["supp_season_bonus"] = min(0.6, 0.08 * supp_season)
 
         total = sum(components.values()) - sum(penalties.values())
         scored.append(
@@ -1328,7 +1446,7 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
 
 def _hit_summary(real_draw: List[int], tickets: List[List[int]]) -> Dict[str, int]:
     rd_set = set(real_draw)
-    counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+    counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0}
     total_hits = 0
     for t in tickets:
         hit_n = len(set(t).intersection(rd_set))
@@ -1336,7 +1454,8 @@ def _hit_summary(real_draw: List[int], tickets: List[List[int]]) -> Dict[str, in
         total_hits += hit_n
     return {
         "ge3": sum(counts[h] for h in counts if h >= 3),
-        "ge2": sum(counts[h] for h in counts if h >= 2),
+        "ge4": sum(counts[h] for h in counts if h >= 4),
+        "ge5": sum(counts[h] for h in counts if h >= 5),
         "total_hits": total_hits,
     }
 
@@ -1608,11 +1727,314 @@ def generate_portfolio_tickets(
     return tickets[:NUM_TICKETS]
 
 
+def generate_greedy_tickets(
+    scored: List[CandidateScore],
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    cohesion_config: Dict[str, object],
+    ticket_count: int = None,
+) -> List[List[int]]:
+    rng = random.Random(RANDOM_SEED)
+    train = df[df["Date"] < pd.Timestamp(target_date)]
+    dist = _history_distributions(train, main_cols, target_date)
+
+    top_pool = [c.n for c in scored[:GREEDY_POOL_SIZE]]
+    mid_pool = [c.n for c in scored[GREEDY_POOL_SIZE:GREEDY_POOL_SIZE + MID_POOL_SIZE]]
+    cold_pool = [c.n for c in scored if c.freq_recent <= 1][:COLD_POOL_SIZE]
+    pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
+
+    score_map = {c.n: c.total_score for c in scored}
+    rank_map = {c.n: c.rank_recent for c in scored}
+    max_score = max(score_map.values()) if score_map else 0.0
+    scored_rank_map = {c.n: i for i, c in enumerate(scored, 1)}
+    band_pools = {"B_LEADER": [], "A_CORE": [], "C_TAIL": [], "OTHER": []}
+    for c in scored:
+        band = _band_of_rank(scored_rank_map.get(c.n, 999))
+        band_pools[band].append(c.n)
+
+    def _band_counts_from_history() -> Tuple[Dict[str, int], int]:
+        if train.empty:
+            return {}, 0
+        tail = train.sort_values("Date").tail(BAND_HISTORY_DRAWS)
+        counts = {"B_LEADER": 0, "A_CORE": 0, "C_TAIL": 0, "OTHER": 0}
+        total = 0
+        for _, row in tail.iterrows():
+            nums = [int(row[c]) for c in main_cols]
+            for n in nums:
+                band = _band_of_rank(scored_rank_map.get(n, 999))
+                counts[band] += 1
+                total += 1
+        return counts, total
+
+    def _band_targets_from_history(ticket_count: int) -> Tuple[List[Dict[str, int]], Dict[str, float]]:
+        if train.empty:
+            return [{"B_LEADER": 1, "A_CORE": 2, "C_TAIL": 1, "OTHER": 3}] * ticket_count, {}
+        counts, total = _band_counts_from_history()
+        if total <= 0:
+            return [{"B_LEADER": 1, "A_CORE": 2, "C_TAIL": 1, "OTHER": 3}] * ticket_count, {}
+        proportions = {k: counts[k] / float(total) for k in counts}
+        bands = list(counts.keys())
+
+        targets = []
+        for _ in range(ticket_count):
+            target = {k: 0 for k in bands}
+            for _i in range(NUMBERS_PER_TICKET):
+                pick = rng.choices(bands, weights=[proportions[b] for b in bands], k=1)[0]
+                target[pick] += 1
+
+            mins = {b: (1 if proportions[b] >= BAND_MIN_PCT else 0) for b in bands}
+            for b, m in mins.items():
+                while target[b] < m:
+                    donor = max(bands, key=lambda x: target[x] if x != b else -1)
+                    if target[donor] <= mins.get(donor, 0):
+                        break
+                    target[donor] -= 1
+                    target[b] += 1
+
+            total_now = sum(target.values())
+            if total_now != NUMBERS_PER_TICKET:
+                adjust = NUMBERS_PER_TICKET - total_now
+                order = sorted(bands, key=lambda x: proportions[x], reverse=(adjust > 0))
+                for b in order:
+                    if adjust == 0:
+                        break
+                    if adjust > 0:
+                        target[b] += 1
+                        adjust -= 1
+                    elif target[b] > mins.get(b, 0):
+                        target[b] -= 1
+                        adjust += 1
+
+            targets.append(target)
+        return targets, proportions
+
+    band_targets_list, band_proportions = _band_targets_from_history(ticket_count if ticket_count else NUM_TICKETS)
+    if band_targets_list and BAND_WEIGHT_FACTOR > 0.0 and band_proportions:
+        maxp = max(band_proportions.values()) if band_proportions else 0.0
+        if maxp <= 0:
+            maxp = 1.0
+        band_multiplier = {}
+        for b in band_pools:
+            p = band_proportions.get(b, 0.0) / maxp
+            band_multiplier[b] = 0.7 + (0.6 * p)
+        for n in score_map:
+            b = _band_of_rank(scored_rank_map.get(n, 999))
+            score_map[n] = float(score_map.get(n, 0.0)) * (1.0 + BAND_WEIGHT_FACTOR * (band_multiplier.get(b, 1.0) - 1.0))
+
+    pair_counts = _build_pair_counts(train, main_cols)
+    pair_base = _percentile(list(pair_counts.values()), COHESION_PAIR_BASE_PCTL) if pair_counts else 0
+
+    if ticket_count is None:
+        ticket_count = NUM_TICKETS
+
+    tickets: List[List[int]] = []
+    global_use = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    overlap_cap = OVERLAP_CAP
+    global_max = GLOBAL_MAX_USES
+
+    attempts = 0
+    max_attempts = max(MAX_ATTEMPTS, ticket_count * 400)
+    while len(tickets) < ticket_count and attempts < max_attempts:
+        attempts += 1
+        current: List[int] = []
+
+        if BAND_COVERAGE and band_targets_list:
+            band_targets = band_targets_list[len(tickets) % len(band_targets_list)]
+            for band, count in band_targets.items():
+                if count <= 0:
+                    continue
+                candidates = [
+                    n for n in band_pools.get(band, [])
+                    if n not in current and global_use.get(n, 0) < global_max
+                ]
+                if not candidates:
+                    continue
+                weights = []
+                for n in candidates:
+                    raw = score_map.get(n, 0.0)
+                    try:
+                        raw = float(raw)
+                        if math.isnan(raw):
+                            raw = 0.0
+                    except (TypeError, ValueError):
+                        raw = 0.0
+                    weights.append(raw + 0.25)
+                picks = _weighted_sample_no_replace(candidates, weights, min(count, len(candidates)), rng)
+                current.extend(picks)
+
+        if COLD_FORCE_COUNT > 0 and cold_pool:
+            cold_pick = rng.choice(cold_pool)
+            if global_use.get(cold_pick, 0) < global_max and cold_pick not in current:
+                current.append(cold_pick)
+
+        if len(current) > NUMBERS_PER_TICKET:
+            current = sorted(current, key=lambda n: score_map.get(n, 0.0), reverse=True)[:NUMBERS_PER_TICKET]
+
+        while len(current) < NUMBERS_PER_TICKET:
+            best_n = None
+            best_score = -1e9
+            for n in pool:
+                if n in current:
+                    continue
+                if global_use.get(n, 0) >= global_max:
+                    continue
+                candidate = current + [n]
+                score = _greedy_ticket_score(candidate, score_map, rank_map, pair_counts, pair_base, max_score)
+                if tickets:
+                    max_overlap = max(len(set(candidate).intersection(t)) for t in tickets)
+                    score -= 0.03 * max_overlap
+                score -= 0.02 * global_use.get(n, 0)
+                if score > best_score:
+                    best_score = score
+                    best_n = n
+            if best_n is None:
+                break
+            current.append(best_n)
+
+        if len(current) != NUMBERS_PER_TICKET:
+            continue
+
+        pick = sorted(current)
+        if pick in tickets:
+            continue
+        if any(global_use[n] >= global_max for n in pick):
+            continue
+
+        s_pick = set(pick)
+        if any(len(s_pick.intersection(t)) > overlap_cap for t in tickets):
+            continue
+
+        penalty = _ticket_penalty(pick, dist)
+        scale = PENALTY_SCALE
+        accept_prob = math.exp(-penalty * scale)
+        if cohesion_config.get("enabled"):
+            cohesion = _cohesion_score(
+                pick, score_map, rank_map, pair_counts, pair_base, cohesion_config["weights"]
+            )
+            min_score = cohesion_config.get("min_score")
+            if min_score is not None and cohesion < float(min_score):
+                continue
+            accept_prob *= (cohesion_config["accept_floor"] + cohesion_config["accept_span"] * cohesion)
+            if accept_prob > 1.0:
+                accept_prob = 1.0
+        if rng.random() > accept_prob:
+            continue
+
+        tickets.append(pick)
+        for n in pick:
+            global_use[n] += 1
+
+    print(f"Generated {len(tickets)}/{ticket_count} tickets in {attempts} attempts (greedy)")
+    return tickets
+
+
+def _auto_tune_config(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    supp_cols: List[str],
+    train_dates: List[pd.Timestamp],
+    max_seconds: int,
+) -> Tuple[int, int, int]:
+    start = time.time()
+    best = None
+    best_key = None
+
+    for lb in AUTO_TUNE_LOOKBACK_DAYS:
+        for lb12 in AUTO_TUNE_LOOKBACK_12MO:
+            for sw in AUTO_TUNE_SEASON_WINDOWS:
+                if time.time() - start > max_seconds:
+                    return best if best is not None else (LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS)
+
+                ge4_draws = 0
+                ge4_total = 0
+
+                for d in train_dates:
+                    d_str = d.strftime("%Y-%m-%d")
+                    row = df[df["Date"] == d].iloc[0]
+                    draw = [int(row[c]) for c in main_cols]
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        LOOKBACK_DAYS_OLD = globals().get("LOOKBACK_DAYS")
+                        LOOKBACK_DAYS_12MO_OLD = globals().get("LOOKBACK_DAYS_12MO")
+                        SEASON_WINDOW_DAYS_OLD = globals().get("SEASON_WINDOW_DAYS")
+                        globals()["LOOKBACK_DAYS"] = lb
+                        globals()["LOOKBACK_DAYS_12MO"] = lb12
+                        globals()["SEASON_WINDOW_DAYS"] = sw
+                        scored = score_numbers(df, main_cols, d_str, False, supp_cols=supp_cols)
+                        tickets = generate_greedy_tickets(scored, df, main_cols, d_str, {
+                            "enabled": COHESION_ENABLED,
+                            "accept_floor": COHESION_ACCEPT_FLOOR,
+                            "accept_span": COHESION_ACCEPT_SPAN,
+                            "min_score": None,
+                            "weights": {
+                                "spread": COHESION_W_SPREAD,
+                                "pair": COHESION_W_PAIR,
+                                "rank_cont": COHESION_W_RANK_CONT,
+                                "central": COHESION_W_CENTRAL,
+                                "rank_mass": 0.05,
+                            },
+                        })
+                        globals()["LOOKBACK_DAYS"] = LOOKBACK_DAYS_OLD
+                        globals()["LOOKBACK_DAYS_12MO"] = LOOKBACK_DAYS_12MO_OLD
+                        globals()["SEASON_WINDOW_DAYS"] = SEASON_WINDOW_DAYS_OLD
+                    summary = _hit_summary(draw, tickets)
+                    if summary.get("ge4", 0) > 0:
+                        ge4_draws += 1
+                    ge4_total += summary.get("ge4", 0)
+
+                key = (ge4_draws, ge4_total)
+                if best is None or key > best_key:
+                    best = (lb, lb12, sw)
+                    best_key = key
+
+    return best if best is not None else (LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS)
+
+
+def _auto_tune_config_backtest(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    supp_cols: List[str],
+    train_dates: List[pd.Timestamp],
+) -> Tuple[int, int, int]:
+    global AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS
+    saved = (AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS)
+    AUTO_TUNE_LOOKBACK_DAYS = AUTO_TUNE_BACKTEST_LOOKBACK_DAYS
+    AUTO_TUNE_LOOKBACK_12MO = AUTO_TUNE_BACKTEST_LOOKBACK_12MO
+    AUTO_TUNE_SEASON_WINDOWS = AUTO_TUNE_BACKTEST_SEASON_WINDOWS
+    try:
+        return _auto_tune_config(df, main_cols, supp_cols, train_dates, AUTO_TUNE_BACKTEST_MAX_SECONDS)
+    finally:
+        AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS = saved
+
+
+def _print_backtest_hit_summary(summaries: List[Dict[str, object]]) -> None:
+    if not summaries:
+        print("\n=== BACKTEST HIT SUMMARY (NONE) ===")
+        return
+    print("\n=== BACKTEST HIT SUMMARY (ALL DRAWS) ===")
+    total = {"ge3": 0, "ge4": 0, "ge5": 0, "total_hits": 0}
+    for s in summaries:
+        d = s.get("date", "?")
+        stats = s.get("stats", {})
+        print(
+            f"{d}: ge3={stats.get('ge3', 0)} "
+            f"ge4={stats.get('ge4', 0)} "
+            f"ge5={stats.get('ge5', 0)} "
+            f"total_hits={stats.get('total_hits', 0)}"
+        )
+        for k in total:
+            total[k] += int(stats.get(k, 0))
+    print(
+        f"TOTAL: ge3={total['ge3']} "
+        f"ge4={total['ge4']} ge5={total['ge5']} total_hits={total['total_hits']}"
+    )
+
+
 # ============================================================
 # MAIN
 # ============================================================
 if __name__ == "__main__":
-    df, main_cols = _load_csv(CSV_PATH)
+    df, main_cols, supp_cols = _load_csv(CSV_PATH)
 
     # Run for the configured target date (prediction); if it exists in CSV, use it as a backtest draw.
     t_target = pd.Timestamp(TARGET_DATE)
@@ -1649,7 +2071,18 @@ if __name__ == "__main__":
         else:
             print("TARGET_DATE not found in CSV; generating prediction without hit summary.")
 
-    scored = score_numbers(df, main_cols, run_date, DEBUG_PRINT)
+    if AUTO_TUNE_MODE:
+        t_idx = df.index[df["Date"] == t_target].tolist()
+        if t_idx:
+            idx = t_idx[0]
+            train_dates = df.iloc[max(0, idx - AUTO_TUNE_TRAIN_DRAWS):idx]["Date"].tolist()
+        else:
+            train_dates = df.sort_values("Date").tail(AUTO_TUNE_TRAIN_DRAWS)["Date"].tolist()
+        tuned = _auto_tune_config(df, main_cols, supp_cols, train_dates, AUTO_TUNE_MAX_SECONDS)
+        LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS = tuned
+        print(f"AUTO_TUNE selected: LOOKBACK_DAYS={LOOKBACK_DAYS} LOOKBACK_DAYS_12MO={LOOKBACK_DAYS_12MO} SEASON_WINDOW_DAYS={SEASON_WINDOW_DAYS}")
+
+    scored = score_numbers(df, main_cols, run_date, DEBUG_PRINT, supp_cols=supp_cols)
 
     strategies = _strategy_configs()
     main_cfg = next((s["cohesion"] for s in strategies if s["name"] == DEFAULT_STRATEGY_NAME), None)
@@ -1658,6 +2091,8 @@ if __name__ == "__main__":
 
     if PORTFOLIO_MODE:
         tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
+    elif GREEDY_MODE:
+        tickets = generate_greedy_tickets(scored, df, main_cols, run_date, main_cfg)
     else:
         tickets = generate_tickets(scored, df, main_cols, run_date,
                                    use_weights=True, seed_hot_overdue=False,
@@ -1677,7 +2112,7 @@ if __name__ == "__main__":
     show_ticket_hits(real_draw, tickets)
 
     # Backtest: run on the last 5 available draws in the CSV.
-    N = 10
+    N = 5
     backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
 
@@ -1685,15 +2120,24 @@ if __name__ == "__main__":
 
     winner_blocks = []
     band_stats = []
+    backtest_hit_summaries: List[Dict[str, object]] = []
 
     print(f"\n=== BACKTEST (LAST {N} DRAWS) ===")
     for d in bt_dates:
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]
         bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
+        if AUTO_TUNE_MODE:
+            idx = df.index[df["Date"] == d].tolist()[0]
+            train_dates = df.iloc[max(0, idx - AUTO_TUNE_TRAIN_DRAWS):idx]["Date"].tolist()
+            tuned = _auto_tune_config_backtest(df, main_cols, supp_cols, train_dates)
+            LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS = tuned
+            print(f"AUTO_TUNE for {bt_date}: LOOKBACK_DAYS={LOOKBACK_DAYS} LOOKBACK_DAYS_12MO={LOOKBACK_DAYS_12MO} SEASON_WINDOW_DAYS={SEASON_WINDOW_DAYS}")
+        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT, supp_cols=supp_cols)
         if PORTFOLIO_MODE:
             bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
+        elif GREEDY_MODE:
+            bt_tickets = generate_greedy_tickets(bt_scored, df, main_cols, bt_date, main_cfg)
         else:
             bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
                                           use_weights=True, seed_hot_overdue=False,
@@ -1703,6 +2147,7 @@ if __name__ == "__main__":
             vec = _decade_vector(t)
             print(f"Ticket #{i:02d}: {t}  decades={vec}")
         show_ticket_hits(bt_draw, bt_tickets)
+        backtest_hit_summaries.append({"date": bt_date, "stats": _hit_summary(bt_draw, bt_tickets)})
 
         collect_winner_tables_and_stats(
             blocks=winner_blocks,
@@ -1715,3 +2160,4 @@ if __name__ == "__main__":
     print_all_winner_tables_at_end(winner_blocks)
     print_date_by_date_band_counts_ascending(band_stats)
     print_band_summary_at_end(band_stats)
+    _print_backtest_hit_summary(backtest_hit_summaries)

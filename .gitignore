@@ -9,3 +9,4 @@ wheels/
 # Virtual environments
 .venv
 .env
+/Single_V2_0/siko_Tue_single_3_hits_readonly_logs.log
