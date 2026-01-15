@@ -66,7 +66,7 @@ RANDOM_SEED = 0
 DEBUG_PRINT = True
 
 # --- decade constraint strictness ---
-DECADE_MODE = "hard"         # "hard" or "soft"
+DECADE_MODE = "soft"         # "hard" or "soft"
 DECADE_MEDIAN_TOL = 1        # allow +/-1 per decade around seasonal p25..p75 (hard mode)
 DECADE_SOFT_PENALTY = 0.6    # per unit distance outside tolerance (soft mode)
 # Optional: exact decade counts to prefer per ticket (soft rule)

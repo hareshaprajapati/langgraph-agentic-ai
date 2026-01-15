@@ -751,7 +751,7 @@ if __name__ == "__main__":
     # for r in res:
     #     print(r)
 
-    targate_date = "2026-01-08"
+    targate_date = "2026-01-15"
     res2 = predict_powerball(
         targate_date,
         csv_path,

@@ -67,7 +67,7 @@ def fmt_date_day(d: datetime) -> str:
 
 def normalize_nums(nums):
     # join as "1,2,3,4,5,6 + 7,8" when we know main+supp split
-    return ",".join(str(n) for n in nums)
+    return ", ".join(str(n) for n in nums)
 
 def scrape_past_results(url: str):
     """

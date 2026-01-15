@@ -20,8 +20,9 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    f"siko_power_single_logs.log"   # single growing log file
+    f"Siko_Power_Chatgpt.log"   # single growing log file
 )
+CSV_PATH = "Powerball.csv"
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
 
@@ -39,7 +40,6 @@ import math
 # USER CONFIG (edit only these)
 # ============================================================
 
-CSV_PATH = "Powerball.csv"
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 7
@@ -65,7 +65,7 @@ RANDOM_SEED = 0
 DEBUG_PRINT = True
 
 # --- decade constraint strictness ---
-DECADE_MODE = "hard"         # "hard" or "soft"
+DECADE_MODE = "soft"         # "hard" or "soft"
 DECADE_MEDIAN_TOL = 1        # allow +/-1 per decade around seasonal p25..p75 (hard mode)
 DECADE_SOFT_PENALTY = 0.6    # per unit distance outside tolerance (soft mode)
 # Optional: exact decade counts to prefer per ticket (soft rule)
@@ -1190,35 +1190,78 @@ def generate_tickets(scored, season_decades, band_quota_counts=None, band_quota_
             f"Try DECADE_MODE='soft', increase DECADE_MEDIAN_TOL, or reduce constraints."
         )
 
-    # --- choose best NUM_TICKETS using greedy overlap cap ---
+        # --- choose best NUM_TICKETS (REGIME-AWARE) ---
     def ticket_value(t: List[int]) -> float:
         return float(sum(score_map.get(n, 0.0) for n in t))
+
+    # Signal regime detection (uses ONLY scored list - no real draw)
+    _scores = [float(c.total_score) for c in scored[:min(25, len(scored))]]
+    if len(_scores) >= 20 and sum(_scores[:20]) > 0:
+        dominance = sum(_scores[:5]) / sum(_scores[:20])
+    elif _scores and sum(_scores) > 0:
+        dominance = sum(_scores[:min(5, len(_scores))]) / sum(_scores)
+    else:
+        dominance = 0.0
+
+    DOMINANCE_THRESHOLD = 0.38
+    signal_regime = "CONCENTRATED" if dominance >= DOMINANCE_THRESHOLD else "FLAT"
+    print(f"SIGNAL REGIME: {signal_regime} (dominance={dominance:.3f}, threshold={DOMINANCE_THRESHOLD})")
 
     candidates.sort(key=ticket_value, reverse=True)
 
     tickets: List[List[int]] = []
-    for t in candidates:
-        if _ticket_overlap_ok(t, tickets, OVERLAP_CAP):
-            tickets.append(t)
-            if len(tickets) >= NUM_TICKETS:
-                break
 
-    # fallback relax overlap once
-    if len(tickets) < NUM_TICKETS:
-        relaxed = OVERLAP_CAP + 1
+    if signal_regime == "CONCENTRATED":
         for t in candidates:
-            if t in tickets:
-                continue
-            if _ticket_overlap_ok(t, tickets, relaxed):
+            if _ticket_overlap_ok(t, tickets, OVERLAP_CAP):
                 tickets.append(t)
                 if len(tickets) >= NUM_TICKETS:
                     break
+    else:
+        num_use = {}
+        pair_use = {}
 
-    if len(tickets) < NUM_TICKETS:
-        raise RuntimeError(
-            f"generate_tickets(): could only select {len(tickets)} tickets from {len(candidates)} candidates. "
-            f"Increase CANDIDATE_TICKET_POOL or relax OVERLAP_CAP."
-        )
+        MAX_PER_NUMBER = 6
+        NUM_PENALTY = 0.25
+        PAIR_PENALTY = 0.12
+
+        remaining = list(candidates)
+        while remaining and len(tickets) < NUM_TICKETS:
+            best_idx = None
+            best_score = -1e18
+
+            for idx, t in enumerate(remaining):
+                if not _ticket_overlap_ok(t, tickets, OVERLAP_CAP):
+                    continue
+                base = ticket_value(t)
+
+                num_pen = 0.0
+                for n in t:
+                    u = num_use.get(n, 0)
+                    num_pen += u
+                    if u >= MAX_PER_NUMBER:
+                        num_pen += 3.0 * (u - MAX_PER_NUMBER + 1)
+
+                pair_pen = 0.0
+                tt = sorted(t)
+                for a, b in combinations(tt, 2):
+                    pair_pen += pair_use.get((a, b), 0)
+
+                adj = base - NUM_PENALTY * num_pen - PAIR_PENALTY * pair_pen
+                if adj > best_score:
+                    best_score = adj
+                    best_idx = idx
+
+            if best_idx is None:
+                break
+
+            chosen = remaining.pop(best_idx)
+            tickets.append(chosen)
+            for n in chosen:
+                num_use[n] = num_use.get(n, 0) + 1
+            chs = sorted(chosen)
+            for a, b in combinations(chs, 2):
+                pair_use[(a, b)] = pair_use.get((a, b), 0) + 1
 
     return tickets
 
@@ -1562,8 +1605,8 @@ def print_date_by_date_band_counts_ascending(band_stats):
 if __name__ == "__main__":
     df, main_cols = _load_csv(CSV_PATH)
     N = 10
-    TARGET_DATE = "2026-01-08"
-    REAL_DRAW_TARGET = [7, 15, 16, 17, 25, 26, 27]
+    TARGET_DATE = "2026-01-15"
+    REAL_DRAW_TARGET = [1, 2, 4, 24, 25, 27, 35]
 
     df_bt = df.sort_values("Date", ascending=False).head(N)
     results = []
