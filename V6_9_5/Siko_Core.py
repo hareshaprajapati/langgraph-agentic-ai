@@ -64,6 +64,28 @@ SFL_MOMENTUM_DAYS = 7
 SFL_MOMENTUM_K = 0.35
 SFL_MOMENTUM_W_MAX = 1.30   # max multiplicative boost from SFL momentum
 
+# Focused recent-draw adjacency (±1) from last N SFL draws
+SFL_LASTN_DRAWS = 3
+SFL_LASTN_PM1_K = 0.15      # per-hit multiplicative boost
+SFL_LASTN_PM1_W_MAX = 1.60
+SFL_PM1_STRICT_COHORT = False
+SFL_PM1_STRICT_LEADER = False
+SFL_PM1_COMBO_ENABLED = False
+SFL_PM1_COMBO_TOP_N = 12
+SFL_PM1_COMBO_MAX = 20
+TOP_P_COMBO_ENABLED = False
+TOP_P_COMBO_N = 14
+TOP_P_COMBO_MAX = 20
+PM1_WEIGHTED_COMBO_ENABLED = False
+PM1_WEIGHTED_COMBO_TOP_N = 18
+PM1_WEIGHTED_COMBO_MAX = 20
+PM1_WEIGHTED_SCORE_W = 3.0
+PM1_GREEDY_ENABLED = False
+PM1_GREEDY_TOP_N = 12
+PM1_GREEDY_MAX = 20
+PM1_ONLY_MODE = False
+PM1_ONLY_TOP_N = 16
+
 # Last-draw suppression for HOT numbers
 RECENCY_LASTDRAW_SUPPRESS = 0.85  # factor < 1.0 to slightly punish "just hit" HOT numbers
 
@@ -763,6 +785,31 @@ def per_number_log_scores(seed_numbers_main, f_main, f_supp, L_counts,
         adj_score_raw = 0.10 + 0.60 * adj_ratio
         sfl_adj_log[n] = math.log(1 + adj_score_raw)
 
+    # Focused SFL ±1 boost from last N SFL draws (by draw count, not days)
+    sfl_pm1_log = {n: 0.0 for n in NUMBER_RANGE}
+    if current_lottery_name != HOP_SOURCE_LOTTERY:
+        sfl_draws = []
+        for dt, draws in draws_by_date.items():
+            if dt >= target_date:
+                continue
+            for dr in draws:
+                if dr.lottery == HOP_SOURCE_LOTTERY:
+                    sfl_draws.append((dt, dr.main))
+        sfl_draws.sort(key=lambda x: x[0], reverse=True)
+        sfl_draws = sfl_draws[:SFL_LASTN_DRAWS]
+        pm1_counts = {n: 0 for n in NUMBER_RANGE}
+        for _, main_nums in sfl_draws:
+            for x in main_nums:
+                for n in (x - 1, x + 1):
+                    if MAIN_NUMBER_MIN <= n <= MAIN_NUMBER_MAX:
+                        pm1_counts[n] += 1
+        for n in NUMBER_RANGE:
+            c = pm1_counts[n]
+            if c <= 0:
+                continue
+            factor = min(1.0 + SFL_LASTN_PM1_K * c, SFL_LASTN_PM1_W_MAX)
+            sfl_pm1_log[n] = math.log(factor)
+
     # cross-lottery density
     cross_log = {n: math.log(1 + 0.08 * L_counts[n]) for n in NUMBER_RANGE}
 
@@ -866,6 +913,7 @@ def per_number_log_scores(seed_numbers_main, f_main, f_supp, L_counts,
                 delta_log[n] +  # last-3-days all lotteries (base)
                 sfl_repeat_log[n] +  # SFL exact-repeat momentum (last 3 days)
                 sfl_adj_log[n] +  # SFL adjacency momentum (±1, ±2)
+                sfl_pm1_log[n] +  # SFL last-N draws ±1 boost
                 cross_log[n] +  # cross-lottery density (L_counts)
                 supp_log[n] +  # supp-only bonus
                 category_weight_log[n] +  # H/W/C weighting
@@ -885,6 +933,266 @@ def per_number_log_scores(seed_numbers_main, f_main, f_supp, L_counts,
         P = {n: rawP[n] / total_rawP for n in NUMBER_RANGE}
 
     return P, log_score, cold_resurge_score
+
+def _sfl_lastn_pm1_set(target_date, n_draws):
+    """
+    Build a set of numbers that are ±1 of the last N SFL draws before target_date.
+    """
+    sfl_draws = []
+    for dt, draws in draws_by_date.items():
+        if dt >= target_date:
+            continue
+        for dr in draws:
+            if dr.lottery == HOP_SOURCE_LOTTERY:
+                sfl_draws.append((dt, dr.main))
+    sfl_draws.sort(key=lambda x: x[0], reverse=True)
+    sfl_draws = sfl_draws[:n_draws]
+    pm1 = set()
+    for _, main_nums in sfl_draws:
+        for x in main_nums:
+            for n in (x - 1, x + 1):
+                if MAIN_NUMBER_MIN <= n <= MAIN_NUMBER_MAX:
+                    pm1.add(n)
+    return pm1
+
+def _sfl_lastn_pm1_counts(target_date, n_draws):
+    counts = {n: 0 for n in NUMBER_RANGE}
+    sfl_draws = []
+    for dt, draws in draws_by_date.items():
+        if dt >= target_date:
+            continue
+        for dr in draws:
+            if dr.lottery == HOP_SOURCE_LOTTERY:
+                sfl_draws.append((dt, dr.main))
+    sfl_draws.sort(key=lambda x: x[0], reverse=True)
+    sfl_draws = sfl_draws[:n_draws]
+    for _, main_nums in sfl_draws:
+        for x in main_nums:
+            for n in (x - 1, x + 1):
+                if MAIN_NUMBER_MIN <= n <= MAIN_NUMBER_MAX:
+                    counts[n] += 1
+    return counts
+
+def _build_pm1_combo_tickets(pred, meta_map, sfl_pm1, *, top_n, max_tickets, decade_ids):
+    if not sfl_pm1:
+        return []
+    pm1_nums = [n for n in NUMBER_RANGE if n in sfl_pm1]
+    pm1_nums.sort(key=lambda n: meta_map[n]["P"], reverse=True)
+    pm1_nums = pm1_nums[:top_n]
+    if len(pm1_nums) < pred["K"]:
+        return []
+
+    tickets = []
+    for combo in itertools.combinations(pm1_nums, pred["K"]):
+        leader_n = max(combo, key=lambda n: meta_map[n]["P"])
+        cohort = [n for n in combo if n != leader_n]
+        hwc = {"H": 0, "W": 0, "C": 0}
+        dec = {d: 0 for d in decade_ids}
+        ps = []
+        ranks = []
+        log_scores = []
+        max_p = -1.0
+        for n in cohort:
+            m = meta_map[n]
+            hwc[m["category"]] += 1
+            dec[m["decade"]] += 1
+            ps.append(m["P"])
+            ranks.append(m["rank"])
+            log_scores.append(m["log_score"])
+            max_p = max(max_p, m["P"])
+        leader_meta = meta_map[leader_n]
+        pm1_hits = sum(1 for n in combo if n in sfl_pm1)
+        tickets.append({
+            "leader": leader_n,
+            "leader_rank": leader_meta["rank"],
+            "leader_P": leader_meta["P"],
+            "cohort": tuple(cohort),
+            "hwc": (hwc["H"], hwc["W"], hwc["C"]),
+            "decades": dec,
+            "rank_min": min(ranks),
+            "rank_max": max(ranks),
+            "rank_span": max(ranks) - min(ranks),
+            "P_sum": sum(ps),
+            "P_mean": sum(ps) / len(ps),
+            "P_min": min(ps),
+            "P_max": max(ps),
+            "sum_log_score": sum(log_scores) + leader_meta["log_score"],
+            "product_P": math.prod(ps) * leader_meta["P"],
+            "pm1_hits": pm1_hits,
+            "P_total": sum(ps) + leader_meta["P"],
+        })
+
+    tickets.sort(key=lambda t: (t["P_total"], t["sum_log_score"], t["product_P"]), reverse=True)
+    return tickets[:max_tickets]
+
+def _build_top_p_combo_tickets(pred, meta_map, *, top_n, max_tickets, decade_ids):
+    ranked = sorted(NUMBER_RANGE, key=lambda n: meta_map[n]["P"], reverse=True)
+    top_nums = ranked[:top_n]
+    if len(top_nums) < pred["K"]:
+        return []
+    tickets = []
+    for combo in itertools.combinations(top_nums, pred["K"]):
+        leader_n = max(combo, key=lambda n: meta_map[n]["P"])
+        cohort = [n for n in combo if n != leader_n]
+        hwc = {"H": 0, "W": 0, "C": 0}
+        dec = {d: 0 for d in decade_ids}
+        ps = []
+        ranks = []
+        log_scores = []
+        max_p = -1.0
+        for n in cohort:
+            m = meta_map[n]
+            hwc[m["category"]] += 1
+            dec[m["decade"]] += 1
+            ps.append(m["P"])
+            ranks.append(m["rank"])
+            log_scores.append(m["log_score"])
+            max_p = max(max_p, m["P"])
+        leader_meta = meta_map[leader_n]
+        tickets.append({
+            "leader": leader_n,
+            "leader_rank": leader_meta["rank"],
+            "leader_P": leader_meta["P"],
+            "cohort": tuple(cohort),
+            "hwc": (hwc["H"], hwc["W"], hwc["C"]),
+            "decades": dec,
+            "rank_min": min(ranks),
+            "rank_max": max(ranks),
+            "rank_span": max(ranks) - min(ranks),
+            "P_sum": sum(ps),
+            "P_mean": sum(ps) / len(ps),
+            "P_min": min(ps),
+            "P_max": max(ps),
+            "sum_log_score": sum(log_scores) + leader_meta["log_score"],
+            "product_P": math.prod(ps) * leader_meta["P"],
+            "pm1_hits": 0,
+            "P_total": sum(ps) + leader_meta["P"],
+        })
+    tickets.sort(key=lambda t: (t["P_sum"] + t["leader_P"], t["sum_log_score"], t["product_P"]), reverse=True)
+    return tickets[:max_tickets]
+
+def _build_pm1_weighted_combo_tickets(pred, meta_map, pm1_counts, *, top_n, max_tickets, decade_ids, score_w):
+    ranked = sorted(NUMBER_RANGE, key=lambda n: (pm1_counts.get(n, 0), meta_map[n]["P"]), reverse=True)
+    top_nums = ranked[:top_n]
+    if len(top_nums) < pred["K"]:
+        return []
+    tickets = []
+    for combo in itertools.combinations(top_nums, pred["K"]):
+        leader_n = max(combo, key=lambda n: meta_map[n]["P"])
+        cohort = [n for n in combo if n != leader_n]
+        hwc = {"H": 0, "W": 0, "C": 0}
+        dec = {d: 0 for d in decade_ids}
+        ps = []
+        ranks = []
+        log_scores = []
+        pm1_sum = 0
+        for n in cohort:
+            m = meta_map[n]
+            hwc[m["category"]] += 1
+            dec[m["decade"]] += 1
+            ps.append(m["P"])
+            ranks.append(m["rank"])
+            log_scores.append(m["log_score"])
+            pm1_sum += pm1_counts.get(n, 0)
+        leader_meta = meta_map[leader_n]
+        pm1_sum += pm1_counts.get(leader_n, 0)
+        tickets.append({
+            "leader": leader_n,
+            "leader_rank": leader_meta["rank"],
+            "leader_P": leader_meta["P"],
+            "cohort": tuple(cohort),
+            "hwc": (hwc["H"], hwc["W"], hwc["C"]),
+            "decades": dec,
+            "rank_min": min(ranks),
+            "rank_max": max(ranks),
+            "rank_span": max(ranks) - min(ranks),
+            "P_sum": sum(ps),
+            "P_mean": sum(ps) / len(ps),
+            "P_min": min(ps),
+            "P_max": max(ps),
+            "sum_log_score": sum(log_scores) + leader_meta["log_score"],
+            "product_P": math.prod(ps) * leader_meta["P"],
+            "pm1_hits": 0,
+            "P_total": sum(ps) + leader_meta["P"],
+            "pm1_sum": pm1_sum,
+        })
+    tickets.sort(
+        key=lambda t: (t["pm1_sum"] * score_w + t["P_total"], t["sum_log_score"], t["product_P"]),
+        reverse=True,
+    )
+    return tickets[:max_tickets]
+
+def _build_pm1_greedy_tickets(pred, meta_map, pm1_counts, *, top_n, max_tickets, decade_ids):
+    ranked = sorted(NUMBER_RANGE, key=lambda n: (pm1_counts.get(n, 0), meta_map[n]["P"]), reverse=True)
+    top_nums = ranked[:top_n]
+    if len(top_nums) < pred["K"]:
+        return []
+    base = top_nums[:pred["K"]]
+    base_sorted = sorted(base, key=lambda n: (pm1_counts.get(n, 0), meta_map[n]["P"]))
+    replace_pool = top_nums[pred["K"]:]
+
+    def build_ticket(combo):
+        leader_n = max(combo, key=lambda n: meta_map[n]["P"])
+        cohort = [n for n in combo if n != leader_n]
+        hwc = {"H": 0, "W": 0, "C": 0}
+        dec = {d: 0 for d in decade_ids}
+        ps = []
+        ranks = []
+        log_scores = []
+        for n in cohort:
+            m = meta_map[n]
+            hwc[m["category"]] += 1
+            dec[m["decade"]] += 1
+            ps.append(m["P"])
+            ranks.append(m["rank"])
+            log_scores.append(m["log_score"])
+        leader_meta = meta_map[leader_n]
+        return {
+            "leader": leader_n,
+            "leader_rank": leader_meta["rank"],
+            "leader_P": leader_meta["P"],
+            "cohort": tuple(cohort),
+            "hwc": (hwc["H"], hwc["W"], hwc["C"]),
+            "decades": dec,
+            "rank_min": min(ranks),
+            "rank_max": max(ranks),
+            "rank_span": max(ranks) - min(ranks),
+            "P_sum": sum(ps),
+            "P_mean": sum(ps) / len(ps),
+            "P_min": min(ps),
+            "P_max": max(ps),
+            "sum_log_score": sum(log_scores) + leader_meta["log_score"],
+            "product_P": math.prod(ps) * leader_meta["P"],
+            "pm1_hits": 0,
+            "P_total": sum(ps) + leader_meta["P"],
+            "pm1_sum": sum(pm1_counts.get(n, 0) for n in combo),
+        }
+
+    tickets = [build_ticket(base)]
+    # Single swaps (replace weakest 1-2 numbers)
+    weak = base_sorted[:2]
+    for r in replace_pool:
+        for w in weak:
+            combo = [n for n in base if n != w] + [r]
+            tickets.append(build_ticket(combo))
+            if len(tickets) >= max_tickets:
+                break
+        if len(tickets) >= max_tickets:
+            break
+
+    # Double swaps for remaining slots
+    if len(tickets) < max_tickets and len(replace_pool) >= 2:
+        for a, b in itertools.combinations(replace_pool, 2):
+            combo = [n for n in base if n not in weak] + [a, b]
+            tickets.append(build_ticket(combo))
+            if len(tickets) >= max_tickets:
+                break
+
+    tickets.sort(
+        key=lambda t: (t["pm1_sum"], t["P_total"], t["sum_log_score"], t["product_P"]),
+        reverse=True,
+    )
+    return tickets[:max_tickets]
 
 # ===========================
 # V4: centre score computation
@@ -2230,8 +2538,38 @@ def print_locked_prediction_steps(
     target_dec_tuple = target_dec_shape
     hwc_shapes = [r["hwc"] for r in rows]
     dec_shapes = [tuple(r["decades"][d] for d in decade_ids) for r in rows]
+    sfl_pm1 = set()
+    if pred["lottery"] != HOP_SOURCE_LOTTERY:
+        sfl_pm1 = _sfl_lastn_pm1_set(pred["date"], SFL_LASTN_DRAWS)
+    pm1_counts = None
+    cohort_candidates_build = cohort_candidates
+    leader_pool_build = leader_pool
+    if PM1_ONLY_MODE and pred["lottery"] != HOP_SOURCE_LOTTERY:
+        pm1_counts = _sfl_lastn_pm1_counts(pred["date"], SFL_LASTN_DRAWS)
+        ranked_pm1 = sorted(
+            [n for n in NUMBER_RANGE if pm1_counts.get(n, 0) > 0],
+            key=lambda n: (pm1_counts.get(n, 0), meta_map[n]["P"]),
+            reverse=True,
+        )
+        pm1_pool = ranked_pm1[:PM1_ONLY_TOP_N]
+        if len(pm1_pool) >= pred["K"]:
+            cohort_candidates = pm1_pool
+            cohort_candidates_build = pm1_pool
+            leader_pool_build = [n for n in leader_pool if n["n"] in pm1_pool]
+            if not leader_pool_build:
+                leader_pool_build = leader_pool
+        else:
+            pm1_counts = None
+    if sfl_pm1 and SFL_PM1_STRICT_COHORT:
+        strict_cohort = [n for n in cohort_candidates if n in sfl_pm1]
+        if len(strict_cohort) >= pred["K"] - 1:
+            cohort_candidates_build = strict_cohort
+    if sfl_pm1 and SFL_PM1_STRICT_LEADER:
+        strict_leaders = [n for n in leader_pool if n["n"] in sfl_pm1]
+        if strict_leaders:
+            leader_pool_build = strict_leaders
 
-    def _build_tickets(allowed_hwc_shapes, allowed_dec_shapes, candidates):
+    def _build_tickets(allowed_hwc_shapes, allowed_dec_shapes, candidates, leaders):
         cohort_combos = []
         for combo in itertools.combinations(candidates, pred["K"] - 1):
             hwc = {"H": 0, "W": 0, "C": 0}
@@ -2270,13 +2608,16 @@ def print_locked_prediction_steps(
             })
 
         tickets = []
-        for leader in leader_pool:
+        for leader in leaders:
             leader_n = leader["n"]
             for c in cohort_combos:
                 if leader_n in c["cohort"]:
                     continue
                 if leader["P"] < c["max_P"]:
                     continue
+                pm1_hits = sum(1 for n in c["cohort"] if n in sfl_pm1)
+                if leader_n in sfl_pm1:
+                    pm1_hits += 1
                 tickets.append({
                     "leader": leader_n,
                     "leader_rank": leader["rank"],
@@ -2293,6 +2634,8 @@ def print_locked_prediction_steps(
                     "P_max": c["P_max"],
                     "sum_log_score": c["sum_log_score"] + leader["log_score"],
                     "product_P": c["product_P"] * leader["P"],
+                    "pm1_hits": pm1_hits,
+                    "P_total": c["P_sum"] + leader["P"],
                 })
         return tickets
 
@@ -2309,7 +2652,7 @@ def print_locked_prediction_steps(
 
     allowed_hwc_shapes = {target_hwc}
     allowed_dec_shapes = {target_dec_tuple}
-    tickets = _build_tickets(allowed_hwc_shapes, allowed_dec_shapes, cohort_candidates)
+    tickets = _build_tickets(allowed_hwc_shapes, allowed_dec_shapes, cohort_candidates_build, leader_pool_build)
     relaxed_candidates = None
     relaxed_hwc_shapes = None
     relaxed_dec_shapes = None
@@ -2364,9 +2707,55 @@ def print_locked_prediction_steps(
         )
 
         if len(tickets) < max_tickets_to_print:
-            tickets = _build_tickets(relaxed_hwc_shapes, relaxed_dec_shapes, relaxed_candidates)
+            tickets = _build_tickets(relaxed_hwc_shapes, relaxed_dec_shapes, relaxed_candidates, leader_pool_build)
 
-    tickets.sort(key=lambda t: (t["sum_log_score"], t["product_P"]), reverse=True)
+    if SFL_PM1_COMBO_ENABLED and sfl_pm1:
+        pm1_tickets = _build_pm1_combo_tickets(
+            pred,
+            meta_map,
+            sfl_pm1,
+            top_n=SFL_PM1_COMBO_TOP_N,
+            max_tickets=(max_tickets_to_print or SFL_PM1_COMBO_MAX),
+            decade_ids=decade_ids,
+        )
+        tickets = _dedup_tickets(tickets + pm1_tickets)
+
+    if TOP_P_COMBO_ENABLED:
+        top_p_tickets = _build_top_p_combo_tickets(
+            pred,
+            meta_map,
+            top_n=TOP_P_COMBO_N,
+            max_tickets=(max_tickets_to_print or TOP_P_COMBO_MAX),
+            decade_ids=decade_ids,
+        )
+        tickets = _dedup_tickets(tickets + top_p_tickets)
+
+    if PM1_WEIGHTED_COMBO_ENABLED and pred["lottery"] != HOP_SOURCE_LOTTERY:
+        pm1_counts = _sfl_lastn_pm1_counts(pred["date"], SFL_LASTN_DRAWS)
+        weighted_tickets = _build_pm1_weighted_combo_tickets(
+            pred,
+            meta_map,
+            pm1_counts,
+            top_n=PM1_WEIGHTED_COMBO_TOP_N,
+            max_tickets=(max_tickets_to_print or PM1_WEIGHTED_COMBO_MAX),
+            decade_ids=decade_ids,
+            score_w=PM1_WEIGHTED_SCORE_W,
+        )
+        tickets = _dedup_tickets(tickets + weighted_tickets)
+
+    if PM1_GREEDY_ENABLED and pred["lottery"] != HOP_SOURCE_LOTTERY:
+        pm1_counts = _sfl_lastn_pm1_counts(pred["date"], SFL_LASTN_DRAWS)
+        greedy_tickets = _build_pm1_greedy_tickets(
+            pred,
+            meta_map,
+            pm1_counts,
+            top_n=PM1_GREEDY_TOP_N,
+            max_tickets=(max_tickets_to_print or PM1_GREEDY_MAX),
+            decade_ids=decade_ids,
+        )
+        tickets = _dedup_tickets(tickets + greedy_tickets)
+
+    tickets.sort(key=lambda t: (t["P_total"], t["sum_log_score"], t["product_P"]), reverse=True)
 
     print("\n=== TICKETS ===")
     if not tickets:
@@ -2400,11 +2789,11 @@ def print_locked_prediction_steps(
             and relaxed_candidates is not None
         ):
             print("[LOCKED] Diversification shortfall; expanding ticket pool.")
-            expanded = _build_tickets(relaxed_hwc_shapes, relaxed_dec_shapes, relaxed_candidates)
+            expanded = _build_tickets(relaxed_hwc_shapes, relaxed_dec_shapes, relaxed_candidates, leader_pool_build)
             combined = _dedup_tickets(tickets + expanded)
-            combined.sort(key=lambda t: (t["sum_log_score"], t["product_P"]), reverse=True)
+            combined.sort(key=lambda t: (t["P_total"], t["sum_log_score"], t["product_P"]), reverse=True)
             usage_counts = Counter()
-            # diversified = []
+            diversified = []
             for t in combined:
                 nums = list(t["cohort"])
                 if any(usage_counts[n] >= usage_cap for n in nums):
@@ -2429,6 +2818,313 @@ def print_locked_prediction_steps(
             f"Pmin={t['P_min']:.8f} Pmax={t['P_max']:.8f} "
             f"| cohort_ranks={cohort_ranks}"
         )
+
+def build_locked_tickets(
+    run_data,
+    *,
+    leader_pool_rank_max=5,
+    max_tickets_to_print=20,
+    allowed_dates=None,
+    allowed_lottery=None,
+    override_cohort_hwc=None,
+    override_cohort_decades=None,
+    override_rank_min=None,
+    override_rank_max=None,
+    override_p_min=None,
+    override_p_max=None,
+):
+    """
+    Build locked-regime tickets without printing. Returns list of ticket dicts or None.
+    """
+    regime = _compute_cohort_regime(
+        run_data,
+        allowed_dates=allowed_dates,
+        allowed_lottery=allowed_lottery,
+    )
+    if regime is None:
+        return None
+
+    pred = _prepare_prediction_numbers(run_data)
+    rows = regime["rows"]
+    decade_ids = regime["decade_ids"]
+
+    hwc_shapes = [r["hwc"] for r in rows]
+    target_hwc, _ = _choose_anchor_shape(hwc_shapes, _is_adjacent_shape_3)
+    if override_cohort_hwc is not None and len(override_cohort_hwc) == 3:
+        target_hwc = (int(override_cohort_hwc[0]), int(override_cohort_hwc[1]), int(override_cohort_hwc[2]))
+        if sum(target_hwc) != pred["K"] - 1:
+            raise ValueError("override_cohort_hwc must sum to K-1")
+
+    dec_shapes = [tuple(r["decades"][d] for d in decade_ids) for r in rows]
+    target_dec_shape, _ = _choose_anchor_shape(dec_shapes, _is_adjacent_shape_vec)
+    target_decades = _shape_to_decade_dict(target_dec_shape, decade_ids)
+    if override_cohort_decades is not None:
+        target_decades = {int(k): int(v) for k, v in override_cohort_decades.items()}
+        target_dec_shape = tuple(target_decades.get(d, 0) for d in decade_ids)
+        if sum(target_dec_shape) != pred["K"] - 1:
+            raise ValueError("override_cohort_decades must sum to K-1")
+
+    rows_sorted = sorted(rows, key=lambda r: r["date"])
+    eval_last_n = COHORT_AUTOPRED_EVAL_LAST_N or 3
+    rank_min_fn = _choose_auto_predictor(rows_sorted, metric="rank_min", eval_last_n=eval_last_n)
+    rank_max_fn = _choose_auto_predictor(rows_sorted, metric="rank_max", eval_last_n=eval_last_n)
+    p_min_fn = _choose_auto_predictor(rows_sorted, metric="P_min", eval_last_n=eval_last_n)
+    p_max_fn = _choose_auto_predictor(rows_sorted, metric="P_max", eval_last_n=eval_last_n)
+    rank_min_star = rank_min_fn([r["rank_min"] for r in rows_sorted])
+    rank_max_star = rank_max_fn([r["rank_max"] for r in rows_sorted])
+    p_min_star = p_min_fn([r["P_min"] for r in rows_sorted])
+    p_max_star = p_max_fn([r["P_max"] for r in rows_sorted])
+
+    if override_rank_min is not None:
+        rank_min_star = int(override_rank_min)
+    if override_rank_max is not None:
+        rank_max_star = int(override_rank_max)
+    if override_p_min is not None:
+        p_min_star = float(override_p_min)
+    if override_p_max is not None:
+        p_max_star = float(override_p_max)
+
+    cohort_pool = [
+        n for n in pred["numbers"]
+        if rank_min_star <= n["rank"] <= rank_max_star and p_min_star <= n["P"] <= p_max_star
+    ]
+    leader_pool = [n for n in pred["numbers"] if n["rank"] <= leader_pool_rank_max]
+
+    cohort_candidates = [n["n"] for n in cohort_pool]
+    meta_map = {n["n"]: n for n in pred["numbers"]}
+    target_dec_tuple = target_dec_shape
+    target_h, target_w, target_c = target_hwc
+    sfl_pm1 = set()
+    if pred["lottery"] != HOP_SOURCE_LOTTERY:
+        sfl_pm1 = _sfl_lastn_pm1_set(pred["date"], SFL_LASTN_DRAWS)
+    pm1_counts = None
+    cohort_candidates_build = cohort_candidates
+    leader_pool_build = leader_pool
+    if PM1_ONLY_MODE and pred["lottery"] != HOP_SOURCE_LOTTERY:
+        pm1_counts = _sfl_lastn_pm1_counts(pred["date"], SFL_LASTN_DRAWS)
+        ranked_pm1 = sorted(
+            [n for n in NUMBER_RANGE if pm1_counts.get(n, 0) > 0],
+            key=lambda n: (pm1_counts.get(n, 0), meta_map[n]["P"]),
+            reverse=True,
+        )
+        pm1_pool = ranked_pm1[:PM1_ONLY_TOP_N]
+        if len(pm1_pool) >= pred["K"]:
+            cohort_candidates_build = pm1_pool
+            leader_pool_build = [n for n in leader_pool if n["n"] in pm1_pool]
+            if not leader_pool_build:
+                leader_pool_build = leader_pool
+        else:
+            pm1_counts = None
+    if sfl_pm1 and SFL_PM1_STRICT_COHORT:
+        strict_cohort = [n for n in cohort_candidates if n in sfl_pm1]
+        if len(strict_cohort) >= pred["K"] - 1:
+            cohort_candidates_build = strict_cohort
+    if sfl_pm1 and SFL_PM1_STRICT_LEADER:
+        strict_leaders = [n for n in leader_pool if n["n"] in sfl_pm1]
+        if strict_leaders:
+            leader_pool_build = strict_leaders
+
+    def _build_tickets(allowed_hwc_shapes, allowed_dec_shapes, candidates, leaders):
+        cohort_combos = []
+        for combo in itertools.combinations(candidates, pred["K"] - 1):
+            hwc = {"H": 0, "W": 0, "C": 0}
+            dec = {d: 0 for d in decade_ids}
+            ps = []
+            ranks = []
+            log_scores = []
+            max_p = -1.0
+            for n in combo:
+                m = meta_map[n]
+                hwc[m["category"]] += 1
+                dec[m["decade"]] += 1
+                ps.append(m["P"])
+                ranks.append(m["rank"])
+                log_scores.append(m["log_score"])
+                max_p = max(max_p, m["P"])
+            if allowed_hwc_shapes is not None and (hwc["H"], hwc["W"], hwc["C"]) not in allowed_hwc_shapes:
+                continue
+            dec_tuple = tuple(dec[d] for d in decade_ids)
+            if allowed_dec_shapes is not None and dec_tuple not in allowed_dec_shapes:
+                continue
+            cohort_combos.append({
+                "cohort": combo,
+                "hwc": (hwc["H"], hwc["W"], hwc["C"]),
+                "decades": dec,
+                "rank_min": min(ranks),
+                "rank_max": max(ranks),
+                "rank_span": max(ranks) - min(ranks),
+                "P_sum": sum(ps),
+                "P_mean": sum(ps) / len(ps),
+                "P_min": min(ps),
+                "P_max": max(ps),
+                "max_P": max_p,
+                "sum_log_score": sum(log_scores),
+                "product_P": math.prod(ps),
+            })
+
+        tickets = []
+        for leader in leaders:
+            leader_n = leader["n"]
+            for c in cohort_combos:
+                if leader_n in c["cohort"]:
+                    continue
+                if leader["P"] < c["max_P"]:
+                    continue
+                pm1_hits = sum(1 for n in c["cohort"] if n in sfl_pm1)
+                if leader_n in sfl_pm1:
+                    pm1_hits += 1
+                tickets.append({
+                    "leader": leader_n,
+                    "leader_rank": leader["rank"],
+                    "leader_P": leader["P"],
+                    "cohort": c["cohort"],
+                    "hwc": c["hwc"],
+                    "decades": c["decades"],
+                    "rank_min": c["rank_min"],
+                    "rank_max": c["rank_max"],
+                    "rank_span": c["rank_span"],
+                    "P_sum": c["P_sum"],
+                    "P_mean": c["P_mean"],
+                    "P_min": c["P_min"],
+                    "P_max": c["P_max"],
+                    "sum_log_score": c["sum_log_score"] + leader["log_score"],
+                    "product_P": c["product_P"] * leader["P"],
+                    "pm1_hits": pm1_hits,
+                    "P_total": c["P_sum"] + leader["P"],
+                })
+        return tickets
+
+    def _dedup_tickets(items):
+        seen = set()
+        out = []
+        for t in items:
+            key = (t["leader"], tuple(sorted(t["cohort"])))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(t)
+        return out
+
+    allowed_hwc_shapes = {(target_h, target_w, target_c)}
+    allowed_dec_shapes = {target_dec_tuple}
+    if PM1_ONLY_MODE and pm1_counts is not None:
+        allowed_hwc_shapes = None
+        allowed_dec_shapes = None
+    if PM1_ONLY_MODE and pm1_counts is not None:
+        allowed_hwc_shapes = None
+        allowed_dec_shapes = None
+    tickets = _build_tickets(allowed_hwc_shapes, allowed_dec_shapes, cohort_candidates_build, leader_pool_build)
+
+    relaxed_candidates = None
+    relaxed_hwc_shapes = None
+    relaxed_dec_shapes = None
+    if max_tickets_to_print:
+        if override_rank_min is None:
+            rank_min_relaxed = min(r["rank_min"] for r in rows)
+        else:
+            rank_min_relaxed = rank_min_star
+        if override_rank_max is None:
+            rank_max_relaxed = max(r["rank_max"] for r in rows)
+        else:
+            rank_max_relaxed = rank_max_star
+        if override_p_min is None:
+            p_min_relaxed = min(r["P_min"] for r in rows)
+        else:
+            p_min_relaxed = p_min_star
+        if override_p_max is None:
+            p_max_relaxed = max(r["P_max"] for r in rows)
+        else:
+            p_max_relaxed = p_max_star
+
+        relaxed_candidates = [
+            n["n"] for n in pred["numbers"]
+            if rank_min_relaxed <= n["rank"] <= rank_max_relaxed and p_min_relaxed <= n["P"] <= p_max_relaxed
+        ]
+        relaxed_hwc_shapes = {s for s in hwc_shapes if _is_adjacent_shape_3(s, target_hwc)}
+        relaxed_dec_shapes = {s for s in dec_shapes if _is_adjacent_shape_vec(s, target_dec_tuple)}
+
+        if len(tickets) < max_tickets_to_print:
+            tickets = _build_tickets(relaxed_hwc_shapes, relaxed_dec_shapes, relaxed_candidates, leader_pool_build)
+
+    if SFL_PM1_COMBO_ENABLED and sfl_pm1:
+        pm1_tickets = _build_pm1_combo_tickets(
+            pred,
+            meta_map,
+            sfl_pm1,
+            top_n=SFL_PM1_COMBO_TOP_N,
+            max_tickets=(max_tickets_to_print or SFL_PM1_COMBO_MAX),
+            decade_ids=decade_ids,
+        )
+        tickets = _dedup_tickets(tickets + pm1_tickets)
+
+    if TOP_P_COMBO_ENABLED:
+        top_p_tickets = _build_top_p_combo_tickets(
+            pred,
+            meta_map,
+            top_n=TOP_P_COMBO_N,
+            max_tickets=(max_tickets_to_print or TOP_P_COMBO_MAX),
+            decade_ids=decade_ids,
+        )
+        tickets = _dedup_tickets(tickets + top_p_tickets)
+
+    tickets.sort(key=lambda t: (t["P_total"], t["sum_log_score"], t["product_P"]), reverse=True)
+    if not tickets:
+        return {
+            "tickets": [],
+            "meta_map": meta_map,
+            "decade_ids": decade_ids,
+        }
+
+    usage_cap = None
+    if COHORT_USAGE_CAP_FRAC and max_tickets_to_print:
+        usage_cap = max(1, math.ceil(max_tickets_to_print * float(COHORT_USAGE_CAP_FRAC)))
+    if usage_cap is None:
+        usage_cap = 2
+    else:
+        usage_cap = min(usage_cap, 2)
+
+    if usage_cap is not None:
+        usage_counts = Counter()
+        diversified = []
+        for t in tickets:
+            nums = list(t["cohort"])
+            if any(usage_counts[n] >= usage_cap for n in nums):
+                continue
+            diversified.append(t)
+            for n in nums:
+                usage_counts[n] += 1
+            if max_tickets_to_print and len(diversified) >= max_tickets_to_print:
+                break
+
+        if (
+            max_tickets_to_print
+            and len(diversified) < max_tickets_to_print
+            and relaxed_candidates is not None
+        ):
+            expanded = _build_tickets(relaxed_hwc_shapes, relaxed_dec_shapes, relaxed_candidates, leader_pool_build)
+            combined = _dedup_tickets(tickets + expanded)
+            combined.sort(key=lambda t: (t["P_total"], t["sum_log_score"], t["product_P"]), reverse=True)
+            usage_counts = Counter()
+            diversified = []
+            for t in combined:
+                nums = list(t["cohort"])
+                if any(usage_counts[n] >= usage_cap for n in nums):
+                    continue
+                diversified.append(t)
+                for n in nums:
+                    usage_counts[n] += 1
+                if max_tickets_to_print and len(diversified) >= max_tickets_to_print:
+                    break
+        tickets = diversified if diversified else tickets
+
+    if max_tickets_to_print:
+        tickets = tickets[:max_tickets_to_print]
+
+    return {
+        "tickets": tickets,
+        "meta_map": meta_map,
+        "decade_ids": decade_ids,
+    }
 
 def main():
     random.seed(0)
@@ -2851,6 +3547,15 @@ def add_draw(date, lottery, main, supp=None, powerball=None):
 def addDraws():
     # Set for Life
     def setForLife():
+        add_draw(d(5, 1,2026), "Set for Life", [4,5,13,22,36,37,41], [1,6])
+        add_draw(d(5, 1,2026), "Set for Life", [3,5,15,17,30,33,40], [11,43])
+        add_draw(d(5, 1,2026), "Set for Life", [1,3,8,15,27,41,42], [7,34])
+        add_draw(d(5, 1,2026), "Set for Life", [20,23,26,27,30,34,41], [21,29])
+        add_draw(d(5, 1,2026), "Set for Life", [13,17,22,23,27,31,42], [20,32])
+        add_draw(d(5, 1,2026), "Set for Life", [1,2,17,20,28,32,37], [6,38])
+        add_draw(d(5, 1,2026), "Set for Life", [1,10,11,16,33,36,44], [8,32])
+        add_draw(d(5, 1,2026), "Set for Life", [9,11,16,17,18,21,32], [4,13])
+        add_draw(d(5, 1,2026), "Set for Life", [22,24,31,34,35,36,37], [28,42])
         add_draw(d(5, 1,2026), "Set for Life", [40, 34, 9, 44, 41, 29, 36], [16, 7])
         add_draw(d(4, 1,2026), "Set for Life", [3, 39, 31, 1, 11, 42, 25], [44, 40])
         add_draw(d(3, 1,2026), "Set for Life", [9, 29, 3, 38, 22, 4, 1], [11,6])
@@ -2922,6 +3627,10 @@ def addDraws():
 
     # Weekday Windfall
     def weekdayWindfall():
+        add_draw(d(14, 1, 2026),"Weekday Windfall", [2,11,15,35,36,43], [31,44])
+        add_draw(d(12, 1, 2026),"Weekday Windfall", [10,15,16,23,29,42], [4,43])
+        add_draw(d(9, 1, 2026),"Weekday Windfall", [4,5,9,15,29,36], [17,19])
+        add_draw(d(7, 1, 2026),"Weekday Windfall", [1,13,18,26,28,30], [2,44])
         add_draw(d(5, 1, 2026),"Weekday Windfall", [25, 41, 38, 29, 22, 6], [5, 30])
         add_draw(d(2, 1, 2026),"Weekday Windfall", [8, 23, 36, 15, 39, 31], [21, 5])
         add_draw(d(31, 12), "Weekday Windfall", [2, 40, 22, 42, 9, 6], [28, 27])
@@ -2955,7 +3664,9 @@ def addDraws():
 
     # OZ Lotto
     def ozLott():
-        # add_draw(d(30, 12), "OZ Lotto", [14, 11, 31, 20, 19, 12, 27], [43, 1, 13])
+        add_draw(d(13, 1,2026), "OZ Lotto", [17,23,31,35,38,39,42], [7,24,29])
+        add_draw(d(6, 1,2026), "OZ Lotto", [2,13,14,17,19,30,45], [4,8,33])
+        add_draw(d(30, 12), "OZ Lotto", [14, 11, 31, 20, 19, 12, 27], [43, 1, 13])
         add_draw(d(23, 12), "OZ Lotto", [47, 29, 36, 2, 23, 37, 12], [34, 43, 3])
         add_draw(d(16, 12), "OZ Lotto", [43, 41, 20, 9, 46, 4, 19], [45, 8, 21])
         add_draw(d(9, 12), "OZ Lotto", [21, 15, 3, 6, 9, 33, 19], [31, 14, 7])
@@ -2969,6 +3680,7 @@ def addDraws():
 
     # Powerball
     def powerball():
+        add_draw(d(8, 1,2026), "Powerball", [7,15,16,17,25,26,27], [9])
         add_draw(d(1, 1,2026), "Powerball", [30, 9, 7, 27, 18, 15, 29], None, [3])
         add_draw(d(25, 12), "Powerball", [7, 23, 29, 20, 11, 16, 17], None, [17])
         add_draw(d(18, 12), "Powerball", [31, 25, 19, 2, 35, 15, 16], None, [14])
@@ -2983,6 +3695,7 @@ def addDraws():
 
     # Saturday Lotto
     def saturdayLotto():
+        add_draw(d(10, 1,2026), "Saturday Lotto", [1,8,23,25,30,41], [32,37])
         add_draw(d(3, 1,2026), "Saturday Lotto", [19, 36, 21, 10, 9, 13],[39, 2])
         add_draw(d(27, 12), "Saturday Lotto", [26, 20, 40, 3, 5, 28],[22, 42])
         add_draw(d(20, 12), "Saturday Lotto", [8, 32, 31, 19, 43, 41],[14, 6])

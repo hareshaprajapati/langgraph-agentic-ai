@@ -46,14 +46,14 @@ import contextlib
 # ============================================================
 
 CSV_PATH = "Oz_Lotto_transformed.csv"
-TARGET_DATE = "2026-01-06"
+TARGET_DATE = "2026-01-13"
 # TARGET_DATE = "2026-1-3"
 # Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [45, 30, 17, 13, 14, 19, 2]
+REAL_DRAW = [17, 35, 23, 38, 39, 42, 31]
 # If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
-USE_REAL_DRAW_FALLBACK = True
+USE_REAL_DRAW_FALLBACK = False
 
-NUM_TICKETS = 20
+NUM_TICKETS = 10
 NUMBERS_PER_TICKET = 7
 
 MAIN_MIN = 1
@@ -78,7 +78,7 @@ COLD_FORCE_COUNT = 2
 # Hard-force coverage mix
 FORCE_COVERAGE = False
 RANDOM_SEED = 0
-DEBUG_PRINT = False
+DEBUG_PRINT = True
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -125,6 +125,7 @@ SEASON_DECADE_WEIGHT = 0.6
 # Optional: enforce exact decade counts (set None to disable)
 # Example: {1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
 DECADE_TARGET_COUNTS = None
+# DECADE_TARGET_COUNTS = {1: 2, 2: 2, 3: 0, 4: 3, 5: 0}
 
 # Acceptance behavior
 PENALTY_SCALE = 0.65
@@ -169,17 +170,11 @@ GREEDY_POOL_SIZE = 36
 
 # Auto-tune config (walk-forward) for ge4 hits
 AUTO_TUNE_MODE = True
-AUTO_TUNE_TRAIN_DRAWS = 3
+AUTO_TUNE_TRAIN_DRAWS = 5
 AUTO_TUNE_MAX_SECONDS = 300
-AUTO_TUNE_LOOKBACK_DAYS = [180, 210]
-AUTO_TUNE_LOOKBACK_12MO = [365]
-AUTO_TUNE_SEASON_WINDOWS = [5, 9]
-
-# Faster tuning for backtests only
-AUTO_TUNE_BACKTEST_MAX_SECONDS = 30
-AUTO_TUNE_BACKTEST_LOOKBACK_DAYS = [180, 210]
-AUTO_TUNE_BACKTEST_LOOKBACK_12MO = [365]
-AUTO_TUNE_BACKTEST_SEASON_WINDOWS = [5, 9]
+AUTO_TUNE_LOOKBACK_DAYS = [120, 180, 210, 270]
+AUTO_TUNE_LOOKBACK_12MO = [270, 365, 450]
+AUTO_TUNE_SEASON_WINDOWS = [5, 7, 9, 11]
 
 
 
@@ -1905,6 +1900,11 @@ def generate_greedy_tickets(
         if any(len(s_pick.intersection(t)) > overlap_cap for t in tickets):
             continue
 
+        if DECADE_TARGET_COUNTS is not None:
+            vec = _decade_vector(pick)
+            if any(vec.get(d, 0) != DECADE_TARGET_COUNTS.get(d, 0) for d in DECADE_IDS):
+                continue
+
         penalty = _ticket_penalty(pick, dist)
         scale = PENALTY_SCALE
         accept_prob = math.exp(-penalty * scale)
@@ -1988,23 +1988,6 @@ def _auto_tune_config(
                     best_key = key
 
     return best if best is not None else (LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS)
-
-
-def _auto_tune_config_backtest(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    supp_cols: List[str],
-    train_dates: List[pd.Timestamp],
-) -> Tuple[int, int, int]:
-    global AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS
-    saved = (AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS)
-    AUTO_TUNE_LOOKBACK_DAYS = AUTO_TUNE_BACKTEST_LOOKBACK_DAYS
-    AUTO_TUNE_LOOKBACK_12MO = AUTO_TUNE_BACKTEST_LOOKBACK_12MO
-    AUTO_TUNE_SEASON_WINDOWS = AUTO_TUNE_BACKTEST_SEASON_WINDOWS
-    try:
-        return _auto_tune_config(df, main_cols, supp_cols, train_dates, AUTO_TUNE_BACKTEST_MAX_SECONDS)
-    finally:
-        AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS = saved
 
 
 def _print_backtest_hit_summary(summaries: List[Dict[str, object]]) -> None:
@@ -2112,7 +2095,7 @@ if __name__ == "__main__":
     show_ticket_hits(real_draw, tickets)
 
     # Backtest: run on the last 5 available draws in the CSV.
-    N = 5
+    N = 10
     backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
 
@@ -2130,7 +2113,7 @@ if __name__ == "__main__":
         if AUTO_TUNE_MODE:
             idx = df.index[df["Date"] == d].tolist()[0]
             train_dates = df.iloc[max(0, idx - AUTO_TUNE_TRAIN_DRAWS):idx]["Date"].tolist()
-            tuned = _auto_tune_config_backtest(df, main_cols, supp_cols, train_dates)
+            tuned = _auto_tune_config(df, main_cols, supp_cols, train_dates, AUTO_TUNE_MAX_SECONDS)
             LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS = tuned
             print(f"AUTO_TUNE for {bt_date}: LOOKBACK_DAYS={LOOKBACK_DAYS} LOOKBACK_DAYS_12MO={LOOKBACK_DAYS_12MO} SEASON_WINDOW_DAYS={SEASON_WINDOW_DAYS}")
         bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT, supp_cols=supp_cols)

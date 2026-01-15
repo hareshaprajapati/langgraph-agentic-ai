@@ -40,8 +40,6 @@ import math
 # ============================================================
 
 CSV_PATH = "Powerball.csv"
-# TARGET_DATE = "2025-12-25"   # any date, learns season around this month/day
-# TARGET_DATE = "2026-01-01"   # any date, learns season around this month/day
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 7
@@ -962,7 +960,7 @@ def _ticket_overlap_ok(candidate: List[int], chosen: List[List[int]], overlap_ca
     return True
 
 
-def generate_tickets(scored, season_decades):
+def generate_tickets(scored, season_decades, band_quota_counts=None, band_quota_strict=False, band_min_requirements=None):
     """
     Production ticket generator:
       1) Sample MANY valid candidate tickets from the score pool (stacking enabled)
@@ -974,6 +972,7 @@ def generate_tickets(scored, season_decades):
         raise ValueError("generate_tickets(): scored list is empty")
 
     rng = random.Random(RANDOM_SEED)
+    rank_map = {c.n: i + 1 for i, c in enumerate(scored)}
 
     # --- pool ---
     pool = scored[:min(TOP_POOL, len(scored))]
@@ -994,6 +993,22 @@ def generate_tickets(scored, season_decades):
     else:
         weights = [(float(c.total_score) - min_score) + float(WEIGHT_FLOOR) for c in pool]
         weights = [w if w > 0 else 1e-12 for w in weights]
+
+    band_pools = None
+    if band_quota_counts:
+        band_pools = {"B_LEADER": {"items": [], "weights": []},
+                      "A_CORE": {"items": [], "weights": []},
+                      "C_TAIL": {"items": [], "weights": []},
+                      "OTHER": {"items": [], "weights": []}}
+        for n, w in zip(items, weights):
+            rnk = rank_map.get(n, 9999)
+            band = _band_of_rank(rnk)
+            if band in band_pools:
+                band_pools[band]["items"].append(n)
+                if band == "A_CORE":
+                    band_pools[band]["weights"].append(1.0)
+                else:
+                    band_pools[band]["weights"].append(w)
 
     # --- decade helpers: use your existing ones if present ---
     # We expect season_decades to provide med/p25/p75 dicts like {decade_id: count}
@@ -1081,7 +1096,24 @@ def generate_tickets(scored, season_decades):
     while len(candidates) < needed and attempts < max_attempts:
         attempts += 1
 
-        pick = _weighted_sample_no_replace(items, weights, NUMBERS_PER_TICKET, rng)
+        if band_quota_counts and band_pools:
+            pick = []
+            valid = True
+            for band, count in band_quota_counts.items():
+                cnt = int(count)
+                if cnt <= 0:
+                    continue
+                bitems = band_pools.get(band, {}).get("items", [])
+                bweights = band_pools.get(band, {}).get("weights", [])
+                if len(bitems) < cnt:
+                    valid = False
+                    break
+                pick.extend(_weighted_sample_no_replace(bitems, bweights, cnt, rng))
+            if not valid or len(set(pick)) != NUMBERS_PER_TICKET:
+                continue
+            pick = sorted(pick)
+        else:
+            pick = _weighted_sample_no_replace(items, weights, NUMBERS_PER_TICKET, rng)
         pick = sorted(pick)
         tkey = tuple(pick)
         if tkey in seen:
@@ -1115,6 +1147,35 @@ def generate_tickets(scored, season_decades):
         # breaker after decade acceptance
         if BREAKER_ENABLED and BREAKER_BYPASS_DECADE_CHECK:
             pick = apply_breaker(pick)
+
+        counts = None
+        if band_quota_counts or band_min_requirements:
+            counts = {"A_CORE": 0, "B_LEADER": 0, "C_TAIL": 0, "OTHER": 0}
+            for n in pick:
+                rnk = rank_map.get(n, 9999)
+                band = _band_of_rank(rnk)
+                counts[band] += 1
+
+        if band_min_requirements and counts:
+            meets_min = True
+            for k, v in band_min_requirements.items():
+                if counts.get(k, 0) < int(v):
+                    meets_min = False
+                    break
+            if not meets_min:
+                continue
+
+        if band_quota_counts and counts:
+            dist = sum(
+                abs(int(counts.get(k, 0)) - int(band_quota_counts.get(k, 0)))
+                for k in counts
+            )
+            if dist:
+                if band_quota_strict:
+                    continue
+                reject_prob = min(0.90, dist * 0.35)
+                if rng.random() < reject_prob:
+                    continue
 
         # validate
         if len(set(pick)) != NUMBERS_PER_TICKET:
@@ -1414,6 +1475,34 @@ def print_band_summary_at_end(
     print(f"  Draws with >=1 tail-band winner:   {tail_draws}/{n_draws} ({100.0*tail_draws/n_draws:.1f}%)")
     print(f"  Draws with BOTH leader+tail:       {both_draws}/{n_draws} ({100.0*both_draws/n_draws:.1f}%)")
 
+
+def band_quota_from_stats(stats: List[DrawBandStats]) -> Dict[str, int] | None:
+    if not stats:
+        return None
+    sums = {"B_LEADER": 0, "A_CORE": 0, "C_TAIL": 0, "OTHER": 0}
+    for s in stats:
+        sums["B_LEADER"] += int(s.counts.get("B_LEADER", 0))
+        sums["A_CORE"] += int(s.counts.get("A_CORE", 0))
+        sums["C_TAIL"] += int(s.counts.get("C_TAIL", 0))
+        sums["OTHER"] += int(s.counts.get("OTHER", 0))
+
+    n = len(stats)
+    avgs = {k: (sums[k] / n) for k in sums}
+    floors = {k: int(math.floor(avgs[k])) for k in avgs}
+    remainder = max(0, int(NUMBERS_PER_TICKET) - sum(floors.values()))
+    frac_order = sorted(avgs.keys(), key=lambda k: (avgs[k] - floors[k]), reverse=True)
+    for k in frac_order:
+        if remainder <= 0:
+            break
+        floors[k] += 1
+        remainder -= 1
+
+    total = sum(floors.values())
+    if total != NUMBERS_PER_TICKET:
+        k = max(floors, key=lambda x: floors[x])
+        floors[k] += (NUMBERS_PER_TICKET - total)
+    return floors
+
 from datetime import datetime
 from typing import List, Tuple, Dict
 
@@ -1473,6 +1562,8 @@ def print_date_by_date_band_counts_ascending(band_stats):
 if __name__ == "__main__":
     df, main_cols = _load_csv(CSV_PATH)
     N = 10
+    TARGET_DATE = "2026-01-08"
+    REAL_DRAW_TARGET = [7, 15, 16, 17, 25, 26, 27]
 
     df_bt = df.sort_values("Date", ascending=False).head(N)
     results = []
@@ -1482,7 +1573,7 @@ if __name__ == "__main__":
     # backtest
     winner_blocks = []
     band_stats = []
-    for i, (_, row) in enumerate(df_bt.iterrows(), 1):
+    for i, (_, row) in enumerate(df_bt.iloc[::-1].iterrows(), 1):
         target_date = row["Date"].strftime("%Y-%m-%d")  # format expected by algo
         real_draw = [int(row[c]) for c in main_cols]  # ONLY 7 winning numbers
 
@@ -1569,14 +1660,21 @@ if __name__ == "__main__":
         print(r)
     print("\n Current draw prediction " + "=" * 70)
     # current draw prediction
-    TARGET_DATE = "2026-01-08"
+    target_band_quota = band_quota_from_stats(band_stats)
+    if target_band_quota:
+        print(f"BAND_QUOTA (target from backtest): {target_band_quota}")
     scored, season_profile, season_decades = score_main_numbers(
         target_date=TARGET_DATE,
         csv_path=CSV_PATH,
         debug=DEBUG_PRINT,
     )
 
-    tickets = generate_tickets(scored, season_decades)
+    tickets = generate_tickets(
+        scored,
+        season_decades,
+        band_quota_counts=target_band_quota,
+        band_quota_strict=False
+    )
     # pb_scored, pb_season_profile = score_powerball_numbers(
     #     target_date=TARGET_DATE,
     #     csv_path=CSV_PATH,
@@ -1597,6 +1695,7 @@ if __name__ == "__main__":
     for i, t in enumerate(tickets, 1):
         vec = _decade_vector(t)
         print(f"Ticket #{i:02d}: {t}  decades={vec}")
+    show_ticket_hits(REAL_DRAW_TARGET, tickets)
     # if top_pb_scored:
     #     print(f"Top {POWERBALL_TOP_N} Powerball numbers (with scores):")
     #     for c in top_pb_scored:
