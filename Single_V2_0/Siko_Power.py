@@ -20,7 +20,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    f"Siko_Power_Chatgpt.log"   # single growing log file
+    f"Siko_Power.log"   # single growing log file
 )
 CSV_PATH = "Powerball.csv"
 

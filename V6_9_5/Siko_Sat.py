@@ -138,7 +138,7 @@ OVERRIDE_P_MAX = None               # e.g. 0.030
 if __name__ == "__main__":
 
     # today = datetime.date.today() # - datetime.timedelta(days=1)
-    today = datetime.date(2026, 1, 3)  # keep explicit & reproducible
+    today = datetime.date(2026, 1, 10)  # keep explicit & reproducible
     # today = datetime.date(2025, 12, 27)  # keep explicit & reproducible
     saturday_dates = last_n_saturdays(today, 6)
 

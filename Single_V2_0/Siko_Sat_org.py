@@ -23,7 +23,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "siko_sat_single_5_hit_logs.log"   # single growing log file
+    "Siko_Sat_org.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
@@ -44,7 +44,7 @@ import math
 
 CSV_PATH = "Tattslotto.csv"
 TARGET_DATE = "2026-1-10"
-# TARGET_DATE = "2026-1-3"
+REAL_DRAW_TARGET = [1, 8, 23, 25, 30, 41]
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -1675,9 +1675,10 @@ if __name__ == "__main__":
         print(f"Ticket #{i:02d}: {t}  decades={vec}")
 
     show_ticket_hits(real_draw, tickets)
+    show_ticket_hits(REAL_DRAW_TARGET, tickets)
 
     # Backtest: run on the last 5 available draws in the CSV.
-    N = 10
+    N = 104
     backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
 
