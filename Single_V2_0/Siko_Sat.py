@@ -45,6 +45,7 @@ import math
 CSV_PATH = "Tattslotto.csv"
 TARGET_DATE = "2026-1-10"
 REAL_DRAW_TARGET = [1, 8, 23, 25, 30, 41]
+N = 10
 # TARGET_DATE = "2026-1-3"
 # REAL_DRAW_TARGET = [9, 10, 13, 19, 21, 36]
 
@@ -1638,12 +1639,23 @@ def generate_tickets(
     return tickets
 
 
-def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
+def show_ticket_hits(
+    real_draw: List[int],
+    tickets: List[List[int]],
+    draw_date: str = None,
+    strategy_name: str = None,
+):
     if not real_draw:
         return
     rd = sorted(real_draw)
     rd_set = set(rd)
-    print("\n=== REAL DRAW HIT SUMMARY ===")
+    label_parts = []
+    if strategy_name:
+        label_parts.append(str(strategy_name))
+    if draw_date:
+        label_parts.append(str(draw_date))
+    suffix = f" ({' | '.join(label_parts)})" if label_parts else ""
+    print(f"\n=== REAL DRAW HIT SUMMARY{suffix} ===")
     print(f"REAL_DRAW: {rd}")
 
     hit_counts: Dict[int, int] = {}
@@ -2006,33 +2018,8 @@ if __name__ == "__main__":
         raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
 
     target_real = REAL_DRAW_TARGET if REAL_DRAW_TARGET else real_draw
-    target_summaries = {}
 
-    if PORTFOLIO_MODE:
-        tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
-    else:
-        tickets = generate_tickets(scored, df, main_cols, run_date,
-                                   use_weights=True, seed_hot_overdue=False,
-                                   force_coverage=FORCE_COVERAGE,
-                                   cohesion_config=main_cfg)
-
-    mode_label = "HARD_FORCE" if FORCE_COVERAGE else "WEIGHTED"
-    print(f"\n=== {mode_label} STRATEGY ===")
-    print(f"Target: {run_date}")
-    print(f"Tickets: {NUM_TICKETS} | Pool size: {POOL_SIZE} + mid {MID_POOL_SIZE} + cold {COLD_POOL_SIZE}")
-    print(f"Decade bands: {DECADE_BANDS}")
-
-    for i, t in enumerate(tickets, 1):
-        vec = _decade_vector(t)
-        print(f"Ticket #{i:02d}: {t}  decades={vec}")
-
-    show_ticket_hits(real_draw, tickets)
-    show_ticket_hits(REAL_DRAW_TARGET, tickets)
-    if target_real:
-        target_summaries["BASELINE"] = _hit_summary(target_real, tickets)
-
-    # Backtest: run on the last 5 available draws in the CSV.
-    N = 104
+    # Backtest: run on the last 5 available draws in the CSV
     backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
 
@@ -2048,18 +2035,6 @@ if __name__ == "__main__":
         row = df[df["Date"] == d].iloc[0]
         bt_draw = [int(row[c]) for c in main_cols]
         bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
-        if PORTFOLIO_MODE:
-            bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
-        else:
-            bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
-                                          use_weights=True, seed_hot_overdue=False,
-                                          force_coverage=FORCE_COVERAGE, cohesion_config=main_cfg)
-        print(f"\nTarget: {bt_date}")
-        for i, t in enumerate(bt_tickets, 1):
-            vec = _decade_vector(t)
-            print(f"Ticket #{i:02d}: {t}  decades={vec}")
-        show_ticket_hits(bt_draw, bt_tickets)
-
         collect_winner_tables_and_stats(
             blocks=winner_blocks,
             stats=band_stats,
@@ -2080,7 +2055,6 @@ if __name__ == "__main__":
     print_date_by_date_band_counts_ascending(band_stats)
     print_band_summary_at_end(band_stats)
 
-    target_band_quota = band_quota_from_stats(band_stats)
     winner_regime = _regime_from_winner_stats(winner_regime_stats)
     if winner_regime:
         regime_variants = [
@@ -2115,14 +2089,17 @@ if __name__ == "__main__":
                     ratio_map=ratio_map,
                     ratio_min_hits=winner_regime.get("ratio_min_hits"),
                     ratio_reject_scale=variant["ratio_scale"],
-                    band_quota_counts=target_band_quota if variant.get("use_band_quota") else None,
-                    band_quota_strict=False,
                 )
                 print(f"\nTarget: {bt_date}")
                 for i, t in enumerate(bt_regime_tickets, 1):
                     vec = _decade_vector(t)
                     print(f"Ticket #{i:02d}: {t}  decades={vec}")
-                show_ticket_hits(bt_draw, bt_regime_tickets)
+                show_ticket_hits(
+                    bt_draw,
+                    bt_regime_tickets,
+                    draw_date=bt_date,
+                    strategy_name=f"BACKTEST_{variant['name']}",
+                )
 
         scored_main = compute_candidate_score_main(df, main_cols, run_date)
         rank_bucket_map = {c.n: _rank_bucket(i + 1) for i, c in enumerate(scored_main)}
@@ -2145,8 +2122,6 @@ if __name__ == "__main__":
                 ratio_map=ratio_map,
                 ratio_min_hits=winner_regime.get("ratio_min_hits"),
                 ratio_reject_scale=variant["ratio_scale"],
-                band_quota_counts=target_band_quota if variant.get("use_band_quota") else None,
-                band_quota_strict=False,
             )
             print("\n=== WINNER REGIME STRATEGY ===")
             print(f"Variant: {variant['name']}")
@@ -2158,44 +2133,5 @@ if __name__ == "__main__":
             for i, t in enumerate(regime_tickets, 1):
                 vec = _decade_vector(t)
                 print(f"Ticket #{i:02d}: {t}  decades={vec}")
-            show_ticket_hits(real_draw, regime_tickets)
-            show_ticket_hits(REAL_DRAW_TARGET, regime_tickets)
-            if target_real:
-                target_summaries[variant["name"]] = _hit_summary(target_real, regime_tickets)
-
-    if target_band_quota:
-        print("\n" + "=" * 70)
-        print("BAND_QUOTA (target from backtest):", target_band_quota)
-        quota_scored = score_numbers(df, main_cols, run_date, DEBUG_PRINT)
-        quota_tickets = generate_tickets(
-            quota_scored,
-            df,
-            main_cols,
-            run_date,
-            use_weights=True,
-            seed_hot_overdue=False,
-            force_coverage=FORCE_COVERAGE,
-            cohesion_config=main_cfg,
-            band_quota_counts=target_band_quota,
-            band_quota_strict=False,
-        )
-        print("\n=== BAND QUOTA STRATEGY ===")
-        print(f"Target: {run_date}")
-        print(f"Tickets: {NUM_TICKETS} | Pool size: {POOL_SIZE} + mid {MID_POOL_SIZE} + cold {COLD_POOL_SIZE}")
-        print(f"Decade bands: {DECADE_BANDS}")
-        for i, t in enumerate(quota_tickets, 1):
-            vec = _decade_vector(t)
-            print(f"Ticket #{i:02d}: {t}  decades={vec}")
-        show_ticket_hits(real_draw, quota_tickets)
-        show_ticket_hits(REAL_DRAW_TARGET, quota_tickets)
-        if target_real:
-            target_summaries["BAND_QUOTA"] = _hit_summary(target_real, quota_tickets)
-
-    if target_summaries:
-        print("\n" + "=" * 70)
-        print("TARGET STRATEGY HIT SUMMARY")
-        for name, summary in target_summaries.items():
-            print(
-                f"{name:>12} | max_hit={summary['max_hit']} | ge3={summary['ge3']} | "
-                f"ge2={summary['ge2']} | total_hits={summary['total_hits']}"
-            )
+            show_ticket_hits(real_draw, regime_tickets, draw_date=run_date, strategy_name=variant["name"])
+            show_ticket_hits(REAL_DRAW_TARGET, regime_tickets, draw_date=run_date, strategy_name=variant["name"])

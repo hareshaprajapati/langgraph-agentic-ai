@@ -140,6 +140,8 @@ if __name__ == "__main__":
     # today = datetime.date.today() # - datetime.timedelta(days=1)
     today = datetime.date(2026, 1, 10)  # keep explicit & reproducible
     # today = datetime.date(2025, 12, 27)  # keep explicit & reproducible
+    real_draw_date = today
+    real_draw_result = [1, 8, 23, 25, 30, 41]
     saturday_dates = last_n_saturdays(today, 6)
 
     start_ts = time.time()
@@ -183,6 +185,41 @@ if __name__ == "__main__":
                 override_p_min=OVERRIDE_P_MIN,
                 override_p_max=OVERRIDE_P_MAX,
             )
+        if run_data:
+            actual_snapshot = run_data.get("prediction_actual")
+            if actual_snapshot is not None:
+                actual_numbers = sorted(actual_snapshot.get("actual_numbers", []))
+            elif target_date == real_draw_date:
+                actual_numbers = sorted(real_draw_result)
+            else:
+                actual_numbers = []
+
+            if actual_numbers:
+                ticket_data = core.build_locked_tickets(
+                    run_data,
+                    leader_pool_rank_max=LEADER_POOL_RANK_MAX,
+                    max_tickets_to_print=MAX_TICKETS_TO_PRINT,
+                    allowed_dates=saturday_date_set,
+                    allowed_lottery="Saturday Lotto",
+                    override_cohort_hwc=OVERRIDE_COHORT_HWC,
+                    override_cohort_decades=OVERRIDE_COHORT_DECADES,
+                    override_rank_min=OVERRIDE_RANK_MIN,
+                    override_rank_max=OVERRIDE_RANK_MAX,
+                    override_p_min=OVERRIDE_P_MIN,
+                    override_p_max=OVERRIDE_P_MAX,
+                )
+                tickets = ticket_data["tickets"] if ticket_data else []
+                print(f"[HITS] Date {target_date} | Actual: {actual_numbers}")
+                if not tickets:
+                    print("[HITS] No tickets to evaluate.")
+                else:
+                    best_hits = 0
+                    for i, t in enumerate(tickets, 1):
+                        nums = sorted([t["leader"]] + list(t["cohort"]))
+                        hits = sorted(set(nums) & set(actual_numbers))
+                        best_hits = max(best_hits, len(hits))
+                        print(f"[HITS] Ticket #{i}: {nums} | Hits ({len(hits)}): {hits}")
+                    print(f"[HITS] Best ticket hits: {best_hits} of {len(actual_numbers)}")
 
     end_ts = time.time()
     end_dt = datetime.datetime.now()

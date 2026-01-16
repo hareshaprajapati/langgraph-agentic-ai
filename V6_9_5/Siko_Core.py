@@ -3695,7 +3695,7 @@ def addDraws():
 
     # Saturday Lotto
     def saturdayLotto():
-        add_draw(d(10, 1,2026), "Saturday Lotto", [1,8,23,25,30,41], [32,37])
+        # add_draw(d(10, 1,2026), "Saturday Lotto", [1,8,23,25,30,41], [32,37])
         add_draw(d(3, 1,2026), "Saturday Lotto", [19, 36, 21, 10, 9, 13],[39, 2])
         add_draw(d(27, 12), "Saturday Lotto", [26, 20, 40, 3, 5, 28],[22, 42])
         add_draw(d(20, 12), "Saturday Lotto", [8, 32, 31, 19, 43, 41],[14, 6])
