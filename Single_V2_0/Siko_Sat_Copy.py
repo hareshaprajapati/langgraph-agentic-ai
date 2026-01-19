@@ -23,10 +23,10 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "Siko_Sat.py.log"   # single growing log file
+    "Siko_Sat_Copy.py.log"   # single growing log file
 )
 
-log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
+log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
 
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
@@ -43,22 +43,14 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-17"
-REAL_DRAW_TARGET = [8, 9, 19, 35, 38, 44]
-N = 11
+TARGET_DATE = "2026-1-10"
+REAL_DRAW_TARGET = [1, 8, 23, 25, 30, 41]
+N = 10
 # TARGET_DATE = "2026-1-3"
 # REAL_DRAW_TARGET = [9, 10, 13, 19, 21, 36]
 
 # TARGET_DATE = "2025-11-15"
 # REAL_DRAW_TARGET = [1, 19, 33, 36, 39, 41]
-
-# Example: [{1: 2, 2: 1, 3: 1, 4: 1, 5: 1}]
-# Example (partial): [{1: 2, 2: 0, 3: 3}] -> remaining decades auto-adjust
-DECADE_TARGET_COUNTS = [
-    # {1: 2, 2: 1, 3: 0, 4:2, 5: 1},
-#     # {1: 2, 3: 2, 4: 1},
-]
-# DECADE_TARGET_COUNTS = None
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -129,7 +121,8 @@ DECADE_MEDIAN_TOL = 1
 DECADE_SOFT_PENALTY = 0.6
 
 # Optional: enforce exact decade counts (set None to disable)
-
+# Example: {1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+DECADE_TARGET_COUNTS = None
 DECADE_TARGET_SOFT_PENALTY = None
 
 # Acceptance behavior
@@ -795,15 +788,9 @@ def _decade_target_distance(vec: Dict[int, int], target: Dict[int, int]) -> int:
     return sum(abs(vec.get(d, 0) - target.get(d, 0)) for d in DECADE_IDS)
 
 
-def _same_draw_date(a: str, b: str) -> bool:
-    ta = pd.Timestamp(a)
-    tb = pd.Timestamp(b)
-    if pd.isna(ta) or pd.isna(tb):
-        return False
-    return ta.date() == tb.date()
-
-
 def _normalize_decade_target(target: Dict[int, int]) -> Dict[int, int]:
+    if target is None:
+        return None
     if not isinstance(target, dict):
         raise ValueError("DECADE_TARGET_COUNTS must be a dict like {decade_id: count}.")
     for k, v in target.items():
@@ -812,24 +799,12 @@ def _normalize_decade_target(target: Dict[int, int]) -> Dict[int, int]:
         if not isinstance(v, int) or v < 0:
             raise ValueError("DECADE_TARGET_COUNTS values must be non-negative integers.")
     total = sum(int(v) for v in target.values())
-    if total > NUMBERS_PER_TICKET:
-        raise ValueError("DECADE_TARGET_COUNTS cannot exceed NUMBERS_PER_TICKET.")
-    return {d: int(target.get(d)) for d in target}
-
-def _normalize_decade_target_list(targets) -> List[Dict[int, int]]:
-    if targets is None:
-        return []
-    if isinstance(targets, dict):
-        targets = [targets]
-    if not isinstance(targets, list):
-        raise ValueError("DECADE_TARGET_COUNTS must be a list of dicts.")
-    out = []
-    for t in targets:
-        out.append(_normalize_decade_target(t))
-    return out
+    if total != NUMBERS_PER_TICKET:
+        raise ValueError("DECADE_TARGET_COUNTS must sum to NUMBERS_PER_TICKET.")
+    return {d: int(target.get(d, 0)) for d in DECADE_IDS}
 
 
-DECADE_TARGET_COUNTS = _normalize_decade_target_list(DECADE_TARGET_COUNTS)
+DECADE_TARGET_COUNTS = _normalize_decade_target(DECADE_TARGET_COUNTS)
 
 
 def _count_consecutive_pairs(nums: List[int]) -> int:
@@ -1589,11 +1564,8 @@ def generate_tickets(
         if not ok:
             continue
 
-        vec = _decade_vector(pick)
-        if _same_draw_date(target_date, TARGET_DATE):
-            if max(vec.values()) > 3:
-                continue
         if DECADE_MODE != "ignore":
+            vec = _decade_vector(pick)
             dist_dec = _decade_distance(vec, season_decades.med)
             in_band = _within_decade_band(vec, season_decades.p25, season_decades.p75, DECADE_MEDIAN_TOL)
             if DECADE_MODE == "hard":
@@ -1636,18 +1608,14 @@ def generate_tickets(
                     continue
 
         penalty = _ticket_penalty(pick, dist)
-        apply_decade_target = (
-            DECADE_TARGET_COUNTS and _same_draw_date(target_date, TARGET_DATE)
-        )
-        if apply_decade_target:
+        if DECADE_TARGET_COUNTS is not None:
             vec = _decade_vector(pick)
-            ok = False
-            for tgt in DECADE_TARGET_COUNTS:
-                if all(vec.get(d, 0) == int(v) for d, v in tgt.items()):
-                    ok = True
-                    break
-            if not ok:
-                continue
+            tdist = _decade_target_distance(vec, DECADE_TARGET_COUNTS)
+            if tdist > 0:
+                if DECADE_TARGET_SOFT_PENALTY is None:
+                    continue
+                if rng.random() < min(0.90, tdist * float(DECADE_TARGET_SOFT_PENALTY)):
+                    continue
         scale = PENALTY_SCALE if penalty_scale is None else float(penalty_scale)
         accept_prob = math.exp(-penalty * scale)
         if cohesion_config.get("enabled"):

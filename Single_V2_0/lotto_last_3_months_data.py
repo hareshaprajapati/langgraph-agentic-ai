@@ -37,7 +37,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # ---------- CONFIG ----------
-DAYS_BACK = 150  # ~ last 3 months
+DAYS_BACK = 400  # ~ last 3 months
 TIMEOUT = 30
 
 PAGES = {
