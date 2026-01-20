@@ -1,419 +1,714 @@
-import pandas as pd
-from datetime import timedelta
-from collections import Counter, defaultdict
+import sys
+import os
+from datetime import datetime
+
+class Tee:
+    def __init__(self, *files):
+        self.files = files
+
+    def write(self, obj):
+        for f in self.files:
+            try:
+                f.write(obj)
+                f.flush()
+            except OSError:
+                pass
+
+    def flush(self):
+        for f in self.files:
+            try:
+                f.flush()
+            except OSError:
+                pass
+
+log_file_path = os.path.join(
+    ".",
+    "Siko_Sat_Decades.py.log"   # single growing log file
+)
+
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
+
+sys.stdout = Tee(sys.stdout, log_file)
+sys.stderr = Tee(sys.stderr, log_file)
+
+# Siko_Sat_CrossAvoid_Local.py
+# Cross-lottery (daily) -> Saturday Lotto decade pattern predictor
+# WITH optional "avoid recent Saturday patterns" recency penalty.
+#
+# No CLI args: configure variables below.
+
+import csv
 import math
+import os
+import re
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from datetime import datetime, date, timedelta
+from typing import Dict, List, Tuple, Optional, Iterable
 
-# =============================
-# CONFIG
-# =============================
-CSV_PATH = "lotto_last_3_months.csv"  # <-- your file
-TARGET_DATE_STR = "2026-01-10" # <-- change target date (Saturday)
-TARGET_DECADE = {1: 2, 2: 0, 3: 3, 4:0 , 5: 1}
-SKIP_FRIDAY = False                   # <-- your idea
-WINDOWS = [1, 2, 3, 4, 5, 6]
-TOP_K_NEIGHBORS = 12
-BIN_SIZE = 0.10                      # decade share bins (0.0..1.0)
-SMOOTHING = 1.0                      # Laplace smoothing
-TOP_PATTERNS_TO_PRINT = 10
+# ==============================
+# CONFIG (edit these variables)
+# ==============================
 
-# =============================
-# RECENCY PENALTY (CONFIGURABLE)
-# =============================
+# 1) Inputs
+DAILY_CSV_PATH = "lotto_last_3_months.csv"  # can also be a .log containing CSV text
+SATURDAY_ONLY_CSV_PATH = "Tattslotto.csv"
 
-USE_RECENCY_PENALTY = True
+# 2) Mode: "PREDICT" or "BACKTEST"
+MODE = "BACKTEST"
 
-# Two modes:
-# - "step": uses RECENCY_STEP_TABLE
-# - "exp" : uses exponential decay with half-life
-RECENCY_PENALTY_MODE = "step"   # "step" or "exp"
+# --- PREDICT mode options ---
+TARGET_DATE = "2026-01-17"  # used only when MODE="PREDICT"
 
-# STEP mode:
-# if years_since_last_seen < threshold_years => multiply by factor
-# evaluated in order (first match wins)
+# --- BACKTEST options ---
+BACKTEST_LAST_N = 12                 # backtest the last N overlapping Saturdays
+BACKTEST_DATES: List[str] = []       # optional: ["2026-01-17","2026-01-10"] (if non-empty, overrides BACKTEST_LAST_N)
+
+# 3) Window rule
+SKIP_FRIDAY = True                   # your rule B (skip Friday counts)
+WINDOWS_Y = [1, 2, 3, 4, 5, 6]        # must be within 1..6
+
+# 4) Predictor knobs
+TOPK = 10
+BIN_SIZE = 0.10                      # for decade share binning
+KNN_K = 12                           # K for kNN on share vectors
+SMOOTHING = 1.0                      # +alpha smoothing for bins
+
+PRINT_DETAILS = False                # verbose prints
+
+# 5) Pattern avoidance / penalty
+# HARD_AVOID_YEARS:
+#   if > 0, patterns seen within this window are fully disallowed (hard filter)
+HARD_AVOID_YEARS = 0.0
+
+# RECENCY_STEP_TABLE:
+#   multiplies probability by penalty_factor if pattern seen within N years.
+#   Example: avoid last 1 year strongly => 0.10 multiplier
 RECENCY_STEP_TABLE = [
-    (1.0, 0.50),   # seen within last 1 year => strong penalty
+    (1.0, 0.10),   # seen within last 1 year => strong penalty
     (2.0, 0.70),   # seen within 1-2 years
     (3.0, 0.85),   # seen within 2-3 years
 ]
-RECENCY_STEP_DEFAULT = 1.00     # >= last threshold => no penalty
+# If you want to "totally avoid last 1 year", set:
+#   HARD_AVOID_YEARS = 1.0
+# and optionally keep RECENCY_STEP_TABLE too.
 
-# EXP mode:
-# factor = max(RECENCY_EXP_MIN_FACTOR, 0.5 ** (years / RECENCY_EXP_HALF_LIFE_YEARS))
-RECENCY_EXP_HALF_LIFE_YEARS = 1.5
-RECENCY_EXP_MIN_FACTOR = 0.35
-
-# If a pattern has NEVER been seen in training history (before target date),
-# treat it as "old enough" => no penalty.
-RECENCY_NEVER_SEEN_YEARS = 99.0
-
-# Decades (Saturday Lotto 1-45)
-DECADES = {
-    "D1": (1, 10),
-    "D2": (11, 20),
-    "D3": (21, 30),
-    "D4": (31, 40),
-    "D5": (41, 45),
-}
-DECADE_KEYS = ["D1", "D2", "D3", "D4", "D5"]
+# ==============================
+# Decade definition (your rule)
+# ==============================
+DECADES = [
+    (1, 10),    # D1
+    (11, 20),   # D2
+    (21, 30),   # D3
+    (31, 40),   # D4
+    (41, 45),   # D5  (Saturday Lotto max is 45)
+]
 
 
-# =============================
-# HELPERS
-# =============================
-def parse_main_numbers(cell):
-    """Extract main numbers from '[..], [supp]' format. Return [] if blank."""
-    if pd.isna(cell) or str(cell).strip() == "":
+# ==============================
+# Helpers
+# ==============================
+
+def parse_date_any(s: str) -> date:
+    s = s.strip().replace("\ufeff", "")
+    # Handles: "Sat 17-Jan-2026" or "2026-01-17"
+    for fmt in ("%a %d-%b-%Y", "%Y-%m-%d", "%d-%b-%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    raise ValueError(f"Unrecognized date format: {s!r}")
+
+def safe_int(x: str) -> Optional[int]:
+    try:
+        return int(x)
+    except Exception:
+        return None
+
+def parse_number_list(cell: str) -> List[int]:
+    """
+    Parse a cell like:
+      "[1, 2, 3, 10, 18, 23, 44], [4, 20]"
+      "[4, 5, 9, 15, 29, 36], [17, 19]"
+    Returns ALL ints found (main+supp). We use all for decade shares.
+    """
+    if cell is None:
         return []
-    s = str(cell)
-    if "]" not in s:
-        # if it's already plain, try parse anyway
-        s = s.strip()
-    main_part = s.split("]")[0].strip().lstrip("[")
-    nums = []
-    for tok in main_part.split(","):
-        tok = tok.strip()
-        if tok.isdigit():
-            nums.append(int(tok))
-    return nums
+    nums = re.findall(r"\d+", str(cell))
+    return [int(n) for n in nums]
 
-
-def decade_of(n: int):
-    for dk, (a, b) in DECADES.items():
-        if a <= n <= b:
-            return dk
+def num_to_decade_idx(n: int) -> Optional[int]:
+    for i, (lo, hi) in enumerate(DECADES, start=1):
+        if lo <= n <= hi:
+            return i
     return None
 
-
-def decade_counts(nums):
-    c = Counter()
+def decade_counts(nums: Iterable[int]) -> Dict[str, int]:
+    out = {f"D{i}": 0 for i in range(1, 6)}
     for n in nums:
-        if 1 <= n <= 45:
-            dk = decade_of(n)
-            if dk:
-                c[dk] += 1
-    # ensure all keys
-    for dk in DECADE_KEYS:
-        c[dk] += 0
-    return c
+        di = num_to_decade_idx(n)
+        if di is None:
+            continue
+        out[f"D{di}"] += 1
+    return out
+
+def decade_pattern_6(main6: List[int]) -> Tuple[int, int, int, int, int]:
+    """
+    Given Saturday Lotto main 6 numbers, return decade quota tuple (D1..D5) summing to 6.
+    """
+    c = decade_counts(main6)
+    return (c["D1"], c["D2"], c["D3"], c["D4"], c["D5"])
+
+def counts_to_share_vec(c: Dict[str, int]) -> Tuple[float, float, float, float, float]:
+    total = sum(c.values()) or 1
+    return tuple(c[f"D{i}"] / total for i in range(1, 6))
+
+def share_to_bin(share_vec: Tuple[float, ...], bin_size: float) -> Tuple[int, ...]:
+    # quantize each share into bins
+    return tuple(int(math.floor(x / bin_size + 1e-9)) for x in share_vec)
+
+def euclid(a: Tuple[float, ...], b: Tuple[float, ...]) -> float:
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+def daterange(d0: date, d1: date) -> List[date]:
+    # inclusive
+    if d1 < d0:
+        return []
+    days = (d1 - d0).days
+    return [d0 + timedelta(days=i) for i in range(days + 1)]
 
 
-def decade_shares(nums):
+# ==============================
+# Load daily cross-lottery data
+# ==============================
+
+def load_daily_csv(path: str) -> Dict[date, Dict[str, List[int]]]:
+    """
+    Returns:
+      daily[date] = {"set": [ints...], "others": [ints...]}
+    Accepts actual .csv OR a .log that contains CSV lines (Date,Set...,Others...)
+    """
+    text = None
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+
+    # If it's a log containing CSV, find the CSV header and parse from there
+    # We accept either "Date,Set for Life..." or already clean CSV.
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    header_idx = None
+    for i, ln in enumerate(lines):
+        if ln.lower().startswith("date,") and "set for life" in ln.lower():
+            header_idx = i
+            break
+    if header_idx is None:
+        # maybe it's already a plain CSV file starting from first line
+        header_idx = 0
+
+    csv_lines = lines[header_idx:]
+    reader = csv.DictReader(csv_lines)
+
+    daily: Dict[date, Dict[str, List[int]]] = {}
+    for row in reader:
+        d_raw = (row.get("Date") or "").strip()
+        if not d_raw:
+            continue
+        d = parse_date_any(d_raw)
+
+        set_cell = row.get("Set for Life (incl supp)") or row.get("Set for Life (incl supps)") or ""
+        oth_cell = row.get("Others (incl supp)") or row.get("Others (incl supps)") or ""
+
+        set_nums = parse_number_list(set_cell)
+        oth_nums = parse_number_list(oth_cell)
+
+        daily[d] = {"set": set_nums, "others": oth_nums}
+
+    return daily
+
+
+# ==============================
+# Load Saturday-only ground truth
+# ==============================
+
+def load_sat_csv(path: str) -> dict:
+    """
+    Your Tattslotto.csv format:
+    Draw,Date,Winning Number 1..6,Supplementary Number 1..2
+
+    Example:
+    4639,10/01/2026,1, 8, 23, 25, 30, 41,32,37
+    """
+    import csv
+    from datetime import datetime
+
+    sat = {}
+
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        reader = csv.DictReader(f)
+
+        # Sanity check headers
+        headers = reader.fieldnames or []
+        if "Date" not in headers:
+            raise RuntimeError(f"Expected 'Date' column, got headers={headers}")
+
+        required = [f"Winning Number {i}" for i in range(1, 7)]
+        for c in required:
+            if c not in headers:
+                raise RuntimeError(f"Missing column {c}. Headers={headers}")
+
+        row_count = 0
+        kept = 0
+
+        for row in reader:
+            row_count += 1
+
+            d_raw = (row.get("Date") or "").strip()
+            if not d_raw:
+                continue
+
+            # Your date format is dd/mm/yyyy
+            try:
+                d = datetime.strptime(d_raw, "%d/%m/%Y").date()
+            except ValueError:
+                # fallback: try yyyy-mm-dd just in case
+                try:
+                    d = datetime.strptime(d_raw, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+
+            main6 = []
+            ok = True
+            for i in range(1, 7):
+                v = (row.get(f"Winning Number {i}") or "").strip()
+                if not v:
+                    ok = False
+                    break
+                try:
+                    main6.append(int(v))
+                except ValueError:
+                    ok = False
+                    break
+
+            if not ok or len(main6) != 6:
+                continue
+
+            sat[d] = main6
+            kept += 1
+
+        print(f"[SAT CSV] path={path}")
+        print(f"[SAT CSV] rows read={row_count}, draws kept={kept}")
+        if kept:
+            ds = sorted(sat.keys())
+            print(f"[SAT CSV] date range: {ds[0]} .. {ds[-1]}")
+
+    return sat
+
+
+
+# ==============================
+# Build training rows (history)
+# ==============================
+
+@dataclass
+class TrainRow:
+    sat_date: date
+    y: int
+    share_vec: Tuple[float, float, float, float, float]
+    share_bin: Tuple[int, int, int, int, int]
+    pattern: Tuple[int, int, int, int, int]
+
+def previous_days_for_window(target_sat: date, y: int, skip_friday: bool) -> List[date]:
+    """
+    Window definition:
+      y=1 => (special) no days (kept for compatibility; will produce empty)
+      y=2 => 1 day: Thursday (if skip_friday)
+      y=3 => Wed+Thu
+      y=4 => Tue+Wed+Thu
+      y=5 => Mon..Thu
+      y=6 => Sun..Thu  (if skip_friday)
+    If skip_friday=False, include Friday and shift accordingly (not recommended in your rule B).
+    """
+    # We treat Saturday as target day. Build backward day list.
+    # Base days considered are previous 1..6 days (Sun..Fri).
+    # If skip_friday=True, exclude Friday always.
+    days = []
+    for back in range(1, 7):  # 1..6 days
+        d = target_sat - timedelta(days=back)
+        if skip_friday and d.weekday() == 4:  # Fri=4
+            continue
+        days.append(d)
+    # days currently [Fri,Thu,Wed,Tue,Mon,Sun] filtered; reverse later.
+
+    # Map y to how many of these to keep (but aligned to "most recent first")
+    if y <= 1:
+        return []
+    # We want the closest y-1 eligible days before Saturday
+    keep = y - 1
+    out = days[:keep]
+    out = sorted(out)  # chronological for printing
+    return out
+
+def compute_share_for_days(daily: Dict[date, Dict[str, List[int]]], days: List[date]) -> Tuple[float, float, float, float, float]:
+    nums = []
+    for d in days:
+        rec = daily.get(d)
+        if not rec:
+            continue
+        nums.extend(rec.get("set", []))
+        nums.extend(rec.get("others", []))
     c = decade_counts(nums)
-    total = sum(c.values())
-    if total == 0:
-        return {dk: 0.0 for dk in DECADE_KEYS}
-    return {dk: c[dk] / total for dk in DECADE_KEYS}
+    return counts_to_share_vec(c)
+
+def build_training_rows(
+    daily: Dict[date, Dict[str, List[int]]],
+    sat_truth: Dict[date, List[int]],
+    windows_y: List[int],
+    skip_friday: bool,
+    bin_size: float
+) -> List[TrainRow]:
+    rows: List[TrainRow] = []
+    for sd, main6 in sat_truth.items():
+        patt = decade_pattern_6(main6)
+        for y in windows_y:
+            days = previous_days_for_window(sd, y, skip_friday)
+            share = compute_share_for_days(daily, days)
+            b = share_to_bin(share, bin_size)
+            rows.append(TrainRow(sd, y, share, b, patt))
+    return rows
 
 
-def bin_share(x: float):
-    # clamp [0,1], bin to BIN_SIZE steps
-    x = max(0.0, min(1.0, float(x)))
-    b = int(x / BIN_SIZE)
-    if b >= int(1.0 / BIN_SIZE):
-        b = int(1.0 / BIN_SIZE) - 1
-    return b
+# ==============================
+# Pattern recency logic (avoid)
+# ==============================
 
+def build_pattern_last_seen(sat_truth: Dict[date, List[int]]) -> Dict[Tuple[int,int,int,int,int], List[date]]:
+    seen: Dict[Tuple[int,int,int,int,int], List[date]] = defaultdict(list)
+    for d, main6 in sat_truth.items():
+        patt = decade_pattern_6(main6)
+        seen[patt].append(d)
+    for patt in seen:
+        seen[patt] = sorted(seen[patt])
+    return seen
 
-def feature_key_from_shares(shares: dict):
-    # tuple of binned shares in D1..D5 order
-    return tuple(bin_share(shares[dk]) for dk in DECADE_KEYS)
-
-
-def cosine_sim(v1, v2):
-    dot = sum(a*b for a, b in zip(v1, v2))
-    n1 = math.sqrt(sum(a*a for a in v1))
-    n2 = math.sqrt(sum(b*b for b in v2))
-    if n1 == 0 or n2 == 0:
-        return 0.0
-    return dot / (n1 * n2)
-
-
-def softmax(xs):
-    m = max(xs) if xs else 0.0
-    exps = [math.exp(x - m) for x in xs]
-    s = sum(exps) if exps else 1.0
-    return [e / s for e in exps]
-
-def build_last_seen_map(train_sats_df):
-    """
-    Returns {pattern_tuple: last_seen_timestamp} using ONLY Saturdays before target_date.
-    """
-    last_seen = {}
-    for _, sat in train_sats_df.iterrows():
-        pat = saturday_pattern(sat)
-        dt = sat["Date"]
-        prev = last_seen.get(pat)
-        if prev is None or dt > prev:
-            last_seen[pat] = dt
-    return last_seen
-
-
-def years_since(dt_last, dt_target):
-    if dt_last is None:
-        return RECENCY_NEVER_SEEN_YEARS
-    return (dt_target - dt_last).days / 365.25
-
-
-def recency_penalty_factor(years_ago: float) -> float:
-    """
-    Returns a multiplier in (0..1].
-    """
-    if not USE_RECENCY_PENALTY:
+def pattern_penalty_multiplier(
+    patt: Tuple[int,int,int,int,int],
+    target_date: date,
+    pattern_seen_dates: Dict[Tuple[int,int,int,int,int], List[date]],
+    hard_avoid_years: float,
+    step_table: List[Tuple[float, float]]
+) -> float:
+    dates = pattern_seen_dates.get(patt, [])
+    if not dates:
         return 1.0
 
-    if RECENCY_PENALTY_MODE == "step":
-        for thresh, factor in RECENCY_STEP_TABLE:
-            if years_ago < thresh:
-                return float(factor)
-        return float(RECENCY_STEP_DEFAULT)
+    # find most recent date before target_date
+    prev = None
+    for d in reversed(dates):
+        if d < target_date:
+            prev = d
+            break
+    if prev is None:
+        return 1.0
 
-    if RECENCY_PENALTY_MODE == "exp":
-        # 0.5^(years/half_life)
-        f = 0.5 ** (years_ago / float(RECENCY_EXP_HALF_LIFE_YEARS))
-        return float(max(RECENCY_EXP_MIN_FACTOR, f))
+    age_days = (target_date - prev).days
+    age_years = age_days / 365.25
 
-    # Unknown mode => disable penalty safely
-    return 1.0
+    if hard_avoid_years > 0 and age_years <= hard_avoid_years:
+        return 0.0
 
-# =============================
-# LOAD + NORMALIZE
-# =============================
-df = pd.read_csv(CSV_PATH)
-df["Date"] = pd.to_datetime(df["Date"], format="%a %d-%b-%Y", errors="coerce")
-df = df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+    mult = 1.0
+    for years, factor in step_table:
+        if age_years <= years:
+            mult *= factor
+            break
+    return mult
 
-target_date = pd.to_datetime(TARGET_DATE_STR)
 
-# Identify Saturdays (weekday=5)
-df["weekday"] = df["Date"].dt.weekday
-saturdays = df[df["weekday"] == 5].copy()
+# ==============================
+# Predictor
+# ==============================
 
-# Saturday Lotto numbers come from Others column on Saturday
-def saturday_pattern(row):
-    sat_nums = parse_main_numbers(row.get("Others (incl supp)", ""))
-    c = decade_counts(sat_nums)
-    # pattern as tuple counts (sum should be 6 for Sat Lotto main numbers)
-    return tuple(c[dk] for dk in DECADE_KEYS)
-
-# Build a day->numbers cache (learning pool uses Set mains + Others mains)
-def day_learning_nums(row):
-    nums = []
-    nums += parse_main_numbers(row.get("Set for Life (incl supp)", ""))
-    nums += parse_main_numbers(row.get("Others (incl supp)", ""))
-    # keep only 1..45 for decade learning
-    return [n for n in nums if 1 <= n <= 45]
-
-df["learn_nums"] = df.apply(day_learning_nums, axis=1)
-
-# =============================
-# WINDOW DEFINITIONS
-# =============================
-def window_dates_for_sat(sat_date, Y):
+def score_patterns_for_target(
+    target_sat: date,
+    daily: Dict[date, Dict[str, List[int]]],
+    training: List[TrainRow],
+    pattern_seen_dates: Dict[Tuple[int,int,int,int,int], List[date]],
+) -> List[Tuple[Tuple[int,int,int,int,int], float]]:
     """
-    Return list of dates to include for a Saturday, considering:
-    - prior Y calendar days
-    - optionally skip Friday
+    For each y, we compute share vec and:
+      - bin model: P(pattern|bin,y)
+      - knn model: P(pattern|nearest shares,y)
+    Then ensemble across y with learned weights from history inside training.
     """
-    days = []
-    for d in range(1, Y+1):
-        days.append(sat_date - timedelta(days=d))
-    if SKIP_FRIDAY:
-        days = [d for d in days if d.weekday() != 4]  # Friday = 4
-    return sorted(days)
+    # --- Learn window weights from history ---
+    # We evaluate each y by log-likelihood of true patterns (simple proxy)
+    y_rows: Dict[int, List[TrainRow]] = defaultdict(list)
+    for r in training:
+        y_rows[r.y].append(r)
 
-def window_feature_vector(sat_date, Y):
-    """
-    Compute decade share vector over the window days:
-    sum all learn_nums from those days, then decade shares.
-    """
-    days = window_dates_for_sat(sat_date, Y)
-    w = df[df["Date"].isin(days)]
-    nums = []
-    for _, r in w.iterrows():
-        nums.extend(r["learn_nums"])
-    shares = decade_shares(nums)
-    # return shares in fixed order
-    return [shares[dk] for dk in DECADE_KEYS], shares, days
+    y_scores: Dict[int, float] = {}
+    for y, rows in y_rows.items():
+        # build bin conditional
+        bin_map: Dict[Tuple[int,...], Counter] = defaultdict(Counter)
+        for r in rows:
+            bin_map[r.share_bin][r.pattern] += 1
 
-# =============================
-# TRAINING DATA (only Saturdays before target_date)
-# =============================
-train_sats = saturdays[saturdays["Date"] < target_date].copy()
-if len(train_sats) < 6:
-    raise RuntimeError(f"Not enough Saturday history before {TARGET_DATE_STR}. Found {len(train_sats)}")
+        ll = 0.0
+        for r in rows:
+            cnt = bin_map[r.share_bin]
+            total = sum(cnt.values()) + SMOOTHING * (len(cnt) + 1)
+            p = (cnt[r.pattern] + SMOOTHING) / total
+            ll += math.log(max(p, 1e-12))
+        y_scores[y] = ll
 
-# Per-window training stores:
-# - binned mapping: key -> Counter(pattern)
-# - raw feature vectors: list[(vec, pattern)]
-model_bins = {Y: defaultdict(Counter) for Y in WINDOWS}
-model_vecs = {Y: [] for Y in WINDOWS}
+    # softmax to weights
+    max_ll = max(y_scores.values()) if y_scores else 0.0
+    exps = {y: math.exp(v - max_ll) for y, v in y_scores.items()}
+    z = sum(exps.values()) or 1.0
+    y_weight = {y: exps[y] / z for y in exps}
 
-for _, sat in train_sats.iterrows():
-    sd = sat["Date"]
-    pat = saturday_pattern(sat)
+    # --- Now compute per-y distribution for target date ---
+    per_y_dist: Dict[int, Counter] = {}
+    per_y_mode: Dict[int, str] = {}
+    per_y_days: Dict[int, List[date]] = {}
+    per_y_share: Dict[int, Tuple[float,...]] = {}
 
-    for Y in WINDOWS:
-        vec, shares, days = window_feature_vector(sd, Y)
-        k = feature_key_from_shares(shares)
-        model_bins[Y][k][pat] += 1
-        model_vecs[Y].append((vec, pat))
+    for y in WINDOWS_Y:
+        days = previous_days_for_window(target_sat, y, SKIP_FRIDAY)
+        per_y_days[y] = days
+        share = compute_share_for_days(daily, days)
+        per_y_share[y] = share
+        b = share_to_bin(share, BIN_SIZE)
 
-# =============================
-# WINDOW QUALITY (learn weights from history)
-# =============================
-# We estimate each window's usefulness by leave-one-out log probability
-# using binned model (with smoothing). Higher is better.
-def loo_logprob_for_window(Y):
-    data = model_vecs[Y]
-    if len(data) < 8:
-        return -999.0
-
-    total_lp = 0.0
-    for i, (vec_i, pat_i) in enumerate(data):
-        # Build binned key for this point
-        shares_i = {dk: vec_i[j] for j, dk in enumerate(DECADE_KEYS)}
-        k_i = feature_key_from_shares(shares_i)
-
-        # counts excluding i: approximate by subtracting one from that pattern if present
-        cnt = model_bins[Y][k_i].copy()
-        if cnt.get(pat_i, 0) > 0:
-            cnt[pat_i] -= 1
-            if cnt[pat_i] <= 0:
-                del cnt[pat_i]
-
-        # if empty after removal, fallback small penalty
-        if not cnt:
-            total_lp += -6.0
+        rows = y_rows.get(y, [])
+        if not rows:
+            per_y_dist[y] = Counter()
+            per_y_mode[y] = "none"
             continue
 
-        # Laplace smoothing over observed patterns in this bin
-        patterns = list(cnt.keys())
-        denom = sum(cnt.values()) + SMOOTHING * len(patterns)
-        num = cnt.get(pat_i, 0) + SMOOTHING
-        p = num / denom
-        total_lp += math.log(p + 1e-12)
-    return total_lp / len(data)
+        # build bin map
+        bin_map: Dict[Tuple[int,...], Counter] = defaultdict(Counter)
+        for r in rows:
+            bin_map[r.share_bin][r.pattern] += 1
 
-window_scores = [loo_logprob_for_window(Y) for Y in WINDOWS]
-window_weights = softmax(window_scores)  # higher logprob -> higher weight
-window_weight_map = {Y: w for Y, w in zip(WINDOWS, window_weights)}
+        if b in bin_map and sum(bin_map[b].values()) > 0:
+            # bin mode
+            per_y_dist[y] = bin_map[b].copy()
+            per_y_mode[y] = "bin"
+        else:
+            # knn mode on share vecs
+            pairs = [(euclid(share, r.share_vec), r.pattern) for r in rows]
+            pairs.sort(key=lambda x: x[0])
+            nn = pairs[:max(1, min(KNN_K, len(pairs)))]
+            c = Counter([p for _, p in nn])
+            per_y_dist[y] = c
+            per_y_mode[y] = "knn"
 
-# =============================
-# PREDICT FOR TARGET_DATE (scan all windows, ensemble)
-# =============================
-def predict_dist_for_window(Y, target_date):
-    vec_t, shares_t, days_t = window_feature_vector(target_date, Y)
-    key_t = feature_key_from_shares(shares_t)
+    # --- Ensemble: combine distributions with y weights ---
+    combined = Counter()
+    for y in WINDOWS_Y:
+        w = y_weight.get(y, 0.0)
+        if w <= 0:
+            continue
+        dist = per_y_dist.get(y, Counter())
+        tot = sum(dist.values())
+        if tot <= 0:
+            continue
+        for patt, cnt in dist.items():
+            combined[patt] += w * (cnt / tot)
 
-    # 1) if bin seen, use binned empirical dist with smoothing
-    cnt = model_bins[Y].get(key_t)
-    if cnt and sum(cnt.values()) > 0:
-        patterns = list(cnt.keys())
-        denom = sum(cnt.values()) + SMOOTHING * len(patterns)
-        dist = {p: (cnt[p] + SMOOTHING) / denom for p in patterns}
-        return dist, vec_t, shares_t, days_t, "bin"
+    # --- Apply recency avoidance penalty using Saturday-only history ---
+    final_scores: Dict[Tuple[int,int,int,int,int], float] = {}
+    for patt, p in combined.items():
+        mult = pattern_penalty_multiplier(
+            patt=patt,
+            target_date=target_sat,
+            pattern_seen_dates=pattern_seen_dates,
+            hard_avoid_years=HARD_AVOID_YEARS,
+            step_table=RECENCY_STEP_TABLE,
+        )
+        final_scores[patt] = p * mult
 
-    # 2) fallback: kNN over raw vectors
-    sims = []
-    for vec_h, pat_h in model_vecs[Y]:
-        s = cosine_sim(vec_t, vec_h)
-        sims.append((s, pat_h))
-    sims.sort(reverse=True, key=lambda x: x[0])
-    sims = sims[:TOP_K_NEIGHBORS]
+    # Renormalize
+    s = sum(final_scores.values())
+    if s > 0:
+        for k in list(final_scores.keys()):
+            final_scores[k] /= s
 
-    if not sims or sims[0][0] <= 0:
-        # ultimate fallback: global pattern frequency for that window
-        global_cnt = Counter(p for _, p in model_vecs[Y])
-        denom = sum(global_cnt.values()) + SMOOTHING * len(global_cnt)
-        dist = {p: (global_cnt[p] + SMOOTHING) / denom for p in global_cnt}
-        return dist, vec_t, shares_t, days_t, "global"
+    ranked = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
 
-    # weighted by similarity (shift to positive)
-    dist_cnt = Counter()
-    wsum = 0.0
-    for s, p in sims:
-        w = max(0.0, s)
-        dist_cnt[p] += w
-        wsum += w
-    if wsum == 0:
-        wsum = 1.0
-    dist = {p: dist_cnt[p] / wsum for p in dist_cnt}
-    return dist, vec_t, shares_t, days_t, "knn"
+    # --- Optional prints ---
+    print("\n==============================")
+    print("DECADE PREDICTOR RESULT")
+    print("==============================")
+    print(f"Target date: {target_sat}  (SKIP_FRIDAY={SKIP_FRIDAY})")
+    print("\n--- Learned window weights (higher = better from history) ---")
+    for y in sorted(y_weight):
+        print(f"Y={y}: weight={y_weight[y]:.3f}  (score={y_scores.get(y,0.0):.3f})")
 
-# Collect per-window distributions
-per_window = {}
-for Y in WINDOWS:
-    dist, vec_t, shares_t, days_t, mode = predict_dist_for_window(Y, target_date)
-    per_window[Y] = {
-        "dist": dist,
-        "vec": vec_t,
-        "shares": shares_t,
-        "days": days_t,
-        "mode": mode,
-        "w": window_weight_map[Y],
-    }
+    best_y = max(y_weight.items(), key=lambda x: x[1])[0] if y_weight else None
+    print(f"\nBest learned window (by weight): Y={best_y}")
 
-# Ensemble distribution across windows
-# Ensemble distribution across windows
-ensemble = Counter()
-for Y in WINDOWS:
-    wY = per_window[Y]["w"]
-    dist = per_window[Y]["dist"]
-    for pat, p in dist.items():
-        ensemble[pat] += wY * p
+    print("\n--- Window scan details (target date) ---")
+    for y in WINDOWS_Y:
+        days = per_y_days.get(y, [])
+        share = per_y_share.get(y, (0,0,0,0,0))
+        print(
+            f"Y={y} mode={per_y_mode.get(y)} "
+            f"days={[d.strftime('%Y-%m-%d') for d in days]} "
+            f"shares={{D1:{share[0]:.2f}, D2:{share[1]:.2f}, D3:{share[2]:.2f}, D4:{share[3]:.2f}, D5:{share[4]:.2f}}}"
+        )
 
-# -----------------------------
-# RECENCY PENALTY (soft)
-# -----------------------------
-last_seen_map = build_last_seen_map(train_sats)  # train_sats already = Saturdays < target_date
+    if ranked:
+        # Expected decade counts (sum approx 6)
+        exp = [0.0]*5
+        for patt, p in ranked[:200]:
+            for i in range(5):
+                exp[i] += patt[i] * p
+        print("\n--- Ensemble expected decade counts (sum≈6) ---")
+        print(f"D1={exp[0]:.2f}, D2={exp[1]:.2f}, D3={exp[2]:.2f}, D4={exp[3]:.2f}, D5={exp[4]:.2f}")
 
-if USE_RECENCY_PENALTY and ensemble:
-    for pat in list(ensemble.keys()):
-        last_dt = last_seen_map.get(pat)
-        yrs = years_since(last_dt, target_date)
-        ensemble[pat] *= recency_penalty_factor(yrs)
+    print(f"\n--- Top predicted decade patterns (counts across D1..D5 summing to 6) ---")
+    for i, (patt, p) in enumerate(ranked[:TOPK], 1):
+        print(f"{i:02d}) P={p:.3f}  [D1={patt[0]}, D2={patt[1]}, D3={patt[2]}, D4={patt[3]}, D5={patt[4]}]")
 
-# Normalize (after penalty)
-total_p = sum(ensemble.values()) if ensemble else 1.0
-if total_p <= 0:
-    total_p = 1.0
-ensemble = {pat: ensemble[pat] / total_p for pat in ensemble}
+    print("\n(Each pattern is a Saturday Lotto decade quota for 6 numbers.)")
+
+    if PRINT_DETAILS and ranked:
+        print("\n--- Debug: top 25 patterns with penalties applied ---")
+        for patt, p in ranked[:25]:
+            mult = pattern_penalty_multiplier(
+                patt=patt,
+                target_date=target_sat,
+                pattern_seen_dates=pattern_seen_dates,
+                hard_avoid_years=HARD_AVOID_YEARS,
+                step_table=RECENCY_STEP_TABLE,
+            )
+            print(f"{patt} p={p:.5f} mult={mult:.3f}")
+
+    return ranked
 
 
-# Expected counts per decade
-exp = {dk: 0.0 for dk in DECADE_KEYS}
-for pat, p in ensemble.items():
-    for i, dk in enumerate(DECADE_KEYS):
-        exp[dk] += pat[i] * p
+# ==============================
+# Run modes
+# ==============================
 
-# Print results
-print("\n==============================")
-print("DECADE PREDICTOR RESULT")
-print("==============================")
-print(f"Target date: {target_date.date()}  (SKIP_FRIDAY={SKIP_FRIDAY})")
+def predict_one(target_date_str: str):
+    daily_all = load_daily_csv(DAILY_CSV_PATH)
+    sat_all = load_sat_csv(SATURDAY_ONLY_CSV_PATH)
 
-print("\n--- Learned window weights (higher = better from history) ---")
-for Y in sorted(WINDOWS):
-    print(f"Y={Y}: weight={window_weight_map[Y]:.3f}  (score={window_scores[WINDOWS.index(Y)]:.3f})")
+    td = parse_date_any(target_date_str)
 
-bestY = max(window_weight_map.items(), key=lambda x: x[1])[0]
-print(f"\nBest learned window (by weight): Y={bestY}")
+    sat_hist = {d: nums for d, nums in sat_all.items() if d < td}
+    daily_hist = {d: rec for d, rec in daily_all.items() if d < td}
 
-print("\n--- Window scan details (target date) ---")
-for Y in sorted(WINDOWS):
-    info = per_window[Y]
-    days = ", ".join(d.strftime("%Y-%m-%d") for d in info["days"])
-    shares = info["shares"]
-    print(f"Y={Y} mode={info['mode']} weight={info['w']:.3f} days=[{days}] shares="
-          f"{{D1:{shares['D1']:.2f}, D2:{shares['D2']:.2f}, D3:{shares['D3']:.2f}, D4:{shares['D4']:.2f}, D5:{shares['D5']:.2f}}}")
+    training = build_training_rows(daily_hist, sat_hist, WINDOWS_Y, SKIP_FRIDAY, BIN_SIZE)
+    seen = build_pattern_last_seen(sat_hist)
 
-print("\n--- Ensemble expected decade counts (sum≈6) ---")
-print(", ".join([f"{dk}={exp[dk]:.2f}" for dk in DECADE_KEYS]))
+    score_patterns_for_target(td, daily_hist, training, seen)
 
-print("\n--- Top predicted decade patterns (counts across D1..D5 summing to 6) ---")
-top = sorted(ensemble.items(), key=lambda x: x[1], reverse=True)[:TOP_PATTERNS_TO_PRINT]
-for i, (pat, p) in enumerate(top, 1):
-    pat_str = ", ".join(f"{dk}={pat[j]}" for j, dk in enumerate(DECADE_KEYS))
-    print(f"{i:02d}) P={p:.3f}  [{pat_str}]")
 
-print("\n(Each pattern is a Saturday Lotto decade quota for 6 numbers.)")
+
+def backtest_dates(dates: List[str]):
+    daily = load_daily_csv(DAILY_CSV_PATH)
+    sat = load_sat_csv(SATURDAY_ONLY_CSV_PATH)
+    training = build_training_rows(daily, sat, WINDOWS_Y, SKIP_FRIDAY, BIN_SIZE)
+    seen = build_pattern_last_seen(sat)
+
+    targets = [parse_date_any(x) for x in dates]
+    hits = 0
+    total = 0
+
+    print("\n==============================")
+    print("BACKTEST (explicit dates)")
+    print("==============================")
+    for td in targets:
+        if td not in sat:
+            print(f"{td} | missing in Saturday CSV -> skipped")
+            continue
+        ranked = score_patterns_for_target(td, daily, training, seen)
+        actual = decade_pattern_6(sat[td])
+        top_patterns = [p for p, _ in ranked[:TOPK]]
+        hit = (actual in top_patterns)
+        hits += int(hit)
+        total += 1
+        print(f"\nRESULT {td} | actual={actual} | top1={top_patterns[0] if top_patterns else None} | top{TOPK}_hit={int(hit)}")
+
+    total = total or 1
+    print("\n==============================")
+    print("BACKTEST SUMMARY")
+    print("==============================")
+    print(f"Total tested Saturdays: {total}")
+    print(f"Top{TOPK} exact-pattern hits: {hits}/{total} = {hits/total:.3f}")
+
+
+def backtest_last_n(n: int):
+    daily_all = load_daily_csv(DAILY_CSV_PATH)
+    sat_all = load_sat_csv(SATURDAY_ONLY_CSV_PATH)
+
+    all_sats = sorted(sat_all.keys())
+    if not all_sats:
+        raise RuntimeError("No Saturday draws loaded from Saturday-only CSV")
+
+    targets = all_sats[-n:]
+
+    hits = 0
+    rows = []
+
+    print("\n==============================")
+    print("BACKTEST (STRICT, NO LOOKAHEAD)")
+    print("==============================")
+
+    for td in targets:
+        # --- STRICT PAST-ONLY CUTS (no leakage) ---
+        sat_hist = {d: nums for d, nums in sat_all.items() if d < td}
+        if len(sat_hist) < 6:
+            # not enough history to train reliably
+            rows.append((td.strftime("%Y-%m-%d"), None, None, 0, "SKIP:not_enough_history"))
+            continue
+
+        daily_hist = {d: rec for d, rec in daily_all.items() if d < td}
+
+        training = build_training_rows(daily_hist, sat_hist, WINDOWS_Y, SKIP_FRIDAY, BIN_SIZE)
+        seen = build_pattern_last_seen(sat_hist)
+
+        ranked = score_patterns_for_target(td, daily_hist, training, seen)
+
+        actual = decade_pattern_6(sat_all[td])  # ground truth for that Saturday
+        top_patterns = [p for p, _ in ranked[:TOPK]]
+        hit = int(actual in top_patterns)
+
+        hits += hit
+        top1 = top_patterns[0] if top_patterns else None
+        rows.append((td.strftime("%Y-%m-%d"), actual, top1, hit, ""))
+
+    tested = sum(1 for r in rows if r[4] == "")
+    print("\n==============================")
+    print("BACKTEST SUMMARY (STRICT)")
+    print("==============================")
+    print(f"DAILY_CSV_PATH={DAILY_CSV_PATH}")
+    print(f"SATURDAY_ONLY_CSV_PATH={SATURDAY_ONLY_CSV_PATH}")
+    print(f"SKIP_FRIDAY={SKIP_FRIDAY} WINDOWS_Y={WINDOWS_Y} BIN_SIZE={BIN_SIZE} KNN_K={KNN_K} SMOOTHING={SMOOTHING}")
+    print(f"HARD_AVOID_YEARS={HARD_AVOID_YEARS} RECENCY_STEP_TABLE={RECENCY_STEP_TABLE} TOPK={TOPK}")
+    print(f"Total tested Saturdays: {tested}")
+    if tested:
+        print(f"Top{TOPK} exact-pattern hits: {hits}/{tested} = {hits/tested:.3f}")
+
+    print("\nPer-date:")
+    for d, actual, top1, hit, note in rows:
+        if note:
+            print(f"{d} | {note}")
+        else:
+            print(f"{d} | actual={actual} | top1={top1} | hit={hit}")
+
+
+
+if __name__ == "__main__":
+    if MODE.upper() == "PREDICT":
+        predict_one(TARGET_DATE)
+    else:
+        if BACKTEST_DATES:
+            backtest_dates(BACKTEST_DATES)
+        else:
+            backtest_last_n(BACKTEST_LAST_N)
+            predict_one(TARGET_DATE)
+
