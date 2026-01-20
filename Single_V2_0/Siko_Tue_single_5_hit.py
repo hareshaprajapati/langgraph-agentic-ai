@@ -26,7 +26,7 @@ log_file_path = os.path.join(
     "siko_tue_single_5_hit_logs.log"   # single growing log file
 )
 
-log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
@@ -34,7 +34,7 @@ sys.stderr = Tee(sys.stderr, log_file)
 import pandas as pd
 from dataclasses import dataclass
 from datetime import date
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
 import random
 import math
 import io
@@ -46,10 +46,11 @@ import contextlib
 # ============================================================
 
 CSV_PATH = "Oz_Lotto_transformed.csv"
-TARGET_DATE = "2026-01-13"
+TARGET_DATE = "2026-01-20"
 # TARGET_DATE = "2026-1-3"
 # Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [17, 35, 23, 38, 39, 42, 31]
+# REAL_DRAW = [17, 35, 23, 38, 39, 42, 31]
+REAL_DRAW = None
 # If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
 USE_REAL_DRAW_FALLBACK = False
 
@@ -61,6 +62,7 @@ MAIN_MAX = 47
 
 LOOKBACK_DAYS = 210
 LOOKBACK_DAYS_12MO = 365
+RECENT_DECADE_PATTERN_DAYS = 42
 SEASON_WINDOW_DAYS = 5
 SEASON_LOOKBACK_YEARS = 20
 MIN_SEASON_SAMPLES = 50
@@ -79,6 +81,7 @@ COLD_FORCE_COUNT = 2
 FORCE_COVERAGE = False
 RANDOM_SEED = 0
 DEBUG_PRINT = True
+AVOID_RECENT_DECADE_PATTERNS = True
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -631,6 +634,28 @@ def _decade_vector(nums: List[int]) -> Dict[int, int]:
         if did in v:
             v[did] += 1
     return v
+
+
+def _decade_pattern_key(vec: Dict[int, int]) -> Tuple[int, ...]:
+    return tuple(int(vec.get(d, 0)) for d in DECADE_IDS)
+
+
+def _recent_decade_patterns(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    days: int,
+) -> Set[Tuple[int, ...]]:
+    t = pd.Timestamp(target_date)
+    if pd.isna(t):
+        return set()
+    start = t - pd.Timedelta(days=days)
+    sub = df[(df["Date"] >= start) & (df["Date"] < t)]
+    patterns: Set[Tuple[int, ...]] = set()
+    for _, row in sub.iterrows():
+        nums = [int(row[c]) for c in main_cols]
+        patterns.add(_decade_pattern_key(_decade_vector(nums)))
+    return patterns
 
 
 def _normalize_decade_target(target: Dict[int, int]) -> Dict[int, int]:
@@ -1238,6 +1263,11 @@ def generate_tickets(
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     dist = _history_distributions(train, main_cols, target_date)
+    recent_decade_patterns = set()
+    if AVOID_RECENT_DECADE_PATTERNS:
+        recent_decade_patterns = _recent_decade_patterns(
+            df, main_cols, target_date, RECENT_DECADE_PATTERN_DAYS
+        )
 
     # build pool
     if pool_override is not None:
@@ -1665,6 +1695,11 @@ def generate_portfolio_tickets(
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
+    recent_decade_patterns = set()
+    if AVOID_RECENT_DECADE_PATTERNS:
+        recent_decade_patterns = _recent_decade_patterns(
+            df, main_cols, target_date, RECENT_DECADE_PATTERN_DAYS
+        )
     score_map = {c.n: c.total_score for c in scored}
     rank_map = {c.n: c.rank_recent for c in scored}
     pair_counts = _build_pair_counts(train, main_cols)
@@ -1677,6 +1712,15 @@ def generate_portfolio_tickets(
 
     cohesive_candidates = _generate_candidate_pool(scored, PORTFOLIO_CANDIDATES, rng, include_cold=False)
     diffuse_candidates = _generate_candidate_pool(scored, int(PORTFOLIO_CANDIDATES * 0.5), rng, include_cold=True)
+    if recent_decade_patterns:
+        cohesive_candidates = [
+            t for t in cohesive_candidates
+            if _decade_pattern_key(_decade_vector(t)) not in recent_decade_patterns
+        ]
+        diffuse_candidates = [
+            t for t in diffuse_candidates
+            if _decade_pattern_key(_decade_vector(t)) not in recent_decade_patterns
+        ]
 
     cohesive_scored: List[Tuple[List[int], float]] = []
     diffuse_scored: List[Tuple[List[int], float]] = []
@@ -1701,6 +1745,9 @@ def generate_portfolio_tickets(
     base_tickets = [t for t, _ in cohesive_scored[:BASE_TICKET_COUNT]]
     for base in base_tickets:
         for variant in _swap_variants(base, scored, rng, BASE_SWAP_VARIANTS):
+            if recent_decade_patterns:
+                if _decade_pattern_key(_decade_vector(variant)) in recent_decade_patterns:
+                    continue
             q = _ticket_quality(
                 variant, score_map, rank_map, pair_counts, pair_base,
                 COHESION_TOP_RANK, STRICT_MAX_SPREAD, STRICT_MAX_GAP, 0, strict_weights
@@ -1733,6 +1780,11 @@ def generate_greedy_tickets(
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     dist = _history_distributions(train, main_cols, target_date)
+    recent_decade_patterns = set()
+    if AVOID_RECENT_DECADE_PATTERNS:
+        recent_decade_patterns = _recent_decade_patterns(
+            df, main_cols, target_date, RECENT_DECADE_PATTERN_DAYS
+        )
 
     top_pool = [c.n for c in scored[:GREEDY_POOL_SIZE]]
     mid_pool = [c.n for c in scored[GREEDY_POOL_SIZE:GREEDY_POOL_SIZE + MID_POOL_SIZE]]
@@ -1903,6 +1955,10 @@ def generate_greedy_tickets(
         if DECADE_TARGET_COUNTS is not None:
             vec = _decade_vector(pick)
             if any(vec.get(d, 0) != DECADE_TARGET_COUNTS.get(d, 0) for d in DECADE_IDS):
+                continue
+        if recent_decade_patterns:
+            vec = _decade_vector(pick)
+            if _decade_pattern_key(vec) in recent_decade_patterns:
                 continue
 
         penalty = _ticket_penalty(pick, dist)

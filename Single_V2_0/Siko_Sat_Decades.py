@@ -6,14 +6,45 @@ import math
 # =============================
 # CONFIG
 # =============================
-CSV_PATH = "lotto_last_3_months.log"  # <-- your file
-TARGET_DATE_STR = "2026-01-03"        # <-- change target date (Saturday)
-SKIP_FRIDAY = True                   # <-- your idea
+CSV_PATH = "lotto_last_3_months.csv"  # <-- your file
+TARGET_DATE_STR = "2026-01-10" # <-- change target date (Saturday)
+TARGET_DECADE = {1: 2, 2: 0, 3: 3, 4:0 , 5: 1}
+SKIP_FRIDAY = False                   # <-- your idea
 WINDOWS = [1, 2, 3, 4, 5, 6]
 TOP_K_NEIGHBORS = 12
 BIN_SIZE = 0.10                      # decade share bins (0.0..1.0)
 SMOOTHING = 1.0                      # Laplace smoothing
 TOP_PATTERNS_TO_PRINT = 10
+
+# =============================
+# RECENCY PENALTY (CONFIGURABLE)
+# =============================
+
+USE_RECENCY_PENALTY = True
+
+# Two modes:
+# - "step": uses RECENCY_STEP_TABLE
+# - "exp" : uses exponential decay with half-life
+RECENCY_PENALTY_MODE = "step"   # "step" or "exp"
+
+# STEP mode:
+# if years_since_last_seen < threshold_years => multiply by factor
+# evaluated in order (first match wins)
+RECENCY_STEP_TABLE = [
+    (1.0, 0.50),   # seen within last 1 year => strong penalty
+    (2.0, 0.70),   # seen within 1-2 years
+    (3.0, 0.85),   # seen within 2-3 years
+]
+RECENCY_STEP_DEFAULT = 1.00     # >= last threshold => no penalty
+
+# EXP mode:
+# factor = max(RECENCY_EXP_MIN_FACTOR, 0.5 ** (years / RECENCY_EXP_HALF_LIFE_YEARS))
+RECENCY_EXP_HALF_LIFE_YEARS = 1.5
+RECENCY_EXP_MIN_FACTOR = 0.35
+
+# If a pattern has NEVER been seen in training history (before target date),
+# treat it as "old enough" => no penalty.
+RECENCY_NEVER_SEEN_YEARS = 99.0
 
 # Decades (Saturday Lotto 1-45)
 DECADES = {
@@ -103,6 +134,46 @@ def softmax(xs):
     s = sum(exps) if exps else 1.0
     return [e / s for e in exps]
 
+def build_last_seen_map(train_sats_df):
+    """
+    Returns {pattern_tuple: last_seen_timestamp} using ONLY Saturdays before target_date.
+    """
+    last_seen = {}
+    for _, sat in train_sats_df.iterrows():
+        pat = saturday_pattern(sat)
+        dt = sat["Date"]
+        prev = last_seen.get(pat)
+        if prev is None or dt > prev:
+            last_seen[pat] = dt
+    return last_seen
+
+
+def years_since(dt_last, dt_target):
+    if dt_last is None:
+        return RECENCY_NEVER_SEEN_YEARS
+    return (dt_target - dt_last).days / 365.25
+
+
+def recency_penalty_factor(years_ago: float) -> float:
+    """
+    Returns a multiplier in (0..1].
+    """
+    if not USE_RECENCY_PENALTY:
+        return 1.0
+
+    if RECENCY_PENALTY_MODE == "step":
+        for thresh, factor in RECENCY_STEP_TABLE:
+            if years_ago < thresh:
+                return float(factor)
+        return float(RECENCY_STEP_DEFAULT)
+
+    if RECENCY_PENALTY_MODE == "exp":
+        # 0.5^(years/half_life)
+        f = 0.5 ** (years_ago / float(RECENCY_EXP_HALF_LIFE_YEARS))
+        return float(max(RECENCY_EXP_MIN_FACTOR, f))
+
+    # Unknown mode => disable penalty safely
+    return 1.0
 
 # =============================
 # LOAD + NORMALIZE
@@ -283,6 +354,7 @@ for Y in WINDOWS:
     }
 
 # Ensemble distribution across windows
+# Ensemble distribution across windows
 ensemble = Counter()
 for Y in WINDOWS:
     wY = per_window[Y]["w"]
@@ -290,9 +362,23 @@ for Y in WINDOWS:
     for pat, p in dist.items():
         ensemble[pat] += wY * p
 
-# Normalize
+# -----------------------------
+# RECENCY PENALTY (soft)
+# -----------------------------
+last_seen_map = build_last_seen_map(train_sats)  # train_sats already = Saturdays < target_date
+
+if USE_RECENCY_PENALTY and ensemble:
+    for pat in list(ensemble.keys()):
+        last_dt = last_seen_map.get(pat)
+        yrs = years_since(last_dt, target_date)
+        ensemble[pat] *= recency_penalty_factor(yrs)
+
+# Normalize (after penalty)
 total_p = sum(ensemble.values()) if ensemble else 1.0
+if total_p <= 0:
+    total_p = 1.0
 ensemble = {pat: ensemble[pat] / total_p for pat in ensemble}
+
 
 # Expected counts per decade
 exp = {dk: 0.0 for dk in DECADE_KEYS}

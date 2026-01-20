@@ -20,7 +20,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    f"lotto_last_3_months.log"   # single growing log file
+    f"lotto_last_3_months.csv"   # single growing log file
 )
 
 log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
@@ -37,7 +37,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # ---------- CONFIG ----------
-DAYS_BACK = 400  # ~ last 3 months
+DAYS_BACK = 150  # ~ last 3 months
 TIMEOUT = 30
 
 PAGES = {

@@ -43,25 +43,30 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-17"
-REAL_DRAW_TARGET = [8, 9, 19, 35, 38, 44]
-N = 11
+TARGET_DATE = "2026-1-10"
+REAL_DRAW_TARGET = [1, 8, 23, 25, 30, 41]
+N = 10
 # TARGET_DATE = "2026-1-3"
 # REAL_DRAW_TARGET = [9, 10, 13, 19, 21, 36]
 
 # TARGET_DATE = "2025-11-15"
 # REAL_DRAW_TARGET = [1, 19, 33, 36, 39, 41]
 
-# Example: [{1: 2, 2: 1, 3: 1, 4: 1, 5: 1}]
-# Example (partial): [{1: 2, 2: 0, 3: 3}] -> remaining decades auto-adjust
-DECADE_TARGET_COUNTS = [
-    # {1: 2, 2: 1, 3: 0, 4:2, 5: 1},
-#     # {1: 2, 3: 2, 4: 1},
-]
-# DECADE_TARGET_COUNTS = None
+# Examples:
+#   [{1: 2, 2: 0, 3: 3}, {1: 3, 2: 0}]
+# If set, these targets are enforced (missing decades auto-adjusted).
+DECADE_TARGET_COUNTS = [{1: 2, 2: 0, 3: 3, 4: 0, 5: 1}]
+DECADE_TARGET_SOFT_PENALTY = None
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
+BACKTEST_TICKET_COUNT = 20
+DECADE_PREDICT_AVOID_DAYS = 365
+DECADE_PREDICT_TOPM = 1
+DECADE_PREDICT_AVOID_TOP_PCT = 0.2
+DECADE_PREDICT_RECENT_K = 10
+RELAXED_OVERLAP_CAP = 6
+RELAXED_GLOBAL_MAX_USES = 50
 
 MAIN_MIN = 1
 MAIN_MAX = 45
@@ -128,13 +133,12 @@ DECADE_MODE = "soft"         # "hard" | "soft" | "ignore"
 DECADE_MEDIAN_TOL = 1
 DECADE_SOFT_PENALTY = 0.6
 
-# Optional: enforce exact decade counts (set None to disable)
 
-DECADE_TARGET_SOFT_PENALTY = None
+
 
 # Acceptance behavior
 PENALTY_SCALE = 0.65
-MAX_ATTEMPTS = 30000
+MAX_ATTEMPTS = 100000
 
 
 # Cohesion strategy (3+ hit traits)
@@ -795,34 +799,123 @@ def _decade_target_distance(vec: Dict[int, int], target: Dict[int, int]) -> int:
     return sum(abs(vec.get(d, 0) - target.get(d, 0)) for d in DECADE_IDS)
 
 
-def _same_draw_date(a: str, b: str) -> bool:
-    ta = pd.Timestamp(a)
-    tb = pd.Timestamp(b)
-    if pd.isna(ta) or pd.isna(tb):
-        return False
-    return ta.date() == tb.date()
+def _predict_decade_target_from_history(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    avoid_days: int,
+    topm: int,
+    avoid_top_pct: float,
+    recent_k: int,
+) -> Optional[Dict[int, int]]:
+    t = pd.Timestamp(target_date)
+    if pd.isna(t):
+        return None
+    history = df[df["Date"] < t]
+    if history.empty:
+        return None
+    recent_start = t - pd.Timedelta(days=int(avoid_days))
+    recent = history[history["Date"] >= recent_start]
 
+    def _vec_from_row(row) -> Tuple[int, ...]:
+        nums = [int(row[c]) for c in main_cols]
+        return tuple(_decade_vector(nums)[d] for d in DECADE_IDS)
+
+    recent_patterns = set(_vec_from_row(r) for _, r in recent.iterrows())
+    all_counts: Dict[Tuple[int, ...], int] = {}
+    for _, r in history.iterrows():
+        vec = _vec_from_row(r)
+        all_counts[vec] = all_counts.get(vec, 0) + 1
+
+    candidates = [(v, c) for v, c in all_counts.items() if v not in recent_patterns]
+    if not candidates:
+        candidates = list(all_counts.items())
+
+    # Avoid the most frequent patterns by percentile.
+    if candidates and avoid_top_pct and avoid_top_pct > 0:
+        counts = sorted({c for _, c in candidates}, reverse=True)
+        cutoff_idx = max(0, int(len(counts) * float(avoid_top_pct)) - 1)
+        if cutoff_idx >= 0 and cutoff_idx < len(counts):
+            cutoff = counts[cutoff_idx]
+            candidates = [(v, c) for v, c in candidates if c < cutoff]
+            if not candidates:
+                candidates = list(all_counts.items())
+
+    # Score by similarity to recent draws (lower distance is better).
+    recent_draws = history.sort_values("Date").tail(int(recent_k))
+    recent_vecs = [_vec_from_row(r) for _, r in recent_draws.iterrows()]
+    scored = []
+    for vec, cnt in candidates:
+        dist = 0
+        for rv in recent_vecs:
+            dist += sum(abs(a - b) for a, b in zip(vec, rv))
+        scored.append((dist, cnt, vec))
+    scored.sort(key=lambda x: (x[0], x[1], x[2]))
+    if not candidates:
+        return None
+    if not scored:
+        return None
+
+    pick = scored[0][2] if topm <= 1 else scored[min(topm - 1, len(scored) - 1)][2]
+    return _normalize_decade_target({d: int(v) for d, v in zip(DECADE_IDS, pick)})
 
 def _normalize_decade_target(target: Dict[int, int]) -> Dict[int, int]:
+    if target is None:
+        return None
     if not isinstance(target, dict):
         raise ValueError("DECADE_TARGET_COUNTS must be a dict like {decade_id: count}.")
+    out = {d: int(target.get(d, 0)) for d in DECADE_IDS}
     for k, v in target.items():
         if k not in DECADE_IDS:
             raise ValueError(f"DECADE_TARGET_COUNTS has unknown decade id: {k}")
         if not isinstance(v, int) or v < 0:
             raise ValueError("DECADE_TARGET_COUNTS values must be non-negative integers.")
-    total = sum(int(v) for v in target.values())
+    for d, v in out.items():
+        if v > NUMBERS_PER_TICKET:
+            raise ValueError("DECADE_TARGET_COUNTS values must be <= NUMBERS_PER_TICKET.")
+
+    total = sum(out.values())
     if total > NUMBERS_PER_TICKET:
         raise ValueError("DECADE_TARGET_COUNTS cannot exceed NUMBERS_PER_TICKET.")
-    return {d: int(target.get(d)) for d in target}
 
-def _normalize_decade_target_list(targets) -> List[Dict[int, int]]:
+    high_count = sum(1 for v in out.values() if v >= 3)
+    if high_count > 1:
+        raise ValueError("Only one decade can have >= 3 numbers in DECADE_TARGET_COUNTS.")
+
+    missing = [d for d in DECADE_IDS if d not in target]
+    if total < NUMBERS_PER_TICKET and missing:
+        remaining = NUMBERS_PER_TICKET - total
+        # Distribute remaining counts with a cap (<=3) and only one decade >=3.
+        cap_high = 3
+        for _ in range(remaining):
+            candidates = []
+            for d in missing:
+                cur = out[d]
+                if cur >= cap_high:
+                    continue
+                # if another decade already has >=3, keep this under 3
+                if any(v >= 3 for v in out.values()) and cur >= 2:
+                    continue
+                candidates.append(d)
+            if not candidates:
+                raise ValueError("Cannot auto-adjust DECADE_TARGET_COUNTS within constraints.")
+            # pick the currently smallest to balance
+            pick = sorted(candidates, key=lambda d: (out[d], d))[0]
+            out[pick] += 1
+    if sum(out.values()) != NUMBERS_PER_TICKET:
+        raise ValueError("DECADE_TARGET_COUNTS must sum to NUMBERS_PER_TICKET after auto-adjust.")
+    if sum(1 for v in out.values() if v >= 3) > 1:
+        raise ValueError("Only one decade can have >= 3 numbers in DECADE_TARGET_COUNTS.")
+    return out
+
+
+def _normalize_decade_target_list(targets) -> Optional[List[Dict[int, int]]]:
     if targets is None:
-        return []
+        return None
     if isinstance(targets, dict):
         targets = [targets]
     if not isinstance(targets, list):
-        raise ValueError("DECADE_TARGET_COUNTS must be a list of dicts.")
+        raise ValueError("DECADE_TARGET_COUNTS must be a dict or list of dicts.")
     out = []
     for t in targets:
         out.append(_normalize_decade_target(t))
@@ -1589,11 +1682,8 @@ def generate_tickets(
         if not ok:
             continue
 
-        vec = _decade_vector(pick)
-        if _same_draw_date(target_date, TARGET_DATE):
-            if max(vec.values()) > 3:
-                continue
-        if DECADE_MODE != "ignore":
+        if DECADE_MODE != "ignore" and DECADE_TARGET_COUNTS is None:
+            vec = _decade_vector(pick)
             dist_dec = _decade_distance(vec, season_decades.med)
             in_band = _within_decade_band(vec, season_decades.p25, season_decades.p75, DECADE_MEDIAN_TOL)
             if DECADE_MODE == "hard":
@@ -1636,16 +1726,20 @@ def generate_tickets(
                     continue
 
         penalty = _ticket_penalty(pick, dist)
-        apply_decade_target = (
-            DECADE_TARGET_COUNTS and _same_draw_date(target_date, TARGET_DATE)
-        )
-        if apply_decade_target:
-            vec = _decade_vector(pick)
+        vec = _decade_vector(pick)
+        if sum(1 for v in vec.values() if v >= 3) > 1:
+            continue
+        if DECADE_TARGET_COUNTS is not None:
             ok = False
             for tgt in DECADE_TARGET_COUNTS:
-                if all(vec.get(d, 0) == int(v) for d, v in tgt.items()):
+                tdist = _decade_target_distance(vec, tgt)
+                if tdist == 0:
                     ok = True
                     break
+                if DECADE_TARGET_SOFT_PENALTY is not None:
+                    if rng.random() >= min(0.90, tdist * float(DECADE_TARGET_SOFT_PENALTY)):
+                        ok = True
+                        break
             if not ok:
                 continue
         scale = PENALTY_SCALE if penalty_scale is None else float(penalty_scale)
@@ -2051,11 +2145,9 @@ if __name__ == "__main__":
 
     target_real = REAL_DRAW_TARGET if REAL_DRAW_TARGET else real_draw
 
-    # Backtest: run on the last 5 available draws in the CSV
+    # Backtest: run on the last N available draws in the CSV
     backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
-
-    strategies = _strategy_configs()
 
     winner_blocks = []
     band_stats = []
@@ -2167,3 +2259,104 @@ if __name__ == "__main__":
                 print(f"Ticket #{i:02d}: {t}  decades={vec}")
             show_ticket_hits(real_draw, regime_tickets, draw_date=run_date, strategy_name=variant["name"])
             show_ticket_hits(REAL_DRAW_TARGET, regime_tickets, draw_date=run_date, strategy_name=variant["name"])
+
+    print(f"\n=== BACKTEST (LAST {N} DRAWS, ACTUAL DECADES) ===")
+    original_decade_target = DECADE_TARGET_COUNTS
+    bt_total_ge3 = 0
+    bt_weeks_with_5 = 0
+    bt_max_hit = 0
+    print("Date        | ge3 | max_hit")
+    print("------------+-----+--------")
+
+    for d in bt_dates:
+        bt_date = d.strftime("%Y-%m-%d")
+        row = df[df["Date"] == d].iloc[0]
+        bt_draw = [int(row[c]) for c in main_cols]
+        DECADE_TARGET_COUNTS = [_normalize_decade_target(_decade_vector(bt_draw))]
+        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
+        bt_tickets = generate_tickets(
+            bt_scored,
+            df,
+            main_cols,
+            bt_date,
+            use_weights=True,
+            seed_hot_overdue=False,
+            force_coverage=FORCE_COVERAGE,
+            ticket_count=BACKTEST_TICKET_COUNT,
+            overlap_cap_override=RELAXED_OVERLAP_CAP,
+            global_max_override=RELAXED_GLOBAL_MAX_USES,
+        )
+        summary = _hit_summary(bt_draw, bt_tickets)
+        bt_total_ge3 += summary.get("ge3", 0)
+        if summary.get("max_hit", 0) >= 5:
+            bt_weeks_with_5 += 1
+        if summary.get("max_hit", 0) > bt_max_hit:
+            bt_max_hit = summary.get("max_hit", 0)
+        print(f"{bt_date} | {summary.get('ge3', 0):>3} | {summary.get('max_hit', 0):>7}")
+
+    DECADE_TARGET_COUNTS = original_decade_target
+    print("\n=== BACKTEST HIT SUMMARY ===")
+    print(f"Total ge3 tickets: {bt_total_ge3}")
+    print(f"Weeks with 5+ hits: {bt_weeks_with_5}")
+    print(f"Max hit observed: {bt_max_hit}")
+    print("Date        | ge3 | max_hit")
+    print("------------+-----+--------")
+    for d in bt_dates:
+        bt_date = d.strftime("%Y-%m-%d")
+        row = df[df["Date"] == d].iloc[0]
+        bt_draw = [int(row[c]) for c in main_cols]
+        DECADE_TARGET_COUNTS = [_normalize_decade_target(_decade_vector(bt_draw))]
+        bt_scored = score_numbers(df, main_cols, bt_date, False)
+        bt_tickets = generate_tickets(
+            bt_scored,
+            df,
+            main_cols,
+            bt_date,
+            use_weights=True,
+            seed_hot_overdue=False,
+            force_coverage=FORCE_COVERAGE,
+            ticket_count=BACKTEST_TICKET_COUNT,
+            overlap_cap_override=RELAXED_OVERLAP_CAP,
+            global_max_override=RELAXED_GLOBAL_MAX_USES,
+        )
+        summary = _hit_summary(bt_draw, bt_tickets)
+        print(f"{bt_date} | {summary.get('ge3', 0):>3} | {summary.get('max_hit', 0):>7}")
+    DECADE_TARGET_COUNTS = original_decade_target
+
+    print("\n=== TARGET (PREDICTED DECADE, AVOID LAST 1 YEAR) ===")
+    if DECADE_TARGET_COUNTS is None:
+        predicted_decade = _predict_decade_target_from_history(
+            df,
+            main_cols,
+            run_date,
+            DECADE_PREDICT_AVOID_DAYS,
+            DECADE_PREDICT_TOPM,
+            DECADE_PREDICT_AVOID_TOP_PCT,
+            DECADE_PREDICT_RECENT_K,
+        )
+        if predicted_decade:
+            DECADE_TARGET_COUNTS = [predicted_decade]
+            print(f"Predicted decade target: {DECADE_TARGET_COUNTS}")
+        else:
+            print("No predicted decade target; running without decade constraint.")
+    else:
+        print(f"Using configured decade targets: {DECADE_TARGET_COUNTS}")
+
+    target_tickets = generate_tickets(
+        scored,
+        df,
+        main_cols,
+        run_date,
+        use_weights=True,
+        seed_hot_overdue=False,
+        force_coverage=FORCE_COVERAGE,
+        ticket_count=NUM_TICKETS,
+        overlap_cap_override=RELAXED_OVERLAP_CAP,
+        global_max_override=RELAXED_GLOBAL_MAX_USES,
+    )
+    print(f"Target: {run_date}")
+    for i, t in enumerate(target_tickets, 1):
+        vec = _decade_vector(t)
+        print(f"Ticket #{i:02d}: {t}  decades={vec}")
+    show_ticket_hits(target_real, target_tickets, draw_date=run_date, strategy_name="PREDICTED_DECADE")
+    DECADE_TARGET_COUNTS = original_decade_target
