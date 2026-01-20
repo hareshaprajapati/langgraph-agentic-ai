@@ -35,8 +35,9 @@ import pandas as pd
 from dataclasses import dataclass
 from datetime import date
 from typing import List, Dict, Tuple, Optional
-import random
 import math
+import random
+from collections import Counter
 
 # ============================================================
 # USER CONFIG (edit only these)
@@ -56,6 +57,8 @@ N = 10
 #   [{1: 2, 2: 0, 3: 3}, {1: 3, 2: 0}]
 # If set, these targets are enforced (missing decades auto-adjusted).
 DECADE_TARGET_COUNTS = [{1: 2, 2: 0, 3: 3, 4: 0, 5: 1}]
+# DECADE_TARGET_COUNTS = None
+TARGET_TICKETS_PER_PATTERN = 20
 DECADE_TARGET_SOFT_PENALTY = None
 
 NUM_TICKETS = 20
@@ -91,6 +94,11 @@ COLD_FORCE_COUNT = 2
 FORCE_COVERAGE = False
 RANDOM_SEED = 0
 DEBUG_PRINT = True
+LOG_SHOW_REAL_DRAW_PROFILE = True
+LOG_SHOW_TICKET_BUCKETS = True
+LOG_RUN_TARGET_SWEEPS = False
+LOG_SHOW_BACKTEST_WINNER_REGIME = False
+LOG_SHOW_BACKTEST_TABLES = True
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -409,6 +417,21 @@ def _rank_bucket_quota_from_stats(stats: List[WinnerRegimeStats]) -> Optional[Di
         k = max(floors, key=lambda x: floors[x])
         floors[k] += (NUMBERS_PER_TICKET - total)
     return floors
+
+
+def _rank_bucket_quota_distribution(
+    stats: List[WinnerRegimeStats],
+    recent_n: Optional[int] = None,
+) -> List[Dict[str, int]]:
+    out: List[Dict[str, int]] = []
+    use_stats = stats[-int(recent_n):] if (recent_n and recent_n > 0) else stats
+    for s in use_stats:
+        if not s.rank_bucket_counts:
+            continue
+        vec = {k: int(v) for k, v in s.rank_bucket_counts.items()}
+        if sum(vec.values()) == NUMBERS_PER_TICKET:
+            out.append(vec)
+    return out
 
 
 def _collect_winner_regime_stats(
@@ -1382,6 +1405,7 @@ def generate_tickets(
     rank_bucket_quota_counts: Dict[str, int] = None,
     rank_bucket_map: Dict[int, str] = None,
     rank_bucket_weight_mode: str = "score",  # "score" | "uniform"
+    rank_bucket_quota_sampler=None,
     ratio_band: Tuple[float, float] = None,
     ratio_map: Dict[int, float] = None,
     ratio_min_hits: int = None,
@@ -1390,6 +1414,7 @@ def generate_tickets(
     global_max_override: int = None,
     cohesion_config: Dict[str, object] = None,
     ticket_count: int = None,
+    debug_rejects: bool = False,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -1482,15 +1507,23 @@ def generate_tickets(
     global_use = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
     overlap_cap = OVERLAP_CAP if overlap_cap_override is None else int(overlap_cap_override)
     global_max = GLOBAL_MAX_USES if global_max_override is None else int(global_max_override)
+    reject_counts: Dict[str, int] = {}
+
+    def _rej(key: str) -> None:
+        if debug_rejects:
+            reject_counts[key] = reject_counts.get(key, 0) + 1
 
     attempts = 0
     while len(tickets) < ticket_count and attempts < MAX_ATTEMPTS:
         attempts += 1
+        quota_counts = rank_bucket_quota_counts
+        if rank_bucket_quota_sampler is not None:
+            quota_counts = rank_bucket_quota_sampler()
 
-        if rank_bucket_quota_counts and rank_bucket_pools and not fixed_seed and not force_coverage:
+        if quota_counts and rank_bucket_pools and not fixed_seed and not force_coverage:
             pick = []
             valid = True
-            for bucket, count in rank_bucket_quota_counts.items():
+            for bucket, count in quota_counts.items():
                 cnt = int(count)
                 if cnt <= 0:
                     continue
@@ -1501,6 +1534,7 @@ def generate_tickets(
                     break
                 pick.extend(_weighted_sample_no_replace(bitems, bweights, cnt, rng))
             if not valid or len(set(pick)) != NUMBERS_PER_TICKET:
+                _rej("rank_bucket_invalid")
                 continue
             pick = sorted(pick)
         elif band_quota_counts and band_pools and not fixed_seed and not force_coverage:
@@ -1517,6 +1551,7 @@ def generate_tickets(
                     break
                 pick.extend(_weighted_sample_no_replace(bitems, bweights, cnt, rng))
             if not valid or len(set(pick)) != NUMBERS_PER_TICKET:
+                _rej("band_quota_invalid")
                 continue
             pick = sorted(pick)
         elif fixed_seed:
@@ -1584,9 +1619,11 @@ def generate_tickets(
         else:
             pick = sorted(_weighted_sample_no_replace(pool, weights, NUMBERS_PER_TICKET, rng))
         if pick in tickets:
+            _rej("duplicate_ticket")
             continue
 
         if any(global_use[n] >= global_max for n in pick):
+            _rej("global_max")
             continue
 
         # overlap cap
@@ -1597,6 +1634,7 @@ def generate_tickets(
                 ok = False
                 break
         if not ok:
+            _rej("overlap_cap")
             continue
 
         if DECADE_MODE != "ignore" and DECADE_TARGET_COUNTS is None:
@@ -1605,12 +1643,15 @@ def generate_tickets(
             in_band = _within_decade_band(vec, season_decades.p25, season_decades.p75, DECADE_MEDIAN_TOL)
             if DECADE_MODE == "hard":
                 if not in_band:
+                    _rej("decade_band_hard")
                     continue
                 if dist_dec > (2 * DECADE_MEDIAN_TOL):
+                    _rej("decade_band_dist")
                     continue
             else:
                 reject_prob = min(0.85, dist_dec * float(DECADE_SOFT_PENALTY) * 0.15)
                 if rng.random() < reject_prob:
+                    _rej("decade_band_soft")
                     continue
 
         if band_quota_counts:
@@ -1625,9 +1666,11 @@ def generate_tickets(
             )
             if dist_band:
                 if band_quota_strict:
+                    _rej("band_quota_strict")
                     continue
                 reject_prob = min(0.90, dist_band * float(band_quota_reject_scale))
                 if rng.random() < reject_prob:
+                    _rej("band_quota_soft")
                     continue
 
         if ratio_band and ratio_map and ratio_min_hits:
@@ -1640,11 +1683,13 @@ def generate_tickets(
             if in_band < int(ratio_min_hits):
                 miss = int(ratio_min_hits) - in_band
                 if rng.random() < min(0.90, miss * float(ratio_reject_scale)):
+                    _rej("ratio_band")
                     continue
 
         penalty = _ticket_penalty(pick, dist)
         vec = _decade_vector(pick)
         if sum(1 for v in vec.values() if v >= 3) > 1:
+            _rej("decade_multi3")
             continue
         if DECADE_TARGET_COUNTS is not None:
             ok = False
@@ -1658,6 +1703,7 @@ def generate_tickets(
                         ok = True
                         break
             if not ok:
+                _rej("decade_target")
                 continue
         scale = PENALTY_SCALE if penalty_scale is None else float(penalty_scale)
         accept_prob = math.exp(-penalty * scale)
@@ -1667,11 +1713,13 @@ def generate_tickets(
             )
             min_score = cohesion_config.get("min_score")
             if min_score is not None and cohesion < float(min_score):
+                _rej("cohesion_min")
                 continue
             accept_prob *= (cohesion_config["accept_floor"] + cohesion_config["accept_span"] * cohesion)
             if accept_prob > 1.0:
                 accept_prob = 1.0
             if rng.random() > accept_prob:
+                _rej("cohesion_accept")
                 continue
 
         tickets.append(pick)
@@ -1679,6 +1727,9 @@ def generate_tickets(
             global_use[n] += 1
 
     print(f"Generated {len(tickets)}/{ticket_count} tickets in {attempts} attempts")
+    if debug_rejects and reject_counts:
+        top = sorted(reject_counts.items(), key=lambda x: (-x[1], x[0]))[:8]
+        print("Reject counts (top): " + ", ".join(f"{k}={v}" for k, v in top))
     return tickets
 
 
@@ -1724,6 +1775,120 @@ def show_ticket_hits(
         print("No tickets with 3+ hits.")
     if best_near[0] >= 1:
         print(f"Best near-miss: Ticket #{best_near[1]:02d} near_miss={best_near[0]} near_nums={best_near[2]}")
+
+
+def _winner_ratio_values(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    bt_dates: List[pd.Timestamp],
+) -> List[float]:
+    vals: List[float] = []
+    for d in bt_dates:
+        bt_date = d.strftime("%Y-%m-%d")
+        row = df[df["Date"] == d].iloc[0]
+        bt_draw = [int(row[c]) for c in main_cols]
+        scored_main = compute_candidate_score_main(df, main_cols, bt_date)
+        ratio_map = {c.n: float(c.ratio_12mo) for c in scored_main}
+        for n in bt_draw:
+            r = ratio_map.get(n)
+            if r is not None:
+                vals.append(float(r))
+    return vals
+
+
+def _ratio_band_from_values(values: List[float], lo_p: float, hi_p: float) -> Optional[Tuple[float, float]]:
+    if not values:
+        return None
+    s = pd.Series(values)
+    lo = float(s.quantile(lo_p))
+    hi = float(s.quantile(hi_p))
+    if lo > hi:
+        lo, hi = hi, lo
+    return (lo, hi)
+
+
+def _winner_ratio_values_seasonal(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    season_window_days: int,
+    lookback_years: int,
+) -> List[float]:
+    t = pd.Timestamp(target_date)
+    if pd.isna(t):
+        return []
+    target_d = t.date()
+    start_year = target_d.year - int(lookback_years)
+    end_year = target_d.year - 1
+    vals: List[float] = []
+    for y in range(start_year, end_year + 1):
+        anchor = _anchor_for_year(target_d, y)
+        start, end = _season_window_dates(anchor, int(season_window_days))
+        season_rows = df[(df["Date"] >= start) & (df["Date"] < end)]
+        for _, r in season_rows.iterrows():
+            draw_date = pd.Timestamp(r["Date"]).strftime("%Y-%m-%d")
+            scored_main = compute_candidate_score_main(df, main_cols, draw_date)
+            ratio_map = {c.n: float(c.ratio_12mo) for c in scored_main}
+            draw_nums = [int(r[c]) for c in main_cols]
+            for n in draw_nums:
+                rv = ratio_map.get(n)
+                if rv is not None:
+                    vals.append(float(rv))
+    return vals
+
+
+def _decade_pattern_counts(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    cutoff_date: pd.Timestamp,
+) -> Counter:
+    history = df[df["Date"] < cutoff_date].sort_values("Date")
+    counts: Counter = Counter()
+    for _, r in history.iterrows():
+        nums = [int(r[c]) for c in main_cols]
+        vec = tuple(_decade_vector(nums)[d] for d in DECADE_IDS)
+        counts[vec] += 1
+    return counts
+
+
+def _candidate_decade_patterns(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    avoid_days: int,
+    top_n: int,
+    recent_n: int,
+) -> List[Dict[int, int]]:
+    t = pd.Timestamp(target_date)
+    if pd.isna(t):
+        return []
+    counts = _decade_pattern_counts(df, main_cols, t)
+    recent_start = t - pd.Timedelta(days=int(avoid_days))
+    recent = df[(df["Date"] < t) & (df["Date"] >= recent_start)].sort_values("Date")
+    recent_vecs = []
+    for _, r in recent.iterrows():
+        nums = [int(r[c]) for c in main_cols]
+        vec = tuple(_decade_vector(nums)[d] for d in DECADE_IDS)
+        recent_vecs.append(vec)
+    recent_unique = []
+    seen = set()
+    for v in reversed(recent_vecs):
+        if v in seen:
+            continue
+        seen.add(v)
+        recent_unique.append(v)
+        if len(recent_unique) >= int(recent_n):
+            break
+
+    top = [v for v, _ in counts.most_common(int(top_n))]
+    merged = []
+    for v in recent_unique + top:
+        if v not in merged:
+            merged.append(v)
+    out = []
+    for v in merged:
+        out.append({d: int(x) for d, x in zip(DECADE_IDS, v)})
+    return out
 
 
 def _hit_summary(real_draw: List[int], tickets: List[List[int]]) -> Dict[str, int]:
@@ -1880,12 +2045,13 @@ if __name__ == "__main__":
             scored_main=bt_scored_main,
         )
 
-    print_all_winner_tables_at_end(winner_blocks)
-    print_date_by_date_band_counts_ascending(band_stats)
-    print_band_summary_at_end(band_stats)
+    if LOG_SHOW_BACKTEST_TABLES:
+        print_all_winner_tables_at_end(winner_blocks)
+        print_date_by_date_band_counts_ascending(band_stats)
+        print_band_summary_at_end(band_stats)
 
     winner_regime = _regime_from_winner_stats(winner_regime_stats)
-    if winner_regime:
+    if winner_regime and LOG_SHOW_BACKTEST_WINNER_REGIME:
         regime_variants = [
             {"name": "REGIME_SCORE", "weight_mode": "score", "ratio_scale": 0.35},
         ]
@@ -2047,21 +2213,224 @@ if __name__ == "__main__":
     else:
         print(f"Using configured decade targets: {DECADE_TARGET_COUNTS}")
 
-    target_tickets = generate_tickets(
-        scored,
+    scored_main = compute_candidate_score_main(df, main_cols, run_date)
+    rank_pos_map = {c.n: i + 1 for i, c in enumerate(scored_main)}
+    rank_bucket_map = {c.n: _rank_bucket(i + 1) for i, c in enumerate(scored_main)}
+    ratio_map = {c.n: float(c.ratio_12mo) for c in scored_main}
+
+    quota_dist = _rank_bucket_quota_distribution(winner_regime_stats) if winner_regime_stats else []
+    quota_dist_recent = _rank_bucket_quota_distribution(winner_regime_stats, recent_n=5) if winner_regime_stats else []
+    quota_rng = random.Random(RANDOM_SEED)
+
+    def _quota_sampler(dist):
+        if dist:
+            return quota_rng.choice(dist)
+        return winner_regime.get("rank_bucket_quota") if winner_regime else None
+
+    def _generate_with_decade_targets(
+        decade_targets: Optional[List[Dict[int, int]]],
+        ratio_band_override: Optional[Tuple[float, float]] = None,
+        ratio_min_hits_override: Optional[int] = None,
+        ratio_reject_scale_override: Optional[float] = None,
+        debug_rejects_override: bool = True,
+        quota_dist_override: Optional[List[Dict[str, int]]] = None,
+        tickets_per_pattern: Optional[int] = None,
+    ) -> List[List[int]]:
+        global DECADE_TARGET_COUNTS
+        original_targets = DECADE_TARGET_COUNTS
+        try:
+            if not decade_targets:
+                return generate_tickets(
+                    scored,
+                    df,
+                    main_cols,
+                    run_date,
+                    use_weights=True,
+                    seed_hot_overdue=False,
+                    force_coverage=FORCE_COVERAGE,
+                    ticket_count=NUM_TICKETS,
+                    overlap_cap_override=RELAXED_OVERLAP_CAP,
+                    global_max_override=RELAXED_GLOBAL_MAX_USES,
+                    rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota") if winner_regime else None,
+                    rank_bucket_map=rank_bucket_map if winner_regime else None,
+                    rank_bucket_weight_mode="score",
+                    rank_bucket_quota_sampler=(lambda: _quota_sampler(quota_dist_override or quota_dist)) if winner_regime else None,
+                    ratio_band=ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                    ratio_map=ratio_map if winner_regime else None,
+                    ratio_min_hits=ratio_min_hits_override if ratio_min_hits_override is not None else (winner_regime.get("ratio_min_hits") if winner_regime else None),
+                    ratio_reject_scale=ratio_reject_scale_override if ratio_reject_scale_override is not None else 0.35,
+                    debug_rejects=debug_rejects_override,
+                )
+
+            per_count = NUM_TICKETS // len(decade_targets)
+            extra = NUM_TICKETS % len(decade_targets)
+            all_tickets: List[List[int]] = []
+            for idx, tgt in enumerate(decade_targets):
+                if tickets_per_pattern is not None:
+                    take = tickets_per_pattern
+                else:
+                    take = per_count + (1 if idx < extra else 0)
+                if take <= 0:
+                    continue
+                DECADE_TARGET_COUNTS = [tgt]
+                all_tickets.extend(
+                    generate_tickets(
+                        scored,
+                        df,
+                        main_cols,
+                        run_date,
+                        use_weights=True,
+                        seed_hot_overdue=False,
+                        force_coverage=FORCE_COVERAGE,
+                        ticket_count=take,
+                        overlap_cap_override=RELAXED_OVERLAP_CAP,
+                        global_max_override=RELAXED_GLOBAL_MAX_USES,
+                        rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota") if winner_regime else None,
+                        rank_bucket_map=rank_bucket_map if winner_regime else None,
+                        rank_bucket_weight_mode="score",
+                        rank_bucket_quota_sampler=(lambda: _quota_sampler(quota_dist_override or quota_dist)) if winner_regime else None,
+                        ratio_band=ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                        ratio_map=ratio_map if winner_regime else None,
+                        ratio_min_hits=ratio_min_hits_override if ratio_min_hits_override is not None else (winner_regime.get("ratio_min_hits") if winner_regime else None),
+                        ratio_reject_scale=ratio_reject_scale_override if ratio_reject_scale_override is not None else 0.35,
+                        debug_rejects=debug_rejects_override,
+                    )
+                )
+            return all_tickets[:NUM_TICKETS]
+        finally:
+            DECADE_TARGET_COUNTS = original_targets
+
+    ratio_vals = _winner_ratio_values(df, main_cols, bt_dates)
+    ratio_vals_season = _winner_ratio_values_seasonal(
         df,
         main_cols,
         run_date,
-        use_weights=True,
-        seed_hot_overdue=False,
-        force_coverage=FORCE_COVERAGE,
-        ticket_count=NUM_TICKETS,
-        overlap_cap_override=RELAXED_OVERLAP_CAP,
-        global_max_override=RELAXED_GLOBAL_MAX_USES,
+        season_window_days=SEASON_WINDOW_DAYS,
+        lookback_years=SEASON_LOOKBACK_YEARS,
+    )
+    ratio_band_best = _ratio_band_from_values(ratio_vals, 0.20, 0.80)
+    ratio_min_best = 0
+    quota_best = quota_dist_recent if quota_dist_recent else quota_dist
+
+    target_tickets = _generate_with_decade_targets(
+        DECADE_TARGET_COUNTS,
+        ratio_band_override=ratio_band_best,
+        ratio_min_hits_override=ratio_min_best,
+        ratio_reject_scale_override=0.35,
+        debug_rejects_override=True,
+        quota_dist_override=quota_best,
+        tickets_per_pattern=TARGET_TICKETS_PER_PATTERN,
     )
     print(f"Target: {run_date}")
+    if target_real and LOG_SHOW_REAL_DRAW_PROFILE:
+        print("\n=== REAL DRAW PROFILE (TARGET) ===")
+        ratio_lo, ratio_hi = (winner_regime.get("ratio_band") if winner_regime else (None, None))
+        for n in target_real:
+            rnk = rank_pos_map.get(n, 9999)
+            bucket = rank_bucket_map.get(n)
+            ratio = ratio_map.get(n)
+            ratio_ok = ratio is not None and ratio_lo is not None and ratio_hi is not None and ratio_lo <= ratio <= ratio_hi
+            ratio_str = f"{ratio:.3f}" if ratio is not None else "None"
+            print(
+                f"n={n:2d} rank={rnk:2d} bucket={bucket} ratio_12mo={ratio_str} ratio_ok={ratio_ok}"
+            )
     for i, t in enumerate(target_tickets, 1):
         vec = _decade_vector(t)
+        counts = Counter(rank_bucket_map.get(n) for n in t if rank_bucket_map)
+        ratio_hits = 0
+        if winner_regime and ratio_map and winner_regime.get("ratio_band"):
+            lo, hi = winner_regime["ratio_band"]
+            for n in t:
+                r = ratio_map.get(n)
+                if r is not None and lo <= r <= hi:
+                    ratio_hits += 1
         print(f"Ticket #{i:02d}: {t}  decades={vec}")
+        if counts and LOG_SHOW_TICKET_BUCKETS:
+            print(f"  rank_buckets={dict(counts)} ratio_hits={ratio_hits}")
     show_ticket_hits(target_real, target_tickets, draw_date=run_date, strategy_name="PREDICTED_DECADE")
     DECADE_TARGET_COUNTS = original_decade_target
+
+    # Try ratio-band options and compare target hits.
+    if target_real and LOG_RUN_TARGET_SWEEPS:
+        ratio_bands = [
+            ("regime", winner_regime.get("ratio_band") if winner_regime else None),
+            ("p20_80", _ratio_band_from_values(ratio_vals, 0.20, 0.80)),
+            ("p10_90", _ratio_band_from_values(ratio_vals, 0.10, 0.90)),
+            ("p05_95", _ratio_band_from_values(ratio_vals, 0.05, 0.95)),
+            ("season_p20_80", _ratio_band_from_values(ratio_vals_season, 0.20, 0.80)),
+            ("season_p10_90", _ratio_band_from_values(ratio_vals_season, 0.10, 0.90)),
+        ]
+        min_hits_opts = [0, 1, 2, 3]
+        quota_opts = [
+            ("quota_all", quota_dist),
+            ("quota_recent5", quota_dist_recent),
+        ]
+        best = None
+        print("\n=== TARGET VARIANTS (RATIO BAND) ===")
+        for band_name, band in ratio_bands:
+            if band is None:
+                continue
+            for mh in min_hits_opts:
+                for qname, qdist in quota_opts:
+                    variant_name = f"{band_name}_min{mh}_{qname}"
+                    ratio_min = None if mh <= 0 else mh
+                    tickets_v = _generate_with_decade_targets(
+                        DECADE_TARGET_COUNTS,
+                        ratio_band_override=band,
+                        ratio_min_hits_override=ratio_min,
+                        ratio_reject_scale_override=0.35,
+                        debug_rejects_override=False,
+                        quota_dist_override=qdist,
+                    )
+                    summary = _hit_summary(target_real, tickets_v)
+                    print(
+                        f"{variant_name}: max_hit={summary['max_hit']} ge3={summary['ge3']} total_hits={summary['total_hits']}"
+                    )
+                    key = (summary["max_hit"], summary["ge3"], summary["total_hits"])
+                    if best is None or key > best[0]:
+                        best = (key, variant_name)
+        if best:
+            print(f"Best variant: {best[1]} (max_hit={best[0][0]} ge3={best[0][1]} total_hits={best[0][2]})")
+
+        # Try multiple decade pattern sets (no true decade knowledge).
+        decade_candidates = _candidate_decade_patterns(
+            df,
+            main_cols,
+            run_date,
+            DECADE_PREDICT_AVOID_DAYS,
+            top_n=6,
+            recent_n=4,
+        )
+        if decade_candidates:
+            print("\n=== TARGET VARIANTS (DECADE PATTERNS) ===")
+            pattern_sizes = [3, 4, 5]
+            ratio_variants = [
+                ("regime_min2", winner_regime.get("ratio_band") if winner_regime else None, 2),
+                ("p20_80_min2", _ratio_band_from_values(ratio_vals, 0.20, 0.80), 2),
+                ("season_p20_80_min2", _ratio_band_from_values(ratio_vals_season, 0.20, 0.80), 2),
+            ]
+            best_pat = None
+            for k in pattern_sizes:
+                pats = decade_candidates[: min(k, len(decade_candidates))]
+                for rname, rband, rmin in ratio_variants:
+                    if rband is None:
+                        continue
+                    for qname, qdist in quota_opts:
+                        variant_name = f"pat{len(pats)}_{rname}_{qname}"
+                        tickets_v = _generate_with_decade_targets(
+                            pats,
+                            ratio_band_override=rband,
+                            ratio_min_hits_override=rmin,
+                            ratio_reject_scale_override=0.35,
+                            debug_rejects_override=False,
+                            quota_dist_override=qdist,
+                        )
+                        summary = _hit_summary(target_real, tickets_v)
+                        print(
+                            f"{variant_name}: max_hit={summary['max_hit']} ge3={summary['ge3']} total_hits={summary['total_hits']}"
+                        )
+                        key = (summary["max_hit"], summary["ge3"], summary["total_hits"])
+                        if best_pat is None or key > best_pat[0]:
+                            best_pat = (key, variant_name)
+            if best_pat:
+                print(f"Best pattern variant: {best_pat[1]} (max_hit={best_pat[0][0]} ge3={best_pat[0][1]} total_hits={best_pat[0][2]})")
