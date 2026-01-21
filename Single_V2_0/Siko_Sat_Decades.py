@@ -91,7 +91,7 @@ NEUTRAL_VOTE = 0.0
 # Candidate generation (hard bounds)
 # You said historically D5=3 never happens; set D5 max=2.
 MAX_PER_DECADE = {"D1": 2, "D2": 3, "D3": 3, "D4": 3, "D5": 1}
-MIN_PER_DECADE = {"D1": 0, "D2": 1, "D3": 0, "D4": 1, "D5": 0}
+MIN_PER_DECADE = {"D1": 0, "D2": 0, "D3": 0, "D4": 0, "D5": 0}
 
 # Candidate ranking
 TOPK = 5

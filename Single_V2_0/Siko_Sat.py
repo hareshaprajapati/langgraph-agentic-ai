@@ -56,9 +56,9 @@ N = 10
 # Examples:
 #   [{1: 2, 2: 0, 3: 3}, {1: 3, 2: 0}]
 # If set, these targets are enforced (missing decades auto-adjusted).
-DECADE_TARGET_COUNTS = [{1: 2, 2: 0, 3: 3, 4: 0, 5: 1}]
-# DECADE_TARGET_COUNTS = None
-TARGET_TICKETS_PER_PATTERN = 20
+# DECADE_TARGET_COUNTS = [{1: 2, 2: 0, 3: 3, 4: 0, 5: 1}]
+DECADE_TARGET_COUNTS = None
+TARGET_TICKETS_PER_PATTERN = 4
 DECADE_TARGET_SOFT_PENALTY = None
 
 NUM_TICKETS = 20
@@ -68,6 +68,8 @@ DECADE_PREDICT_AVOID_DAYS = 365
 DECADE_PREDICT_TOPM = 1
 DECADE_PREDICT_AVOID_TOP_PCT = 0.2
 DECADE_PREDICT_RECENT_K = 10
+DECADE_PREDICT_CANDIDATE_TOPN = 4
+DECADE_PREDICT_CANDIDATE_RECENT_N = 4
 RELAXED_OVERLAP_CAP = 6
 RELAXED_GLOBAL_MAX_USES = 50
 
@@ -1863,30 +1865,44 @@ def _candidate_decade_patterns(
     if pd.isna(t):
         return []
     counts = _decade_pattern_counts(df, main_cols, t)
+    if not counts:
+        return []
+    history = df[df["Date"] < t].sort_values("Date")
     recent_start = t - pd.Timedelta(days=int(avoid_days))
-    recent = df[(df["Date"] < t) & (df["Date"] >= recent_start)].sort_values("Date")
-    recent_vecs = []
-    for _, r in recent.iterrows():
-        nums = [int(r[c]) for c in main_cols]
-        vec = tuple(_decade_vector(nums)[d] for d in DECADE_IDS)
-        recent_vecs.append(vec)
-    recent_unique = []
-    seen = set()
-    for v in reversed(recent_vecs):
-        if v in seen:
-            continue
-        seen.add(v)
-        recent_unique.append(v)
-        if len(recent_unique) >= int(recent_n):
-            break
+    recent_window = history[history["Date"] >= recent_start]
 
-    top = [v for v, _ in counts.most_common(int(top_n))]
-    merged = []
-    for v in recent_unique + top:
-        if v not in merged:
-            merged.append(v)
+    recent_vecs = []
+    if recent_n and recent_n > 0:
+        for _, r in history.tail(int(recent_n)).iterrows():
+            nums = [int(r[c]) for c in main_cols]
+            recent_vecs.append(tuple(_decade_vector(nums)[d] for d in DECADE_IDS))
+    if not recent_vecs:
+        recent_vecs = list(counts.keys())[:1]
+
+    recent_mean = {}
+    for i, d in enumerate(DECADE_IDS):
+        recent_mean[d] = sum(v[i] for v in recent_vecs) / float(len(recent_vecs))
+
+    recent_patterns = set()
+    for _, r in recent_window.iterrows():
+        nums = [int(r[c]) for c in main_cols]
+        recent_patterns.add(tuple(_decade_vector(nums)[d] for d in DECADE_IDS))
+
+    candidates = {vec: cnt for vec, cnt in counts.items() if vec not in recent_patterns}
+    if not candidates:
+        return []
+
+    scored = []
+    for vec, _cnt in candidates.items():
+        dist = 0.0
+        for i, d in enumerate(DECADE_IDS):
+            dist += abs(vec[i] - recent_mean[d])
+        scored.append((dist, vec))
+    scored.sort(key=lambda x: (x[0], x[1]))
+
+    take = int(top_n) if top_n and top_n > 0 else min(5, len(scored))
     out = []
-    for v in merged:
+    for _, v in scored[:take]:
         out.append({d: int(x) for d, x in zip(DECADE_IDS, v)})
     return out
 
@@ -2196,20 +2212,32 @@ if __name__ == "__main__":
 
     print("\n=== TARGET (PREDICTED DECADE, AVOID LAST 1 YEAR) ===")
     if DECADE_TARGET_COUNTS is None:
-        predicted_decade = _predict_decade_target_from_history(
+        candidate_targets = _candidate_decade_patterns(
             df,
             main_cols,
             run_date,
             DECADE_PREDICT_AVOID_DAYS,
-            DECADE_PREDICT_TOPM,
-            DECADE_PREDICT_AVOID_TOP_PCT,
-            DECADE_PREDICT_RECENT_K,
+            DECADE_PREDICT_CANDIDATE_TOPN,
+            DECADE_PREDICT_CANDIDATE_RECENT_N,
         )
-        if predicted_decade:
-            DECADE_TARGET_COUNTS = [predicted_decade]
-            print(f"Predicted decade target: {DECADE_TARGET_COUNTS}")
+        if candidate_targets:
+            DECADE_TARGET_COUNTS = candidate_targets
+            print(f"Predicted decade targets (candidates): {DECADE_TARGET_COUNTS}")
         else:
-            print("No predicted decade target; running without decade constraint.")
+            predicted_decade = _predict_decade_target_from_history(
+                df,
+                main_cols,
+                run_date,
+                DECADE_PREDICT_AVOID_DAYS,
+                DECADE_PREDICT_TOPM,
+                DECADE_PREDICT_AVOID_TOP_PCT,
+                DECADE_PREDICT_RECENT_K,
+            )
+            if predicted_decade:
+                DECADE_TARGET_COUNTS = [predicted_decade]
+                print(f"Predicted decade target: {DECADE_TARGET_COUNTS}")
+            else:
+                print("No predicted decade target; running without decade constraint.")
     else:
         print(f"Using configured decade targets: {DECADE_TARGET_COUNTS}")
 
@@ -2312,6 +2340,9 @@ if __name__ == "__main__":
     ratio_min_best = 0
     quota_best = quota_dist_recent if quota_dist_recent else quota_dist
 
+    per_pattern = None
+    if DECADE_TARGET_COUNTS and len(DECADE_TARGET_COUNTS) > 1:
+        per_pattern = TARGET_TICKETS_PER_PATTERN
     target_tickets = _generate_with_decade_targets(
         DECADE_TARGET_COUNTS,
         ratio_band_override=ratio_band_best,
@@ -2319,7 +2350,7 @@ if __name__ == "__main__":
         ratio_reject_scale_override=0.35,
         debug_rejects_override=True,
         quota_dist_override=quota_best,
-        tickets_per_pattern=TARGET_TICKETS_PER_PATTERN,
+        tickets_per_pattern=per_pattern,
     )
     print(f"Target: {run_date}")
     if target_real and LOG_SHOW_REAL_DRAW_PROFILE:
