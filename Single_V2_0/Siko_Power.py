@@ -24,7 +24,7 @@ log_file_path = os.path.join(
 )
 CSV_PATH = "Powerball.csv"
 
-log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
@@ -40,8 +40,20 @@ import math
 # USER CONFIG (edit only these)
 # ============================================================
 
+N = 10
+# 3 hit with without decade
+TARGET_DATE = "2026-01-15"
+REAL_DRAW_TARGET = [1, 2, 4, 24, 25, 27, 35]
+# 4 hit without decade, with decade 3
+# TARGET_DATE = "2026-01-08"
+# REAL_DRAW_TARGET = [7, 15, 16, 17, 25, 26, 27]
+# 3 hit with without exact decade
+# TARGET_DATE = "2026-01-01"
+# REAL_DRAW_TARGET = [30, 9, 7, 27, 18, 15, 29]
+# Example: {1: 2, 2: 2, 3: 3, 4: 0}
+DECADE_TARGET_COUNTS = {1: 3, 2: 0, 3: 3, 4: 1}
 
-NUM_TICKETS = 20
+NUM_TICKETS = 10
 NUMBERS_PER_TICKET = 7
 
 MAIN_MIN = 1
@@ -69,8 +81,7 @@ DECADE_MODE = "soft"         # "hard" or "soft"
 DECADE_MEDIAN_TOL = 1        # allow +/-1 per decade around seasonal p25..p75 (hard mode)
 DECADE_SOFT_PENALTY = 0.6    # per unit distance outside tolerance (soft mode)
 # Optional: exact decade counts to prefer per ticket (soft rule)
-# Example: {1: 2, 2: 2, 3: 3, 4: 0}
-DECADE_TARGET_COUNTS = None
+
 DECADE_TARGET_SOFT_PENALTY = 0.25
 
 # Optional: verify against a known real draw (set [] to disable)
@@ -1604,9 +1615,7 @@ def print_date_by_date_band_counts_ascending(band_stats):
 # ============================================================
 if __name__ == "__main__":
     df, main_cols = _load_csv(CSV_PATH)
-    N = 10
-    TARGET_DATE = "2026-01-15"
-    REAL_DRAW_TARGET = [1, 2, 4, 24, 25, 27, 35]
+
 
     df_bt = df.sort_values("Date", ascending=False).head(N)
     results = []

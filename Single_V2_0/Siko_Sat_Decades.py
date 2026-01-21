@@ -31,18 +31,6 @@ log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
 
-# Siko_Sat_Decades_Final.py
-# ------------------------------------------------------------
-# FINAL: Saturday Lotto decade quota predictor (6 numbers)
-# - Uses cross-lottery daily data (Set for Life + Others) ONLY as a directional "pressure" signal
-# - Predicts decades via suppression-first voting across windows Y=2..6
-# - Then generates candidate decade patterns (D1..D5 sum=6) with HARD per-decade bounds
-# - Applies configurable pattern recency avoidance using Saturday-only history (NO lookahead)
-# - Backtest is STRICT: for each target Saturday, training uses only dates < target
-#
-# NO CLI args: edit variables below.
-# ------------------------------------------------------------
-
 import csv
 import math
 import os
@@ -65,6 +53,8 @@ MODE = "BACKTEST"
 
 # Predict settings
 TARGET_DATE = "2026-01-17"  # Saturday date you want decades for (YYYY-MM-DD)
+TARGET_DECADES = [2, 1, 0, 2, 1]   # D1..D5
+SHOW_TARGET_CHECK = True
 
 # Backtest settings (last N Saturdays from SATURDAY_ONLY_CSV_PATH)
 BACKTEST_LAST_N = 16
@@ -561,9 +551,18 @@ def backtest_strict(daily_all: Dict[date, Dict[str, List[int]]], sat_all: Dict[d
         print(f"Top1 exact-pattern:  {hits_top1}/{tested} = {hits_top1/tested:.3f}")
         print(f"Top{TOPK} exact-pattern: {hits_topk}/{tested} = {hits_topk/tested:.3f}")
 
-# ============================================================
-# Main
-# ============================================================
+def check_target_hit(predicted_patterns, target_decades):
+    target = tuple(target_decades)
+    top1 = predicted_patterns[0][1]
+    topk = [patt for _, patt in predicted_patterns]
+
+    print("\n--- TARGET CHECK ---")
+    print(f"TARGET_DECADES: {target}")
+
+    print(f"Top1 predicted: {top1}")
+    print("Top1 HIT:", top1 == target)
+
+    print(f"Top{len(topk)} HIT:", target in topk)
 
 def main():
     # Load
