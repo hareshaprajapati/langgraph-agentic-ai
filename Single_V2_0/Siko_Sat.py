@@ -44,21 +44,20 @@ from collections import Counter
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-17"
-REAL_DRAW_TARGET = [8, 9, 19, 35, 38, 44]
-N = 10
+
 # TARGET_DATE = "2026-1-3"
 # REAL_DRAW_TARGET = [9, 10, 13, 19, 21, 36]
 
 # TARGET_DATE = "2025-11-15"
 # REAL_DRAW_TARGET = [1, 19, 33, 36, 39, 41]
 
-# Examples:
-#   [{1: 2, 2: 0, 3: 3}, {1: 3, 2: 0}]
-# If set, these targets are enforced (missing decades auto-adjusted).
+TARGET_DATE = "2026-1-17"
+REAL_DRAW_TARGET = [8, 9, 19, 35, 38, 44]
+N = 10
 DECADE_TARGET_COUNTS = [{1: 2, 2: 1, 3: 0, 4: 2, 5: 1}]
 # DECADE_TARGET_COUNTS = None
-TARGET_TICKETS_PER_PATTERN = 5
+# TARGET_TICKETS_PER_PATTERN = 5
+TARGET_TICKETS_PER_PATTERN = None
 DECADE_TARGET_SOFT_PENALTY = None
 
 NUM_TICKETS = 20
@@ -1146,11 +1145,10 @@ def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debu
         main_map = {c.n: c for c in scored_main}
         scored_main = [main_map[n.n] for n in scored if n.n in main_map]
 
-    if debug:
-        if scored_main:
-            print("\n=== CANDIDATE SCORE MAIN (POWER-STYLE) ===")
-            for c in scored_main[:45]:
-                print(c)
+    if debug and scored_main and str(target_date) == str(TARGET_DATE):
+        print("\n=== CANDIDATE SCORE MAIN (POWER-STYLE) ===")
+        for c in scored_main[:45]:
+            print(c)
 
     return scored
 
