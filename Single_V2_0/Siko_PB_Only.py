@@ -23,7 +23,7 @@ log_file_path = os.path.join(
     f"Siko_PB_Only.py.log"   # single growing log file
 )
 
-log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
@@ -36,6 +36,8 @@ from typing import List, Dict, Tuple, Optional
 # ----------------------------
 # Config / knobs (tuneable)
 # ----------------------------
+
+targate_date = "2026-01-22"
 
 PB_MIN = 1
 PB_MAX = 20
@@ -751,7 +753,7 @@ if __name__ == "__main__":
     # for r in res:
     #     print(r)
 
-    targate_date = "2026-01-15"
+
     res2 = predict_powerball(
         targate_date,
         csv_path,

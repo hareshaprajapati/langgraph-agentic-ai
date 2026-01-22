@@ -51,16 +51,18 @@ CSV_PATH = "Powerball.csv"
 # TARGET_DATE = "2026-01-08"
 # REAL_DRAW_TARGET = [7, 15, 16, 17, 25, 26, 27]
 # 2 hit without decade, 4 hit with decade
-TARGET_DATE = "2026-01-01"
-REAL_DRAW_TARGET = [30, 9, 7, 27, 18, 15, 29]
+# TARGET_DATE = "2026-01-01"
+# REAL_DRAW_TARGET = [30, 9, 7, 27, 18, 15, 29]
+TARGET_DATE = "2026-01-22"
+REAL_DRAW_TARGET = [6, 9, 20, 21, 22, 30, 34]
 N = 10
 # Examples:
 #   [{1: 2, 2: 0, 3: 3}, {1: 3, 2: 0}]
 # If set, these targets are enforced (missing decades auto-adjusted).
 # DECADE_TARGET_COUNTS = [{1: 2, 2: 0, 3: 3, 4: 0, 5: 1}]
-# DECADE_TARGET_COUNTS = [{1: 2, 2: 2, 3: 3, 4: 0}]
-DECADE_TARGET_COUNTS = None
-TARGET_TICKETS_PER_PATTERN = 10
+DECADE_TARGET_COUNTS = [{1: 2, 2: 1, 3: 3, 4: 1},{1: 2, 2: 2, 3: 3, 4: 0}]
+# DECADE_TARGET_COUNTS = None
+TARGET_TICKETS_PER_PATTERN = 5
 DECADE_TARGET_SOFT_PENALTY = None
 
 NUM_TICKETS = 10
