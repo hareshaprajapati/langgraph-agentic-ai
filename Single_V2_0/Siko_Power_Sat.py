@@ -73,6 +73,8 @@ DECADE_PREDICT_CANDIDATE_TOPN = 5
 DECADE_PREDICT_CANDIDATE_RECENT_N = 10
 DECADE_PREDICT_FREQ_WEIGHT = 0.4
 DECADE_PREDICT_COMMON_TOPN = 2
+DECADE_PREDICT_MIN_SUPPORT = 2
+DECADE_MAX_PER_TICKET = 4
 RELAXED_OVERLAP_CAP = 6
 RELAXED_GLOBAL_MAX_USES = 50
 
@@ -105,6 +107,7 @@ LOG_RUN_TARGET_SWEEPS = False
 LOG_SHOW_BACKTEST_WINNER_REGIME = False
 LOG_SHOW_BACKTEST_TABLES = True
 LOG_SHOW_BACKTEST_WIN_PROFILE = True
+RANK_BUCKET_QUOTA_MODE = "soft"  # "soft" | "hard"
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -896,6 +899,8 @@ def _normalize_decade_target(target: Dict[int, int]) -> Dict[int, int]:
     for d, v in out.items():
         if v > NUMBERS_PER_TICKET:
             raise ValueError("DECADE_TARGET_COUNTS values must be <= NUMBERS_PER_TICKET.")
+        if v > DECADE_MAX_PER_TICKET:
+            raise ValueError("DECADE_TARGET_COUNTS values must be <= DECADE_MAX_PER_TICKET.")
 
     total = sum(out.values())
     if total > NUMBERS_PER_TICKET:
@@ -909,8 +914,8 @@ def _normalize_decade_target(target: Dict[int, int]) -> Dict[int, int]:
     missing = [d for d in DECADE_IDS if d not in target]
     if total < NUMBERS_PER_TICKET and missing:
         remaining = NUMBERS_PER_TICKET - total
-        # Distribute remaining counts with a cap (<=3) and a limited count of decades >=3.
-        cap_high = 3
+        # Distribute remaining counts with a cap (<=DECADE_MAX_PER_TICKET) and a limited count of decades >=3.
+        cap_high = int(DECADE_MAX_PER_TICKET)
         for _ in range(remaining):
             candidates = []
             for d in missing:
@@ -1435,6 +1440,7 @@ def generate_tickets(
     rank_bucket_map: Dict[int, str] = None,
     rank_bucket_weight_mode: str = "score",  # "score" | "uniform"
     rank_bucket_quota_sampler=None,
+    rank_bucket_quota_mode: str = "hard",  # "hard" | "soft"
     ratio_band: Tuple[float, float] = None,
     ratio_map: Dict[int, float] = None,
     ratio_min_hits: int = None,
@@ -1477,6 +1483,22 @@ def generate_tickets(
         weights = [(score_map.get(n, 0.0) - min_score) + 0.25 for n in pool]
     else:
         weights = [1.0 for _ in pool]
+    # Soft bucket bias (no hard quota enforcement).
+    if rank_bucket_quota_counts and rank_bucket_map and rank_bucket_quota_mode == "soft":
+        desired = {k: float(v) / float(NUMBERS_PER_TICKET) for k, v in rank_bucket_quota_counts.items()}
+        pool_counts = Counter(rank_bucket_map.get(n) for n in pool if rank_bucket_map.get(n) is not None)
+        total_pool = float(sum(pool_counts.values())) or 1.0
+        bucket_weight = {}
+        for k, dv in desired.items():
+            pv = float(pool_counts.get(k, 0)) / total_pool
+            if pv <= 0:
+                bucket_weight[k] = 1.0
+            else:
+                bucket_weight[k] = max(0.5, min(2.0, dv / pv))
+        for i, n in enumerate(pool):
+            b = rank_bucket_map.get(n)
+            if b in bucket_weight:
+                weights[i] *= bucket_weight[b]
     if use_weights and AVOID_TOP_RANK_PCT and scored:
         cutoff = max(1, int(len(scored) * float(AVOID_TOP_RANK_PCT)))
         for i, n in enumerate(pool):
@@ -1497,7 +1519,7 @@ def generate_tickets(
                 band_pools[band]["weights"].append(w)
 
     rank_bucket_pools = None
-    if rank_bucket_quota_counts and rank_bucket_map:
+    if rank_bucket_quota_counts and rank_bucket_map and rank_bucket_quota_mode != "soft":
         rank_bucket_pools = {k: {"items": [], "weights": []} for k in rank_bucket_quota_counts}
         for n, w in zip(pool, weights):
             bucket = rank_bucket_map.get(n)
@@ -1722,6 +1744,9 @@ def generate_tickets(
 
         penalty = _ticket_penalty(pick, dist)
         vec = _decade_vector(pick)
+        if max(vec.values()) > int(DECADE_MAX_PER_TICKET):
+            _rej("decade_max")
+            continue
         high_limit = 2 if NUMBERS_PER_TICKET >= 7 else 1
         if sum(1 for v in vec.values() if v >= 3) > high_limit:
             _rej("decade_multi3")
@@ -1912,7 +1937,10 @@ def _candidate_decade_patterns(
     for i, d in enumerate(DECADE_IDS):
         recent_mean[d] = sum(v[i] for v in recent_vecs) / float(len(recent_vecs))
 
-    candidates = dict(counts.items())
+    min_support = int(DECADE_PREDICT_MIN_SUPPORT) if DECADE_PREDICT_MIN_SUPPORT is not None else 1
+    candidates = {vec: cnt for vec, cnt in counts.items() if cnt >= min_support}
+    if not candidates:
+        candidates = dict(counts.items())
 
     scored = []
     score_map = {}
@@ -2150,6 +2178,7 @@ if __name__ == "__main__":
                     force_coverage=FORCE_COVERAGE,
                     cohesion_config=main_cfg,
                     rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota"),
+                    rank_bucket_quota_mode=RANK_BUCKET_QUOTA_MODE,
                     rank_bucket_map=rank_bucket_map,
                     rank_bucket_weight_mode=variant["weight_mode"],
                     ratio_band=winner_regime.get("ratio_band"),
@@ -2183,6 +2212,7 @@ if __name__ == "__main__":
                 force_coverage=FORCE_COVERAGE,
                 cohesion_config=main_cfg,
                 rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota"),
+                rank_bucket_quota_mode=RANK_BUCKET_QUOTA_MODE,
                 rank_bucket_map=rank_bucket_map,
                 rank_bucket_weight_mode=variant["weight_mode"],
                 ratio_band=winner_regime.get("ratio_band"),
@@ -2384,6 +2414,7 @@ if __name__ == "__main__":
                     overlap_cap_override=RELAXED_OVERLAP_CAP,
                     global_max_override=RELAXED_GLOBAL_MAX_USES,
                     rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota") if winner_regime else None,
+                    rank_bucket_quota_mode=RANK_BUCKET_QUOTA_MODE,
                     rank_bucket_map=rank_bucket_map if winner_regime else None,
                     rank_bucket_weight_mode="score",
                     rank_bucket_quota_sampler=(lambda: _quota_sampler(quota_dist_override or quota_dist)) if winner_regime else None,
@@ -2421,6 +2452,7 @@ if __name__ == "__main__":
                         overlap_cap_override=RELAXED_OVERLAP_CAP,
                         global_max_override=RELAXED_GLOBAL_MAX_USES,
                         rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota") if winner_regime else None,
+                        rank_bucket_quota_mode=RANK_BUCKET_QUOTA_MODE,
                         rank_bucket_map=rank_bucket_map if winner_regime else None,
                         rank_bucket_weight_mode="score",
                         rank_bucket_quota_sampler=(lambda: _quota_sampler(quota_dist_override or quota_dist)) if winner_regime else None,
