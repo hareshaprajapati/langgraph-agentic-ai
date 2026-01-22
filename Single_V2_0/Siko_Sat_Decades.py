@@ -46,7 +46,7 @@ from typing import Dict, List, Tuple, Iterable, Optional
 # ============================================================
 
 # Input files
-DAILY_CSV_PATH = "lotto_last_3_months.csv"   # can also be a .log containing CSV text
+DAILY_CSV_PATH = "cross_lotto_data.csv"  # can also be a .log containing CSV text
 SATURDAY_ONLY_CSV_PATH = "Tattslotto.csv"    # Saturday-only CSV (Draw,Date,Winning Number 1..6,...)
 
 # Mode: "PREDICT" or "BACKTEST"
