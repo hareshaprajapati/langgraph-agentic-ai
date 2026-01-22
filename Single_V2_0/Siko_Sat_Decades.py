@@ -31,6 +31,7 @@ log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
 
+
 import csv
 import math
 import os
@@ -61,7 +62,7 @@ BACKTEST_LAST_N = 16
 BACKTEST_DATES: List[str] = []  # if non-empty, overrides BACKTEST_LAST_N
 
 # Window settings
-SKIP_FRIDAY = True
+SKIP_FRIDAY = False
 WINDOWS_Y = [2, 3, 4, 5, 6]   # IMPORTANT: suppression votes need at least 1 day back; use 2..6
 
 # Cross-lottery inputs used for pressure signal
@@ -84,7 +85,7 @@ MAX_PER_DECADE = {"D1": 2, "D2": 3, "D3": 3, "D4": 3, "D5": 1}
 MIN_PER_DECADE = {"D1": 0, "D2": 0, "D3": 0, "D4": 0, "D5": 0}
 
 # Candidate ranking
-TOPK = 5
+TOPK = 20
 LAPLACE = 0.50           # smoothing for priors
 PREFER_BALANCE = 0.12    # penalty strength for "too peaky" patterns
 
@@ -563,6 +564,22 @@ def check_target_hit(predicted_patterns, target_decades):
     print("Top1 HIT:", top1 == target)
 
     print(f"Top{len(topk)} HIT:", target in topk)
+def print_target_hit(ranked, target_decades):
+    """
+    ranked: List[(pattern, prob)]
+    target_decades: [D1..D5]
+    """
+    target = tuple(target_decades)
+    top1 = ranked[0][0] if ranked else None
+    topk = [pat for pat, _ in ranked]
+
+    print("\n--- TARGET HIT CHECK ---")
+    print(f"TARGET_DECADES = {target}")
+
+    print(f"Top1 predicted = {top1}")
+    print("Top1 HIT =", top1 == target)
+
+    print(f"Top{len(topk)} HIT =", target in topk)
 
 def main():
     # Load
@@ -584,7 +601,7 @@ def main():
 
         backtest_strict(daily_all, sat_all, targets)
 
-    else:
+
         td = parse_date_any(TARGET_DATE)
 
         # STRICT: use only history < td
@@ -617,6 +634,6 @@ def main():
                 delta = res["per_window_delta"].get(y, {})
                 delta2 = {k: round(delta.get(k, 0.0), 3) for k in D_KEYS}
                 print(f"Y={y} delta={delta2}")
-
+        print_target_hit(ranked[:TOPK], TARGET_DECADES)
 if __name__ == "__main__":
     main()
