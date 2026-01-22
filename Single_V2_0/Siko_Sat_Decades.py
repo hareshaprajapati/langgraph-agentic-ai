@@ -55,6 +55,8 @@ MODE = "BACKTEST"
 # Predict settings
 TARGET_DATE = "2026-01-17"  # Saturday date you want decades for (YYYY-MM-DD)
 TARGET_DECADES = [2, 1, 0, 2, 1]   # D1..D5
+TOPK = 5
+
 SHOW_TARGET_CHECK = True
 
 # Backtest settings (last N Saturdays from SATURDAY_ONLY_CSV_PATH)
@@ -85,7 +87,7 @@ MAX_PER_DECADE = {"D1": 2, "D2": 3, "D3": 3, "D4": 3, "D5": 1}
 MIN_PER_DECADE = {"D1": 0, "D2": 0, "D3": 0, "D4": 0, "D5": 0}
 
 # Candidate ranking
-TOPK = 20
+
 LAPLACE = 0.50           # smoothing for priors
 PREFER_BALANCE = 0.12    # penalty strength for "too peaky" patterns
 

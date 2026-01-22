@@ -20,7 +20,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    f"siko_pb_logs.log"   # single growing log file
+    f"Siko_PB_Only.py.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
