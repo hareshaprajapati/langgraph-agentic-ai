@@ -20,7 +20,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    f"lotto_last_3_months.csv"   # single growing log file
+    f"cross_lotto_data.csv"   # single growing log file
 )
 
 log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
@@ -37,7 +37,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # ---------- CONFIG ----------
-DAYS_BACK = 150  # ~ last 3 months
+DAYS_BACK = 400  # ~ last 3 months
 TIMEOUT = 30
 
 PAGES = {
@@ -142,6 +142,17 @@ def within_range(dt: datetime, start: datetime, end: datetime) -> bool:
     # inclusive
     return start <= dt <= end
 
+def _results_base_from_past_url(past_url: str) -> str:
+    # "https://au.lottonumbers.com/saturday-lotto/past-results"
+    # -> "https://au.lottonumbers.com/saturday-lotto/results"
+    return past_url.replace("/past-results", "/results")
+
+def archive_urls_for_range(past_url: str, start: datetime, end: datetime) -> list[str]:
+    base = _results_base_from_past_url(past_url)
+    years = range(start.year, end.year + 1)
+    return [f"{base}/{y}-archive" for y in years]
+
+
 # ---------- MAIN ----------
 def main():
     end = datetime.now()
@@ -154,22 +165,49 @@ def main():
     others_by_date = defaultdict(list)
 
     # 1) Set for Life (daily)
-    sfl = scrape_past_results(PAGES["set_for_life"])
-    for dt, main_nums, supp_nums in sfl:
-        if within_range(dt, start, end):
-            set_for_life_by_date[dt.date()] = f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]"
+    # sfl = scrape_past_results(PAGES["set_for_life"])
+    # for dt, main_nums, supp_nums in sfl:
+    #     if within_range(dt, start, end):
+    #         set_for_life_by_date[dt.date()] = f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]"
+    #
+    urls = [PAGES["set_for_life"]] + archive_urls_for_range(PAGES["set_for_life"], start, end)
 
-    # 2) Others
-    for key in ["weekday_windfall", "oz_lotto", "powerball", "saturday_lotto"]:
-        rows = scrape_past_results(PAGES[key])
+    seen = set()  # (date, main_tuple, supp_tuple)
+    for url in urls:
+        rows = scrape_past_results(url)
         for dt, main_nums, supp_nums in rows:
+            k = (dt.date(), tuple(main_nums), tuple(supp_nums))
+            if k in seen:
+                continue
+            seen.add(k)
+
             if within_range(dt, start, end):
-                # "just numbers" — no draw name
-                # but we keep separate draws on same day via " | "
                 if supp_nums:
                     others_by_date[dt.date()].append(f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]")
                 else:
                     others_by_date[dt.date()].append(f"{normalize_nums(main_nums)}")
+
+
+
+    # 2) Others
+    for key in ["weekday_windfall", "oz_lotto", "powerball", "saturday_lotto"]:
+        urls = [PAGES[key]] + archive_urls_for_range(PAGES[key], start, end)
+
+        seen = set()  # (date, main_tuple, supp_tuple)
+        for url in urls:
+            rows = scrape_past_results(url)
+            for dt, main_nums, supp_nums in rows:
+                k = (dt.date(), tuple(main_nums), tuple(supp_nums))
+                if k in seen:
+                    continue
+                seen.add(k)
+
+                if within_range(dt, start, end):
+                    if supp_nums:
+                        others_by_date[dt.date()].append(
+                            f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]")
+                    else:
+                        others_by_date[dt.date()].append(f"{normalize_nums(main_nums)}")
 
     # 3) Build full date series (daily)
     cur = end.date()
