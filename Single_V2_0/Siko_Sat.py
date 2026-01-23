@@ -54,20 +54,40 @@ CSV_PATH = "Tattslotto.csv"
 TARGET_DATE = "2026-1-17"
 REAL_DRAW_TARGET = [8, 9, 19, 35, 38, 44]
 N = 10
-DECADE_TARGET_COUNTS = [{1: 2, 2: 1, 3: 0, 4: 2, 5: 1}]
-# DECADE_TARGET_COUNTS = None
+# DECADE_TARGET_COUNTS = [{1: 2, 2: 1, 3: 0, 4: 2, 5: 1}]
+DECADE_TARGET_COUNTS = None
 # TARGET_TICKETS_PER_PATTERN = 5
 TARGET_TICKETS_PER_PATTERN = None
 DECADE_TARGET_SOFT_PENALTY = None
+AUTO_DECADE_SOFT_PENALTY = 0.15
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
 BACKTEST_TICKET_COUNT = 20
+BACKTEST_CANDIDATE_MULTIPLIER = 3
+TARGET_CANDIDATE_MULTIPLIER = 5
+BACKTEST_PENALTY_SCALE = 0.40
+BACKTEST_COHESION_ACCEPT_FLOOR = 0.60
+BACKTEST_COHESION_ACCEPT_SPAN = 0.50
+BAND_WEIGHT_SCALE = 0.60
+RANK_BUCKET_WEIGHT_SCALE = 0.80
+LAST_DIGIT_PAIR_PENALTY = 0.25
+LAST_DIGIT_NO_PAIR_PENALTY = 0.15
+MULTI_DECADE_3PLUS_PENALTY = 0.6
+SCORE_WEIGHT_POWER = 0.70
+SCORE_WEIGHT_BLEND = 0.45
+USE_MODEL_GENERATOR = True
+MODEL_HALF_LIFE_DAYS = 120.0
+MODEL_NUM_ALPHA = 1.0
+MODEL_PAIR_ALPHA = 1.0
+MODEL_WEIGHT_POWER = 0.70
+MODEL_PAIR_WEIGHT = 0.60
+MODEL_PMI_CLAMP = 1.25
 DECADE_PREDICT_AVOID_DAYS = 365
 DECADE_PREDICT_TOPM = 1
 DECADE_PREDICT_AVOID_TOP_PCT = 0.2
 DECADE_PREDICT_RECENT_K = 10
-DECADE_PREDICT_CANDIDATE_TOPN = 4
+DECADE_PREDICT_CANDIDATE_TOPN = 6
 DECADE_PREDICT_CANDIDATE_RECENT_N = 4
 RELAXED_OVERLAP_CAP = 6
 RELAXED_GLOBAL_MAX_USES = 50
@@ -90,6 +110,8 @@ HOT_POOL_SIZE = 8
 OVERDUE_POOL_SIZE = 8
 SEASON_POOL_SIZE = 8
 COLD_FORCE_COUNT = 2
+USE_FULL_POOL = True
+FULL_POOL_FLOOR_WEIGHT = 0.15
 
 # Hard-force coverage mix
 FORCE_COVERAGE = False
@@ -107,13 +129,14 @@ W_LONG = 0.20
 W_SEASON = 0.15
 W_RANK = 0.10
 COLD_BOOST = 0.25
+USE_SCORE_WEIGHTS = True
 # Overdue gap boost (date-agnostic)
 W_GAP = 0.25
 GAP_CAP = 0.30
 
 # Use Power-style CandidateScoreMain totals for ranking/selection
 USE_POWER_STYLE_SCORE = False
-AVOID_TOP_RANK_PCT = 0.15
+AVOID_TOP_RANK_PCT = 0.0
 AVOID_TOP_RANK_PENALTY = 0.5
 
 # Ticket constraints (soft)
@@ -394,6 +417,105 @@ def print_band_summary_at_end(
     print(f"  Draws with >=1 leader-band winner: {leader_draws}/{n_draws} ({100.0*leader_draws/n_draws:.1f}%)")
     print(f"  Draws with >=1 tail-band winner:   {tail_draws}/{n_draws} ({100.0*tail_draws/n_draws:.1f}%)")
     print(f"  Draws with BOTH leader+tail:       {both_draws}/{n_draws} ({100.0*both_draws/n_draws:.1f}%)")
+
+
+def _band_quota_from_stats(stats: List[DrawBandStats]) -> Optional[Dict[str, int]]:
+    if not stats:
+        return None
+    totals = {"B_LEADER": 0, "A_CORE": 0, "C_TAIL": 0, "OTHER": 0}
+    for s in stats:
+        for k in totals:
+            totals[k] += int(s.counts.get(k, 0))
+    draws = len(stats)
+    if draws <= 0:
+        return None
+    avgs = {k: totals[k] / float(draws) for k in totals}
+    floors = {k: int(math.floor(avgs[k])) for k in avgs}
+    remainder = max(0, int(NUMBERS_PER_TICKET) - sum(floors.values()))
+    frac_order = sorted(avgs.keys(), key=lambda k: (avgs[k] - floors[k]), reverse=True)
+    for k in frac_order:
+        if remainder <= 0:
+            break
+        floors[k] += 1
+        remainder -= 1
+    return floors
+
+
+def _band_weight_from_stats(stats: List[DrawBandStats]) -> Optional[Dict[str, float]]:
+    if not stats:
+        return None
+    totals = {"B_LEADER": 0, "A_CORE": 0, "C_TAIL": 0, "OTHER": 0}
+    for s in stats:
+        for k in totals:
+            totals[k] += int(s.counts.get(k, 0))
+    total = float(sum(totals.values())) or 1.0
+    return {k: float(v) / total for k, v in totals.items()}
+
+
+def _score_ticket_profile(
+    ticket: List[int],
+    rank_pos_map: Dict[int, int],
+    rank_bucket_quota: Optional[Dict[str, int]],
+    band_quota: Optional[Dict[str, int]],
+    ratio_band: Optional[Tuple[float, float]],
+    ratio_map: Optional[Dict[int, float]],
+) -> float:
+    score = 0.0
+    if band_quota:
+        band_counts = {"B_LEADER": 0, "A_CORE": 0, "C_TAIL": 0, "OTHER": 0}
+        for n in ticket:
+            rnk = rank_pos_map.get(n, 999)
+            band_counts[_band_of_rank(rnk)] += 1
+        dist = sum(abs(int(band_counts.get(k, 0)) - int(band_quota.get(k, 0))) for k in band_quota)
+        score -= 0.4 * float(dist)
+    if rank_bucket_quota:
+        bucket_counts = {k: 0 for k in rank_bucket_quota}
+        for n in ticket:
+            rnk = rank_pos_map.get(n, 999)
+            bucket = _rank_bucket(rnk)
+            if bucket in bucket_counts:
+                bucket_counts[bucket] += 1
+        dist = sum(abs(int(bucket_counts.get(k, 0)) - int(rank_bucket_quota.get(k, 0))) for k in rank_bucket_quota)
+        score -= 1.0 * float(dist)
+    if ratio_band and ratio_map:
+        lo, hi = ratio_band
+        hits = 0
+        for n in ticket:
+            r = ratio_map.get(n)
+            if r is not None and lo <= r <= hi:
+                hits += 1
+        score += 0.5 * float(hits)
+    return score
+
+
+def _select_best_tickets_by_profile(
+    tickets: List[List[int]],
+    rank_pos_map: Dict[int, int],
+    rank_bucket_quota: Optional[Dict[str, int]],
+    band_quota: Optional[Dict[str, int]],
+    ratio_band: Optional[Tuple[float, float]],
+    ratio_map: Optional[Dict[int, float]],
+    keep: int,
+) -> List[List[int]]:
+    if not tickets:
+        return []
+    scored = []
+    for t in tickets:
+        s = _score_ticket_profile(t, rank_pos_map, rank_bucket_quota, band_quota, ratio_band, ratio_map)
+        scored.append((s, t))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [t for _, t in scored[:keep]]
+
+
+def _rank_bucket_weight_from_stats(stats: List[WinnerRegimeStats]) -> Optional[Dict[str, float]]:
+    if not stats:
+        return None
+    totals = {"R1_5": 0, "R6_10": 0, "R11_22": 0, "R23_27": 0, "R28P": 0}
+    for s in stats:
+        for k in totals:
+            totals[k] += int(s.rank_bucket_counts.get(k, 0))
+    total = float(sum(totals.values())) or 1.0
+    return {k: float(v) / total for k, v in totals.items()}
 
 
 def _rank_bucket_quota_from_stats(stats: List[WinnerRegimeStats]) -> Optional[Dict[str, int]]:
@@ -812,22 +934,17 @@ def _predict_decade_target_from_history(
     history = df[df["Date"] < t]
     if history.empty:
         return None
-    recent_start = t - pd.Timedelta(days=int(avoid_days))
-    recent = history[history["Date"] >= recent_start]
 
     def _vec_from_row(row) -> Tuple[int, ...]:
         nums = [int(row[c]) for c in main_cols]
         return tuple(_decade_vector(nums)[d] for d in DECADE_IDS)
 
-    recent_patterns = set(_vec_from_row(r) for _, r in recent.iterrows())
     all_counts: Dict[Tuple[int, ...], int] = {}
     for _, r in history.iterrows():
         vec = _vec_from_row(r)
         all_counts[vec] = all_counts.get(vec, 0) + 1
 
-    candidates = [(v, c) for v, c in all_counts.items() if v not in recent_patterns]
-    if not candidates:
-        candidates = list(all_counts.items())
+    candidates = list(all_counts.items())
 
     # Avoid the most frequent patterns by percentile.
     if candidates and avoid_top_pct and avoid_top_pct > 0:
@@ -932,6 +1049,42 @@ def _count_consecutive_pairs(nums: List[int]) -> int:
     return consec
 
 
+def _last_digit_pair_count(nums: List[int]) -> int:
+    counts = {}
+    for n in nums:
+        d = int(n) % 10
+        counts[d] = counts.get(d, 0) + 1
+    return sum(v // 2 for v in counts.values())
+
+
+def _last_digit_pair_stats(df: pd.DataFrame, main_cols: List[str]) -> Dict[str, float]:
+    if df.empty:
+        return {"mean_pairs": 0.0, "p_no_pair": 0.0}
+    pairs = []
+    for _, row in df.iterrows():
+        nums = [int(row[c]) for c in main_cols]
+        pairs.append(_last_digit_pair_count(nums))
+    mean_pairs = sum(pairs) / float(len(pairs)) if pairs else 0.0
+    p_no_pair = sum(1 for p in pairs if p == 0) / float(len(pairs)) if pairs else 0.0
+    return {"mean_pairs": mean_pairs, "p_no_pair": p_no_pair}
+
+
+def _ticket_penalty_full(nums: List[int], dist: Dict[str, object], pair_stats: Dict[str, float]) -> float:
+    penalty = _ticket_penalty(nums, dist)
+    vec = _decade_vector(nums)
+    multi3 = sum(1 for v in vec.values() if v >= 3)
+    if multi3 > 1:
+        penalty += float(MULTI_DECADE_3PLUS_PENALTY) * (multi3 - 1)
+    pair_count = _last_digit_pair_count(nums)
+    penalty += abs(pair_count - float(pair_stats.get("mean_pairs", 0.0))) * float(LAST_DIGIT_PAIR_PENALTY)
+    if pair_count == 0:
+        penalty += float(LAST_DIGIT_NO_PAIR_PENALTY)
+    return penalty
+
+
+
+
+
 def _normalize_series(s: pd.Series) -> pd.Series:
     if s.empty:
         return s
@@ -951,6 +1104,192 @@ def _weighted_sample_no_replace(items: List[int], weights: List[float], k: int, 
         keyed.append((key, x))
     keyed.sort(reverse=True)
     return [x for _, x in keyed[:k]]
+
+
+def _build_model_weights(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+) -> Tuple[Dict[int, float], Dict[Tuple[int, int], float]]:
+    t = pd.Timestamp(target_date)
+    history = df[df["Date"] < t].sort_values("Date")
+    if history.empty:
+        return {}, {}
+    num_counts = {n: 0.0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
+    pair_counts: Dict[Tuple[int, int], float] = {}
+    total_num = 0.0
+    total_pair = 0.0
+    for _, row in history.iterrows():
+        nums = [int(row[c]) for c in main_cols]
+        age_days = max(0.0, float((t - row["Date"]).days))
+        w = math.exp(-age_days / float(MODEL_HALF_LIFE_DAYS))
+        for n in nums:
+            num_counts[n] += w
+            total_num += w
+        for i in range(len(nums)):
+            for j in range(i + 1, len(nums)):
+                a, b = nums[i], nums[j]
+                if a > b:
+                    a, b = b, a
+                pair_counts[(a, b)] = pair_counts.get((a, b), 0.0) + w
+                total_pair += w
+
+    num_alpha = float(MODEL_NUM_ALPHA)
+    pair_alpha = float(MODEL_PAIR_ALPHA)
+    denom_num = total_num + num_alpha * (MAIN_MAX - MAIN_MIN + 1)
+    base_p = {n: (num_counts[n] + num_alpha) / denom_num for n in num_counts}
+
+    comb = (MAIN_MAX - MAIN_MIN + 1) * (MAIN_MAX - MAIN_MIN) / 2.0
+    denom_pair = total_pair + pair_alpha * comb
+    pair_pmi: Dict[Tuple[int, int], float] = {}
+    for (a, b), cnt in pair_counts.items():
+        p_ij = (cnt + pair_alpha) / denom_pair
+        p_i = base_p.get(a, 1e-9)
+        p_j = base_p.get(b, 1e-9)
+        pmi = math.log(max(1e-12, p_ij / max(1e-12, p_i * p_j)))
+        if pmi > MODEL_PMI_CLAMP:
+            pmi = MODEL_PMI_CLAMP
+        if pmi < -MODEL_PMI_CLAMP:
+            pmi = -MODEL_PMI_CLAMP
+        pair_pmi[(a, b)] = pmi
+
+    return base_p, pair_pmi
+
+
+def generate_tickets_model(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    ticket_count: int,
+    penalty_scale: float = None,
+    overlap_cap_override: int = None,
+    global_max_override: int = None,
+    debug_rejects: bool = False,
+) -> List[List[int]]:
+    rng = random.Random(RANDOM_SEED)
+    train = df[df["Date"] < pd.Timestamp(target_date)]
+    dist = _history_distributions(train, main_cols, target_date)
+    pair_stats = _last_digit_pair_stats(train, main_cols)
+    season_decades = _learn_season_decade_profile(
+        df=df,
+        main_cols=main_cols,
+        target_ts=pd.Timestamp(target_date),
+        season_window_days=SEASON_WINDOW_DAYS,
+        season_lookback_years=SEASON_LOOKBACK_YEARS,
+        min_samples=MIN_SEASON_SAMPLES,
+    )
+    base_p, pair_pmi = _build_model_weights(df, main_cols, target_date)
+    if not base_p:
+        return []
+    pool = list(range(MAIN_MIN, MAIN_MAX + 1))
+    overlap_cap = OVERLAP_CAP if overlap_cap_override is None else int(overlap_cap_override)
+    global_max = GLOBAL_MAX_USES if global_max_override is None else int(global_max_override)
+    reject_counts: Dict[str, int] = {}
+    tickets: List[List[int]] = []
+    global_use = {n: 0 for n in pool}
+    scale = PENALTY_SCALE if penalty_scale is None else float(penalty_scale)
+
+    def _rej(key: str) -> None:
+        if debug_rejects:
+            reject_counts[key] = reject_counts.get(key, 0) + 1
+
+    def _pair_score(n: int, chosen: List[int]) -> float:
+        if not chosen:
+            return 0.0
+        s = 0.0
+        for m in chosen:
+            a, b = (m, n) if m < n else (n, m)
+            s += pair_pmi.get((a, b), 0.0)
+        return s / float(len(chosen))
+
+    attempts = 0
+    while len(tickets) < ticket_count and attempts < MAX_ATTEMPTS:
+        attempts += 1
+        chosen: List[int] = []
+        available = [n for n in pool if global_use[n] < global_max]
+        if len(available) < NUMBERS_PER_TICKET:
+            _rej("global_max")
+            continue
+        for _ in range(NUMBERS_PER_TICKET):
+            cands = [n for n in available if n not in chosen]
+            if not cands:
+                break
+            weights = []
+            for n in cands:
+                w = float(base_p.get(n, 1e-9)) ** float(MODEL_WEIGHT_POWER)
+                if chosen:
+                    w *= math.exp(float(MODEL_PAIR_WEIGHT) * _pair_score(n, chosen))
+                weights.append(max(1e-9, w))
+            pick = _weighted_sample_no_replace(cands, weights, 1, rng)[0]
+            chosen.append(pick)
+        if len(chosen) != NUMBERS_PER_TICKET:
+            _rej("short_pick")
+            continue
+        pick = sorted(chosen)
+        if pick in tickets:
+            _rej("duplicate_ticket")
+            continue
+        if any(global_use[n] >= global_max for n in pick):
+            _rej("global_max")
+            continue
+        s_pick = set(pick)
+        ok = True
+        for t in tickets:
+            if len(s_pick.intersection(t)) > overlap_cap:
+                ok = False
+                break
+        if not ok:
+            _rej("overlap_cap")
+            continue
+
+        if DECADE_MODE != "ignore" and DECADE_TARGET_COUNTS is None:
+            vec = _decade_vector(pick)
+            dist_dec = _decade_distance(vec, season_decades.med)
+            in_band = _within_decade_band(vec, season_decades.p25, season_decades.p75, DECADE_MEDIAN_TOL)
+            if DECADE_MODE == "hard":
+                if not in_band:
+                    _rej("decade_band_hard")
+                    continue
+                if dist_dec > (2 * DECADE_MEDIAN_TOL):
+                    _rej("decade_band_dist")
+                    continue
+            else:
+                reject_prob = min(0.85, dist_dec * float(DECADE_SOFT_PENALTY) * 0.15)
+                if rng.random() < reject_prob:
+                    _rej("decade_band_soft")
+                    continue
+
+        if DECADE_TARGET_COUNTS is not None:
+            vec = _decade_vector(pick)
+            ok = False
+            for tgt in DECADE_TARGET_COUNTS:
+                tdist = _decade_target_distance(vec, tgt)
+                if tdist == 0:
+                    ok = True
+                    break
+                if DECADE_TARGET_SOFT_PENALTY is not None:
+                    if rng.random() >= min(0.90, tdist * float(DECADE_TARGET_SOFT_PENALTY)):
+                        ok = True
+                        break
+            if not ok:
+                _rej("decade_target")
+                continue
+
+        penalty = _ticket_penalty_full(pick, dist, pair_stats)
+        accept_prob = math.exp(-penalty * scale)
+        if rng.random() > accept_prob:
+            _rej("accept")
+            continue
+
+        tickets.append(pick)
+        for n in pick:
+            global_use[n] += 1
+
+    print(f"Generated {len(tickets)}/{ticket_count} tickets in {attempts} attempts")
+    if debug_rejects and reject_counts:
+        top = sorted(reject_counts.items(), key=lambda x: (-x[1], x[0]))[:8]
+        print("Reject counts (top): " + ", ".join(f"{k}={v}" for k, v in top))
+    return tickets
 
 
 def _rank_bucket(rank: int) -> str:
@@ -1404,6 +1743,8 @@ def generate_tickets(
     band_quota_counts: Dict[str, int] = None,
     band_quota_strict: bool = False,
     band_quota_reject_scale: float = 0.35,
+    band_weight_map: Dict[str, float] = None,
+    rank_bucket_weight_map: Dict[str, float] = None,
     rank_bucket_quota_counts: Dict[str, int] = None,
     rank_bucket_map: Dict[int, str] = None,
     rank_bucket_weight_mode: str = "score",  # "score" | "uniform"
@@ -1421,6 +1762,7 @@ def generate_tickets(
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     dist = _history_distributions(train, main_cols, target_date)
+    pair_stats = _last_digit_pair_stats(train, main_cols)
     season_decades = _learn_season_decade_profile(
         df=df,
         main_cols=main_cols,
@@ -1436,10 +1778,13 @@ def generate_tickets(
     elif rank_bucket_quota_counts and rank_bucket_map:
         pool = [c.n for c in scored]
     else:
-        top_pool = [c.n for c in scored[:POOL_SIZE]]
-        mid_pool = [c.n for c in scored[POOL_SIZE:POOL_SIZE + MID_POOL_SIZE]]
-        cold_pool = [c.n for c in scored if c.freq_recent <= 1][:COLD_POOL_SIZE]
-        pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
+        if USE_FULL_POOL:
+            pool = list(range(MAIN_MIN, MAIN_MAX + 1))
+        else:
+            top_pool = [c.n for c in scored[:POOL_SIZE]]
+            mid_pool = [c.n for c in scored[POOL_SIZE:POOL_SIZE + MID_POOL_SIZE]]
+            cold_pool = [c.n for c in scored if c.freq_recent <= 1][:COLD_POOL_SIZE]
+            pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
 
     # weights from scores
     score_map = {c.n: c.total_score for c in scored}
@@ -1447,7 +1792,28 @@ def generate_tickets(
     rank_pos_map = {c.n: i + 1 for i, c in enumerate(scored)}
     min_score = min(score_map.values()) if score_map else 0.0
     if use_weights:
-        weights = [(score_map.get(n, 0.0) - min_score) + 0.25 for n in pool]
+        weights = [
+            max(
+                FULL_POOL_FLOOR_WEIGHT,
+                ((score_map.get(n, min_score) - min_score) + 0.25) ** float(SCORE_WEIGHT_POWER),
+            )
+            for n in pool
+        ]
+        if band_weight_map:
+            avg_w = sum(band_weight_map.values()) / float(len(band_weight_map)) if band_weight_map else 0.0
+            for i, n in enumerate(pool):
+                rnk = rank_pos_map.get(n, 9999)
+                band = _band_of_rank(rnk)
+                bw = band_weight_map.get(band, avg_w)
+                # Softly bias toward winner-heavy bands (OTHER included)
+                weights[i] *= (1.0 + float(BAND_WEIGHT_SCALE) * (bw - avg_w))
+        if rank_bucket_weight_map:
+            avg_w = sum(rank_bucket_weight_map.values()) / float(len(rank_bucket_weight_map)) if rank_bucket_weight_map else 0.0
+            for i, n in enumerate(pool):
+                rnk = rank_pos_map.get(n, 9999)
+                bucket = _rank_bucket(rnk)
+                bw = rank_bucket_weight_map.get(bucket, avg_w)
+                weights[i] *= (1.0 + float(RANK_BUCKET_WEIGHT_SCALE) * (bw - avg_w))
     else:
         weights = [1.0 for _ in pool]
     if use_weights and AVOID_TOP_RANK_PCT and scored:
@@ -1455,6 +1821,13 @@ def generate_tickets(
         for i, n in enumerate(pool):
             if rank_pos_map.get(n, 9999) <= cutoff:
                 weights[i] *= float(AVOID_TOP_RANK_PENALTY)
+    if use_weights:
+        blend = float(SCORE_WEIGHT_BLEND)
+        if blend < 0.0:
+            blend = 0.0
+        if blend > 1.0:
+            blend = 1.0
+        weights = [(w * blend) + (1.0 - blend) for w in weights]
 
     band_pools = None
     if band_quota_counts:
@@ -1693,11 +2066,7 @@ def generate_tickets(
                     _rej("ratio_band")
                     continue
 
-        penalty = _ticket_penalty(pick, dist)
-        vec = _decade_vector(pick)
-        if sum(1 for v in vec.values() if v >= 3) > 1:
-            _rej("decade_multi3")
-            continue
+        penalty = _ticket_penalty_full(pick, dist, pair_stats)
         if DECADE_TARGET_COUNTS is not None:
             ok = False
             for tgt in DECADE_TARGET_COUNTS:
@@ -1873,8 +2242,6 @@ def _candidate_decade_patterns(
     if not counts:
         return []
     history = df[df["Date"] < t].sort_values("Date")
-    recent_start = t - pd.Timedelta(days=int(avoid_days))
-    recent_window = history[history["Date"] >= recent_start]
 
     recent_vecs = []
     if recent_n and recent_n > 0:
@@ -1888,14 +2255,7 @@ def _candidate_decade_patterns(
     for i, d in enumerate(DECADE_IDS):
         recent_mean[d] = sum(v[i] for v in recent_vecs) / float(len(recent_vecs))
 
-    recent_patterns = set()
-    for _, r in recent_window.iterrows():
-        nums = [int(r[c]) for c in main_cols]
-        recent_patterns.add(tuple(_decade_vector(nums)[d] for d in DECADE_IDS))
-
-    candidates = {vec: cnt for vec, cnt in counts.items() if vec not in recent_patterns}
-    if not candidates:
-        return []
+    candidates = {vec: cnt for vec, cnt in counts.items()}
 
     scored = []
     for vec, _cnt in candidates.items():
@@ -1905,9 +2265,18 @@ def _candidate_decade_patterns(
         scored.append((dist, vec))
     scored.sort(key=lambda x: (x[0], x[1]))
 
-    take = int(top_n) if top_n and top_n > 0 else min(5, len(scored))
-    out = []
+    take = int(top_n) if top_n and top_n > 0 else min(6, len(scored))
+    freq_take = max(1, int(round(take / 2.0)))
+    freq_sorted = sorted(candidates.items(), key=lambda x: (-x[1], x[0]))
+    picked = []
     for _, v in scored[:take]:
+        if v not in picked:
+            picked.append(v)
+    for v, _cnt in freq_sorted[:freq_take]:
+        if v not in picked:
+            picked.append(v)
+    out = []
+    for v in picked[:max(take, freq_take)]:
         out.append({d: int(x) for d, x in zip(DECADE_IDS, v)})
     return out
 
@@ -2071,7 +2440,10 @@ if __name__ == "__main__":
         print_date_by_date_band_counts_ascending(band_stats)
         print_band_summary_at_end(band_stats)
 
+    band_quota_counts = _band_quota_from_stats(band_stats)
+    band_weight_map = _band_weight_from_stats(band_stats)
     winner_regime = _regime_from_winner_stats(winner_regime_stats)
+    rank_bucket_weight_map = _rank_bucket_weight_from_stats(winner_regime_stats)
     if winner_regime and LOG_SHOW_BACKTEST_WINNER_REGIME:
         regime_variants = [
             {"name": "REGIME_SCORE", "weight_mode": "score", "ratio_scale": 0.35},
@@ -2094,7 +2466,7 @@ if __name__ == "__main__":
                     df,
                     main_cols,
                     bt_date,
-                    use_weights=True,
+                    use_weights=USE_SCORE_WEIGHTS,
                     seed_hot_overdue=False,
                     force_coverage=FORCE_COVERAGE,
                     cohesion_config=main_cfg,
@@ -2127,7 +2499,7 @@ if __name__ == "__main__":
                 df,
                 main_cols,
                 run_date,
-                use_weights=True,
+                use_weights=USE_SCORE_WEIGHTS,
                 seed_hot_overdue=False,
                 force_coverage=FORCE_COVERAGE,
                 cohesion_config=main_cfg,
@@ -2152,7 +2524,7 @@ if __name__ == "__main__":
             show_ticket_hits(real_draw, regime_tickets, draw_date=run_date, strategy_name=variant["name"])
             show_ticket_hits(REAL_DRAW_TARGET, regime_tickets, draw_date=run_date, strategy_name=variant["name"])
 
-    print(f"\n=== BACKTEST (LAST {N} DRAWS, ACTUAL DECADES) ===")
+    print(f"\n=== BACKTEST (LAST {N} DRAWS) ===")
     original_decade_target = DECADE_TARGET_COUNTS
     bt_total_ge3 = 0
     bt_weeks_with_5 = 0
@@ -2160,23 +2532,99 @@ if __name__ == "__main__":
     print("Date        | ge3 | max_hit")
     print("------------+-----+--------")
 
+    # Two-pass: learn winner profiles first, then generate tickets using that profile.
+    pass1_rows = df.sort_values("Date").tail(N)
+    pass1_dates = [row["Date"] for _, row in pass1_rows.iterrows()]
+    pass1_blocks = []
+    pass1_band_stats = []
+    pass1_winner_regime_stats = []
+    for d in pass1_dates:
+        bt_date = d.strftime("%Y-%m-%d")
+        row = df[df["Date"] == d].iloc[0]
+        bt_draw = [int(row[c]) for c in main_cols]
+        bt_scored = score_numbers(df, main_cols, bt_date, False)
+        collect_winner_tables_and_stats(
+            blocks=pass1_blocks,
+            stats=pass1_band_stats,
+            target_date=bt_date,
+            real_draw=bt_draw,
+            scored=bt_scored
+        )
+        bt_scored_main = compute_candidate_score_main(df, main_cols, bt_date)
+        _collect_winner_regime_stats(
+            stats=pass1_winner_regime_stats,
+            target_date=bt_date,
+            real_draw=bt_draw,
+            scored_main=bt_scored_main,
+        )
+
+    learned_band_quota = _band_quota_from_stats(pass1_band_stats)
+    learned_band_weight_map = _band_weight_from_stats(pass1_band_stats)
+    learned_winner_regime = _regime_from_winner_stats(pass1_winner_regime_stats)
+    learned_rank_bucket_weight_map = _rank_bucket_weight_from_stats(pass1_winner_regime_stats)
+
     for d in bt_dates:
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]
         bt_draw = [int(row[c]) for c in main_cols]
-        DECADE_TARGET_COUNTS = [_normalize_decade_target(_decade_vector(bt_draw))]
+        # No actual decades in backtesting.
+        DECADE_TARGET_COUNTS = original_decade_target
+        # For actual-decade backtest, allow full pool and avoid dampening top-ranked numbers.
+        original_avoid_pct = AVOID_TOP_RANK_PCT
+        AVOID_TOP_RANK_PCT = 0.0
         bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
-        bt_tickets = generate_tickets(
-            bt_scored,
-            df,
-            main_cols,
-            bt_date,
-            use_weights=True,
-            seed_hot_overdue=False,
-            force_coverage=FORCE_COVERAGE,
-            ticket_count=BACKTEST_TICKET_COUNT,
-            overlap_cap_override=RELAXED_OVERLAP_CAP,
-            global_max_override=RELAXED_GLOBAL_MAX_USES,
+        if USE_MODEL_GENERATOR:
+            bt_tickets = generate_tickets_model(
+                df,
+                main_cols,
+                bt_date,
+                ticket_count=BACKTEST_TICKET_COUNT * BACKTEST_CANDIDATE_MULTIPLIER,
+                penalty_scale=BACKTEST_PENALTY_SCALE,
+                overlap_cap_override=RELAXED_OVERLAP_CAP,
+                global_max_override=RELAXED_GLOBAL_MAX_USES,
+                debug_rejects=False,
+            )
+        else:
+            bt_tickets = generate_tickets(
+                bt_scored,
+                df,
+                main_cols,
+                bt_date,
+                use_weights=USE_SCORE_WEIGHTS,
+                seed_hot_overdue=False,
+                force_coverage=FORCE_COVERAGE,
+                ticket_count=BACKTEST_TICKET_COUNT * BACKTEST_CANDIDATE_MULTIPLIER,
+                penalty_scale=BACKTEST_PENALTY_SCALE,
+                band_weight_map=learned_band_weight_map,
+                rank_bucket_weight_map=learned_rank_bucket_weight_map,
+                cohesion_config={
+                    "enabled": COHESION_ENABLED,
+                    "accept_floor": BACKTEST_COHESION_ACCEPT_FLOOR,
+                    "accept_span": BACKTEST_COHESION_ACCEPT_SPAN,
+                    "min_score": None,
+                    "weights": {
+                        "spread": COHESION_W_SPREAD,
+                        "pair": COHESION_W_PAIR,
+                        "rank_cont": COHESION_W_RANK_CONT,
+                        "central": COHESION_W_CENTRAL,
+                        "rank_mass": 0.05,
+                    },
+                },
+                overlap_cap_override=RELAXED_OVERLAP_CAP,
+                global_max_override=RELAXED_GLOBAL_MAX_USES,
+            )
+        AVOID_TOP_RANK_PCT = original_avoid_pct
+        bt_scored_main = compute_candidate_score_main(df, main_cols, bt_date)
+        bt_rank_pos_map = {c.n: i + 1 for i, c in enumerate(bt_scored_main)}
+        bt_ratio_map = {c.n: float(c.ratio_12mo) for c in bt_scored_main}
+        bt_tickets = _select_best_tickets_by_profile(
+            bt_tickets,
+            bt_rank_pos_map,
+            None,
+            learned_band_quota,
+            learned_winner_regime.get("ratio_band") if learned_winner_regime else None,
+            bt_ratio_map,
+            BACKTEST_TICKET_COUNT,
         )
         summary = _hit_summary(bt_draw, bt_tickets)
         bt_total_ge3 += summary.get("ge3", 0)
@@ -2191,31 +2639,10 @@ if __name__ == "__main__":
     print(f"Total ge3 tickets: {bt_total_ge3}")
     print(f"Weeks with 5+ hits: {bt_weeks_with_5}")
     print(f"Max hit observed: {bt_max_hit}")
-    print("Date        | ge3 | max_hit")
-    print("------------+-----+--------")
-    for d in bt_dates:
-        bt_date = d.strftime("%Y-%m-%d")
-        row = df[df["Date"] == d].iloc[0]
-        bt_draw = [int(row[c]) for c in main_cols]
-        DECADE_TARGET_COUNTS = [_normalize_decade_target(_decade_vector(bt_draw))]
-        bt_scored = score_numbers(df, main_cols, bt_date, False)
-        bt_tickets = generate_tickets(
-            bt_scored,
-            df,
-            main_cols,
-            bt_date,
-            use_weights=True,
-            seed_hot_overdue=False,
-            force_coverage=FORCE_COVERAGE,
-            ticket_count=BACKTEST_TICKET_COUNT,
-            overlap_cap_override=RELAXED_OVERLAP_CAP,
-            global_max_override=RELAXED_GLOBAL_MAX_USES,
-        )
-        summary = _hit_summary(bt_draw, bt_tickets)
-        print(f"{bt_date} | {summary.get('ge3', 0):>3} | {summary.get('max_hit', 0):>7}")
     DECADE_TARGET_COUNTS = original_decade_target
 
-    print("\n=== TARGET (PREDICTED DECADE, AVOID LAST 1 YEAR) ===")
+    print("\n=== TARGET (PREDICTED DECADE) ===")
+    auto_predicted = False
     if DECADE_TARGET_COUNTS is None:
         candidate_targets = _candidate_decade_patterns(
             df,
@@ -2228,6 +2655,7 @@ if __name__ == "__main__":
         if candidate_targets:
             DECADE_TARGET_COUNTS = candidate_targets
             print(f"Predicted decade targets (candidates): {DECADE_TARGET_COUNTS}")
+            auto_predicted = True
         else:
             predicted_decade = _predict_decade_target_from_history(
                 df,
@@ -2241,6 +2669,7 @@ if __name__ == "__main__":
             if predicted_decade:
                 DECADE_TARGET_COUNTS = [predicted_decade]
                 print(f"Predicted decade target: {DECADE_TARGET_COUNTS}")
+                auto_predicted = True
             else:
                 print("No predicted decade target; running without decade constraint.")
     else:
@@ -2257,7 +2686,10 @@ if __name__ == "__main__":
         cold_pool = [c.n for c in scored_list if c.freq_recent <= 1][:COLD_POOL_SIZE]
         return list(dict.fromkeys(top_pool + mid_pool + cold_pool))
 
-    eligible_pool = _build_default_pool(scored)
+    if USE_FULL_POOL:
+        eligible_pool = list(range(MAIN_MIN, MAIN_MAX + 1))
+    else:
+        eligible_pool = _build_default_pool(scored)
     print("\n=== ELIGIBLE POOL (TARGET) ===")
     print(f"Pool size: {len(eligible_pool)}")
     for n in eligible_pool:
@@ -2267,48 +2699,103 @@ if __name__ == "__main__":
         ratio_str = f"{ratio:.3f}" if ratio is not None else "None"
         print(f"n={n:2d} rank={rnk:2d} bucket={bucket} ratio_12mo={ratio_str}")
 
-    quota_dist = _rank_bucket_quota_distribution(winner_regime_stats) if winner_regime_stats else []
-    quota_dist_recent = _rank_bucket_quota_distribution(winner_regime_stats, recent_n=5) if winner_regime_stats else []
-    quota_rng = random.Random(RANDOM_SEED)
-
-    def _quota_sampler(dist):
-        if dist:
-            return quota_rng.choice(dist)
-        return winner_regime.get("rank_bucket_quota") if winner_regime else None
-
     def _generate_with_decade_targets(
         decade_targets: Optional[List[Dict[int, int]]],
         ratio_band_override: Optional[Tuple[float, float]] = None,
         ratio_min_hits_override: Optional[int] = None,
         ratio_reject_scale_override: Optional[float] = None,
         debug_rejects_override: bool = True,
-        quota_dist_override: Optional[List[Dict[str, int]]] = None,
         tickets_per_pattern: Optional[int] = None,
+        pool_override: Optional[List[int]] = None,
+        band_weight_map_override: Optional[Dict[str, float]] = None,
+        rank_bucket_weight_map_override: Optional[Dict[str, float]] = None,
     ) -> List[List[int]]:
         global DECADE_TARGET_COUNTS
         original_targets = DECADE_TARGET_COUNTS
         try:
             if not decade_targets:
-                return generate_tickets(
-                    scored,
-                    df,
-                    main_cols,
-                    run_date,
-                    use_weights=True,
-                    seed_hot_overdue=False,
-                    force_coverage=FORCE_COVERAGE,
-                    ticket_count=NUM_TICKETS,
-                    overlap_cap_override=RELAXED_OVERLAP_CAP,
-                    global_max_override=RELAXED_GLOBAL_MAX_USES,
-                    rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota") if winner_regime else None,
-                    rank_bucket_map=rank_bucket_map if winner_regime else None,
-                    rank_bucket_weight_mode="score",
-                    rank_bucket_quota_sampler=(lambda: _quota_sampler(quota_dist_override or quota_dist)) if winner_regime else None,
-                    ratio_band=ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
-                    ratio_map=ratio_map if winner_regime else None,
-                    ratio_min_hits=ratio_min_hits_override if ratio_min_hits_override is not None else (winner_regime.get("ratio_min_hits") if winner_regime else None),
-                    ratio_reject_scale=ratio_reject_scale_override if ratio_reject_scale_override is not None else 0.35,
-                    debug_rejects=debug_rejects_override,
+                if USE_MODEL_GENERATOR:
+                    candidates = generate_tickets_model(
+                        df,
+                        main_cols,
+                        run_date,
+                        ticket_count=NUM_TICKETS * TARGET_CANDIDATE_MULTIPLIER,
+                        overlap_cap_override=RELAXED_OVERLAP_CAP,
+                        global_max_override=RELAXED_GLOBAL_MAX_USES,
+                        debug_rejects=debug_rejects_override,
+                    )
+                else:
+                    candidates = generate_tickets(
+                        scored,
+                        df,
+                        main_cols,
+                        run_date,
+                        use_weights=USE_SCORE_WEIGHTS,
+                        seed_hot_overdue=False,
+                        force_coverage=FORCE_COVERAGE,
+                        ticket_count=NUM_TICKETS * TARGET_CANDIDATE_MULTIPLIER,
+                        overlap_cap_override=RELAXED_OVERLAP_CAP,
+                        global_max_override=RELAXED_GLOBAL_MAX_USES,
+                        pool_override=pool_override,
+                        band_weight_map=band_weight_map_override,
+                        rank_bucket_weight_map=rank_bucket_weight_map_override,
+                        ratio_band=ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                        ratio_map=ratio_map if winner_regime else None,
+                        ratio_min_hits=ratio_min_hits_override if ratio_min_hits_override is not None else (winner_regime.get("ratio_min_hits") if winner_regime else None),
+                        ratio_reject_scale=ratio_reject_scale_override if ratio_reject_scale_override is not None else 0.35,
+                        debug_rejects=debug_rejects_override,
+                    )
+                return _select_best_tickets_by_profile(
+                    candidates,
+                    rank_pos_map,
+                    None,
+                    band_quota_counts,
+                    ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                    ratio_map if winner_regime else None,
+                    NUM_TICKETS,
+                )
+
+            if DECADE_TARGET_SOFT_PENALTY is not None and tickets_per_pattern is None:
+                DECADE_TARGET_COUNTS = decade_targets
+                if USE_MODEL_GENERATOR:
+                    candidates = generate_tickets_model(
+                        df,
+                        main_cols,
+                        run_date,
+                        ticket_count=NUM_TICKETS * TARGET_CANDIDATE_MULTIPLIER,
+                        overlap_cap_override=RELAXED_OVERLAP_CAP,
+                        global_max_override=RELAXED_GLOBAL_MAX_USES,
+                        debug_rejects=debug_rejects_override,
+                    )
+                else:
+                    candidates = generate_tickets(
+                        scored,
+                        df,
+                        main_cols,
+                        run_date,
+                        use_weights=USE_SCORE_WEIGHTS,
+                        seed_hot_overdue=False,
+                        force_coverage=FORCE_COVERAGE,
+                        ticket_count=NUM_TICKETS * TARGET_CANDIDATE_MULTIPLIER,
+                        overlap_cap_override=RELAXED_OVERLAP_CAP,
+                        global_max_override=RELAXED_GLOBAL_MAX_USES,
+                        pool_override=pool_override,
+                        band_weight_map=band_weight_map_override,
+                        rank_bucket_weight_map=rank_bucket_weight_map_override,
+                        ratio_band=ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                        ratio_map=ratio_map if winner_regime else None,
+                        ratio_min_hits=ratio_min_hits_override if ratio_min_hits_override is not None else (winner_regime.get("ratio_min_hits") if winner_regime else None),
+                        ratio_reject_scale=ratio_reject_scale_override if ratio_reject_scale_override is not None else 0.35,
+                        debug_rejects=debug_rejects_override,
+                    )
+                return _select_best_tickets_by_profile(
+                    candidates,
+                    rank_pos_map,
+                    None,
+                    band_quota_counts,
+                    ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                    ratio_map if winner_regime else None,
+                    NUM_TICKETS,
                 )
 
             per_count = NUM_TICKETS // len(decade_targets)
@@ -2322,29 +2809,47 @@ if __name__ == "__main__":
                 if take <= 0:
                     continue
                 DECADE_TARGET_COUNTS = [tgt]
-                all_tickets.extend(
-                    generate_tickets(
-                        scored,
+                if USE_MODEL_GENERATOR:
+                    candidates = generate_tickets_model(
                         df,
                         main_cols,
                         run_date,
-                        use_weights=True,
-                        seed_hot_overdue=False,
-                        force_coverage=FORCE_COVERAGE,
-                        ticket_count=take,
+                        ticket_count=take * TARGET_CANDIDATE_MULTIPLIER,
                         overlap_cap_override=RELAXED_OVERLAP_CAP,
                         global_max_override=RELAXED_GLOBAL_MAX_USES,
-                        rank_bucket_quota_counts=winner_regime.get("rank_bucket_quota") if winner_regime else None,
-                        rank_bucket_map=rank_bucket_map if winner_regime else None,
-                        rank_bucket_weight_mode="score",
-                        rank_bucket_quota_sampler=(lambda: _quota_sampler(quota_dist_override or quota_dist)) if winner_regime else None,
-                        ratio_band=ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
-                        ratio_map=ratio_map if winner_regime else None,
-                        ratio_min_hits=ratio_min_hits_override if ratio_min_hits_override is not None else (winner_regime.get("ratio_min_hits") if winner_regime else None),
-                        ratio_reject_scale=ratio_reject_scale_override if ratio_reject_scale_override is not None else 0.35,
                         debug_rejects=debug_rejects_override,
                     )
+                else:
+                    candidates = generate_tickets(
+                            scored,
+                            df,
+                            main_cols,
+                            run_date,
+                            use_weights=USE_SCORE_WEIGHTS,
+                            seed_hot_overdue=False,
+                            force_coverage=FORCE_COVERAGE,
+                            ticket_count=take * TARGET_CANDIDATE_MULTIPLIER,
+                            overlap_cap_override=RELAXED_OVERLAP_CAP,
+                            global_max_override=RELAXED_GLOBAL_MAX_USES,
+                            pool_override=pool_override,
+                            band_weight_map=band_weight_map_override,
+                            rank_bucket_weight_map=rank_bucket_weight_map_override,
+                            ratio_band=ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                            ratio_map=ratio_map if winner_regime else None,
+                            ratio_min_hits=ratio_min_hits_override if ratio_min_hits_override is not None else (winner_regime.get("ratio_min_hits") if winner_regime else None),
+                            ratio_reject_scale=ratio_reject_scale_override if ratio_reject_scale_override is not None else 0.35,
+                            debug_rejects=debug_rejects_override,
+                        )
+                selected = _select_best_tickets_by_profile(
+                    candidates,
+                    rank_pos_map,
+                    None,
+                    band_quota_counts,
+                    ratio_band_override if ratio_band_override else (winner_regime.get("ratio_band") if winner_regime else None),
+                    ratio_map if winner_regime else None,
+                    take,
                 )
+                all_tickets.extend(selected)
             return all_tickets[:NUM_TICKETS]
         finally:
             DECADE_TARGET_COUNTS = original_targets
@@ -2359,19 +2864,24 @@ if __name__ == "__main__":
     )
     ratio_band_best = _ratio_band_from_values(ratio_vals, 0.20, 0.80)
     ratio_min_best = 0
-    quota_best = quota_dist_recent if quota_dist_recent else quota_dist
-
     per_pattern = None
     if DECADE_TARGET_COUNTS and len(DECADE_TARGET_COUNTS) > 1:
         per_pattern = TARGET_TICKETS_PER_PATTERN
+    target_pool_override = None
+    original_soft_penalty = DECADE_TARGET_SOFT_PENALTY
+    if auto_predicted and DECADE_TARGET_SOFT_PENALTY is None:
+        DECADE_TARGET_SOFT_PENALTY = AUTO_DECADE_SOFT_PENALTY
+        print(f"Using soft decade penalty: {DECADE_TARGET_SOFT_PENALTY}")
     target_tickets = _generate_with_decade_targets(
         DECADE_TARGET_COUNTS,
         ratio_band_override=ratio_band_best,
         ratio_min_hits_override=ratio_min_best,
         ratio_reject_scale_override=0.35,
         debug_rejects_override=True,
-        quota_dist_override=quota_best,
         tickets_per_pattern=per_pattern,
+        pool_override=target_pool_override,
+        band_weight_map_override=band_weight_map,
+        rank_bucket_weight_map_override=rank_bucket_weight_map,
     )
     print(f"Target: {run_date}")
     if target_real and LOG_SHOW_REAL_DRAW_PROFILE:
@@ -2400,6 +2910,7 @@ if __name__ == "__main__":
         if counts and LOG_SHOW_TICKET_BUCKETS:
             print(f"  rank_buckets={dict(counts)} ratio_hits={ratio_hits}")
     show_ticket_hits(target_real, target_tickets, draw_date=run_date, strategy_name="PREDICTED_DECADE")
+    DECADE_TARGET_SOFT_PENALTY = original_soft_penalty
     DECADE_TARGET_COUNTS = original_decade_target
 
     # Try ratio-band options and compare target hits.
@@ -2413,34 +2924,28 @@ if __name__ == "__main__":
             ("season_p10_90", _ratio_band_from_values(ratio_vals_season, 0.10, 0.90)),
         ]
         min_hits_opts = [0, 1, 2, 3]
-        quota_opts = [
-            ("quota_all", quota_dist),
-            ("quota_recent5", quota_dist_recent),
-        ]
         best = None
         print("\n=== TARGET VARIANTS (RATIO BAND) ===")
         for band_name, band in ratio_bands:
             if band is None:
                 continue
             for mh in min_hits_opts:
-                for qname, qdist in quota_opts:
-                    variant_name = f"{band_name}_min{mh}_{qname}"
-                    ratio_min = None if mh <= 0 else mh
-                    tickets_v = _generate_with_decade_targets(
-                        DECADE_TARGET_COUNTS,
-                        ratio_band_override=band,
-                        ratio_min_hits_override=ratio_min,
-                        ratio_reject_scale_override=0.35,
-                        debug_rejects_override=False,
-                        quota_dist_override=qdist,
-                    )
-                    summary = _hit_summary(target_real, tickets_v)
-                    print(
-                        f"{variant_name}: max_hit={summary['max_hit']} ge3={summary['ge3']} total_hits={summary['total_hits']}"
-                    )
-                    key = (summary["max_hit"], summary["ge3"], summary["total_hits"])
-                    if best is None or key > best[0]:
-                        best = (key, variant_name)
+                variant_name = f"{band_name}_min{mh}"
+                ratio_min = None if mh <= 0 else mh
+                tickets_v = _generate_with_decade_targets(
+                    DECADE_TARGET_COUNTS,
+                    ratio_band_override=band,
+                    ratio_min_hits_override=ratio_min,
+                    ratio_reject_scale_override=0.35,
+                    debug_rejects_override=False,
+                )
+                summary = _hit_summary(target_real, tickets_v)
+                print(
+                    f"{variant_name}: max_hit={summary['max_hit']} ge3={summary['ge3']} total_hits={summary['total_hits']}"
+                )
+                key = (summary["max_hit"], summary["ge3"], summary["total_hits"])
+                if best is None or key > best[0]:
+                    best = (key, variant_name)
         if best:
             print(f"Best variant: {best[1]} (max_hit={best[0][0]} ge3={best[0][1]} total_hits={best[0][2]})")
 
@@ -2467,22 +2972,20 @@ if __name__ == "__main__":
                 for rname, rband, rmin in ratio_variants:
                     if rband is None:
                         continue
-                    for qname, qdist in quota_opts:
-                        variant_name = f"pat{len(pats)}_{rname}_{qname}"
-                        tickets_v = _generate_with_decade_targets(
-                            pats,
-                            ratio_band_override=rband,
-                            ratio_min_hits_override=rmin,
-                            ratio_reject_scale_override=0.35,
-                            debug_rejects_override=False,
-                            quota_dist_override=qdist,
-                        )
-                        summary = _hit_summary(target_real, tickets_v)
-                        print(
-                            f"{variant_name}: max_hit={summary['max_hit']} ge3={summary['ge3']} total_hits={summary['total_hits']}"
-                        )
-                        key = (summary["max_hit"], summary["ge3"], summary["total_hits"])
-                        if best_pat is None or key > best_pat[0]:
-                            best_pat = (key, variant_name)
+                    variant_name = f"pat{len(pats)}_{rname}"
+                    tickets_v = _generate_with_decade_targets(
+                        pats,
+                        ratio_band_override=rband,
+                        ratio_min_hits_override=rmin,
+                        ratio_reject_scale_override=0.35,
+                        debug_rejects_override=False,
+                    )
+                    summary = _hit_summary(target_real, tickets_v)
+                    print(
+                        f"{variant_name}: max_hit={summary['max_hit']} ge3={summary['ge3']} total_hits={summary['total_hits']}"
+                    )
+                    key = (summary["max_hit"], summary["ge3"], summary["total_hits"])
+                    if best_pat is None or key > best_pat[0]:
+                        best_pat = (key, variant_name)
             if best_pat:
                 print(f"Best pattern variant: {best_pat[1]} (max_hit={best_pat[0][0]} ge3={best_pat[0][1]} total_hits={best_pat[0][2]})")
