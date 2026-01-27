@@ -37,9 +37,10 @@ sys.stderr = Tee(sys.stderr, log_file)
 # USER CONFIG
 # ============================================================
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-17"
-REAL_DRAW_TARGET = [8, 9, 19, 35, 38, 44]
-N = 100
+TARGET_DATE = "2026-1-24"
+REAL_DRAW_TARGET = [8, 22, 24, 28, 29, 33]
+# REAL_DRAW_TARGET = None
+N = 21
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
