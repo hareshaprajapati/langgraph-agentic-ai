@@ -45,7 +45,7 @@ from collections import Counter
 # =========================
 CSV_PATH = "../cross_lotto_data.csv"
 
-TOP_K = 2                # <<< THIS IS THE ONLY THING YOU CHANGE
+TOP_K = 10                # <<< THIS IS THE ONLY THING YOU CHANGE
 WED_WEEKS = 10           # Wed anchors (weekly inertia)
 THU_HIST_WEEKS = 8       # recent Thursday memory
 GLOBAL_THU_PRIOR_WEEKS = 104   # ~2 years

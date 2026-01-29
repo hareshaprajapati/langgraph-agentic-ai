@@ -1,13 +1,6 @@
 import sys
 import os
-from datetime import datetime
-from dataclasses import dataclass
-from typing import List, Dict, Tuple
-import math
-from itertools import combinations
-import random
-from collections import Counter
-import pandas as pd
+
 
 class Tee:
     def __init__(self, *files):
@@ -47,6 +40,7 @@ from collections import Counter
 CSV_PATH = "../cross_lotto_data.csv"   # keep in same folder as this script (or change path)
 RANDOM_SEED_BASE = 0               # base seed; per-date seed = base + YYYYMMDD
 TICKETS_PER_DRAW = 10
+TARGET_DATE = "2026-01-29"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
 
 # BEST CONFIG (LOCKED)
 OFFSETS_DAYS = [7, 1]              # use prev Thu (t-7) and Wed (t-1)
@@ -259,6 +253,17 @@ def eval_dates(thursdays, others_by_date, nums_by_date):
     }
 
 
+def resolve_target_date(thursdays):
+    if not TARGET_DATE:
+        return thursdays[-1]
+    if isinstance(TARGET_DATE, str):
+        s = TARGET_DATE.strip()
+        if "-" in s and len(s) == 10:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        return parse_date(s)
+    return TARGET_DATE
+
+
 def main():
     df = pd.read_csv(CSV_PATH)
     others_by_date = build_others_by_date(df)
@@ -296,13 +301,16 @@ def main():
         print()
 
     if PRINT_TICKETS_FOR_LAST_THU:
-        d = thursdays[-1]
-        actual = identify_powerball_main(others_by_date[d])
+        d = resolve_target_date(thursdays)
+        actual = identify_powerball_main(others_by_date.get(d, []))
         pool = build_pool(d, nums_by_date, others_by_date)
         score = score_pool(d, pool, nums_by_date)
         tickets = pick_tickets(score, pool, seed=per_date_seed(d))
-        print(f"==== TICKETS (Most recent Thu={d}) ====")
-        print(f"ACTUAL(main)={actual}")
+        print(f"==== TICKETS (Target Thu={d}) ====")
+        if actual:
+            print(f"ACTUAL(main)={actual}")
+        else:
+            print("ACTUAL(main)=<not available in CSV>")
         for i, t in enumerate(tickets[:TICKETS_PER_DRAW], 1):
             print(f"Ticket #{i:02d}: {t}")
 
