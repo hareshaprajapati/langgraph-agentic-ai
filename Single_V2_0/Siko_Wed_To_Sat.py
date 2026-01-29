@@ -49,9 +49,22 @@ from collections import defaultdict, Counter
 # ============================================================
 
 CSV_PATH = "cross_lotto_data.csv"
+TATTS_CSV_PATH = os.path.join("Saturday", "Tattslotto.csv")
 
-LAST_N_USABLE_SATS = 21
+# ============================================================
+# PRINT LAST BACKTEST TICKETS
+# ============================================================
+PRINT_LAST_BACKTEST_TICKETS = True
+PRINT_LAST_TICKETS_LIMIT = 20   # keep 20 (your N_TICKETS)
+
+
+LAST_N_USABLE_SATS = 20
+
 N_TICKETS = 20
+
+# Target eval (same format as other scripts)
+TARGET_DATE = "2026-1-24"
+REAL_DRAW_TARGET = [8, 22, 24, 28, 29, 33]
 
 # Wed->Sat base engine knobs
 EXT_K = 4
@@ -85,6 +98,19 @@ def parse_date(label: str) -> dt.date:
     _, dmy = label.split()
     dd, mon, yy = dmy.split("-")
     return dt.date(int(yy), MONTHS[mon], int(dd))
+
+def parse_iso_date(s: str) -> dt.date:
+    s = s.strip()
+    parts = s.split("-")
+    if len(parts) != 3:
+        raise ValueError(f"Bad TARGET_DATE: {s}")
+    yy, mm, dd = (int(parts[0]), int(parts[1]), int(parts[2]))
+    return dt.date(yy, mm, dd)
+
+def parse_tatts_date(s: str) -> dt.date:
+    s = s.strip()
+    dd, mm, yy = s.split("/")
+    return dt.date(int(yy), int(mm), int(dd))
 
 def extract_first_list_ints(cell: str):
     if not cell:
@@ -371,7 +397,24 @@ for sat in all_sats:
 if len(usable) == 0:
     raise SystemExit("No usable Saturdays found (need Sat actual + Wed anchor).")
 
-last20 = usable[-LAST_N_USABLE_SATS:]
+# Align backtest dates to Tattslotto last-20 (same Saturdays)
+tatts_dates = []
+try:
+    with open(TATTS_CSV_PATH, newline="", encoding="utf-8") as f:
+        rdr = csv.DictReader(f)
+        for r in rdr:
+            d = parse_tatts_date(r["Date"])
+            tatts_dates.append(d)
+except FileNotFoundError:
+    tatts_dates = []
+
+tatts_dates = sorted(set(tatts_dates))
+tatts_last20 = tatts_dates[-LAST_N_USABLE_SATS:] if tatts_dates else []
+
+if tatts_last20:
+    last20 = tatts_last20
+else:
+    last20 = usable[-LAST_N_USABLE_SATS:]
 
 
 # ============================================================
@@ -385,12 +428,26 @@ def eval_variant(name, ticket_builder):
     best = 0
     hit4_dates = []
 
+    last_sat = last20[-1] if last20 else None
+    last_detail = None
+
     for sat in last20:
         actual = get_first_six(oth_by_date.get(sat, []))
         tickets = ticket_builder(sat)
-        if not tickets:
+        if not tickets or not actual:
+            # keep date count aligned with fixed last20
+            dist[0] += 1
             continue
-        mh = max(hits(t, actual) for t in tickets)
+
+        # compute max-hit and best ticket for this sat
+        best_ticket = None
+        mh = -1
+        for t in tickets:
+            h = hits(t, actual)
+            if h > mh:
+                mh = h
+                best_ticket = t
+
         dist[mh] += 1
         best = max(best, mh)
         if mh >= 3:
@@ -399,6 +456,16 @@ def eval_variant(name, ticket_builder):
             ge4 += 1
             hit4_dates.append(str(sat))
 
+        # capture last backtest saturday tickets
+        if last_sat and sat == last_sat:
+            last_detail = {
+                "sat": sat,
+                "actual": actual,
+                "tickets": tickets[:PRINT_LAST_TICKETS_LIMIT],
+                "max_hit": mh,
+                "best_ticket": best_ticket,
+            }
+
     return {
         "name": name,
         "4plus": ge4,
@@ -406,6 +473,7 @@ def eval_variant(name, ticket_builder):
         "best": best,
         "dist": dict(dist),
         "hit4_dates": hit4_dates,
+        "last_detail": last_detail,
     }
 
 
@@ -413,33 +481,6 @@ def eval_variant(name, ticket_builder):
 # RUN ALL VARIANTS (the same rows you showed)
 # ============================================================
 
-results = []
-
-# RECENT_BEST baseline (no cross)
-results.append(eval_variant(
-    "RECENT_BEST",
-    lambda sat: build_tickets_wed_to_sat(sat, use_cross=False, cross_days=CROSS_DAYS_DEFAULT, core_primary_only=False)
-))
-
-# Sat freq/recency
-results.append(eval_variant(
-    "+ Sat freq/recency",
-    lambda sat: build_tickets_sat_only(sat, usable)
-))
-
-# Cross-lottery full pool (7d)
-results.append(eval_variant(
-    "+ Cross-lottery (7d, full pool)",
-    lambda sat: build_tickets_wed_to_sat(sat, use_cross=True, cross_days=7, core_primary_only=False)
-))
-
-# CORE_PRIMARY only (cross applied but fill biases to top3)
-results.append(eval_variant(
-    "CORE_PRIMARY only",
-    lambda sat: build_tickets_wed_to_sat(sat, use_cross=True, cross_days=7, core_primary_only=True)
-))
-
-# Adaptive window (3d if tight range else 7d), full pool
 def adaptive_builder(sat):
     wed = sat - dt.timedelta(days=3)
     wed_main = get_first_six(oth_by_date.get(wed, []))
@@ -449,12 +490,6 @@ def adaptive_builder(sat):
     days = ADAPT_DAYS_TIGHT if span <= ADAPT_TIGHT_RANGE else ADAPT_DAYS_WIDE
     return build_tickets_wed_to_sat(sat, use_cross=True, cross_days=days, core_primary_only=False)
 
-results.append(eval_variant(
-    "Adaptive window",
-    adaptive_builder
-))
-
-# BOTH combined (CORE_PRIMARY + adaptive)
 def both_builder(sat):
     wed = sat - dt.timedelta(days=3)
     wed_main = get_first_six(oth_by_date.get(wed, []))
@@ -464,10 +499,20 @@ def both_builder(sat):
     days = ADAPT_DAYS_TIGHT if span <= ADAPT_TIGHT_RANGE else ADAPT_DAYS_WIDE
     return build_tickets_wed_to_sat(sat, use_cross=True, cross_days=days, core_primary_only=True)
 
-results.append(eval_variant(
-    "BOTH combined",
-    both_builder
-))
+variants = [
+    ("RECENT_BEST", lambda sat: build_tickets_wed_to_sat(sat, use_cross=False, cross_days=CROSS_DAYS_DEFAULT, core_primary_only=False)),
+    ("+ Sat freq/recency", lambda sat: build_tickets_sat_only(sat, usable)),
+    ("+ Cross-lottery (7d, full pool)", lambda sat: build_tickets_wed_to_sat(sat, use_cross=True, cross_days=7, core_primary_only=False)),
+    ("CORE_PRIMARY only", lambda sat: build_tickets_wed_to_sat(sat, use_cross=True, cross_days=7, core_primary_only=True)),
+    ("Adaptive window", adaptive_builder),
+    ("BOTH combined", both_builder),
+]
+
+results = []
+for name, builder in variants:
+    res = eval_variant(name, builder)
+    res["builder"] = builder
+    results.append(res)
 
 
 # ============================================================
@@ -489,3 +534,54 @@ for r in results:
 print("\n(Details) hit4_dates per strategy:")
 for r in results:
     print(f"- {r['name']}: {r['hit4_dates']}")
+if PRINT_LAST_BACKTEST_TICKETS:
+    print("\n==== LAST BACKTEST SATURDAY: TICKETS PER STRATEGY ====")
+    for r in results:
+        ld = r.get("last_detail")
+        if not ld:
+            print(f"\n--- {r['name']} ---")
+            print("No tickets/actual for last Saturday (missing anchor or missing draw).")
+            continue
+
+        sat = ld["sat"]
+        actual = ld["actual"]
+        tickets = ld["tickets"]
+        max_hit = ld["max_hit"]
+        best_ticket = ld["best_ticket"]
+
+        print(f"\n--- {r['name']} ---")
+        print(f"SAT={sat}  ACTUAL={sorted(actual)}  MAX_HIT={max_hit}  BEST={sorted(best_ticket)}")
+
+        for i, t in enumerate(tickets, 1):
+            h = hits(t, actual)
+            print(f"Ticket #{i:02d}: {sorted(t)}  HIT={h}")
+
+# ============================================================
+# TARGET DATE EVAL (using provided REAL_DRAW_TARGET)
+# ============================================================
+
+print("\n==== TARGET DATE EVAL ====")
+target_date = parse_iso_date(TARGET_DATE)
+target_actual = sorted(REAL_DRAW_TARGET)
+print(f"TARGET_DATE={TARGET_DATE}  REAL_DRAW_TARGET={target_actual}")
+
+for r in results:
+    name = r["name"]
+    builder = r.get("builder")
+    print(f"\n--- {name} ---")
+    if builder is None:
+        print("No builder available.")
+        continue
+    tickets = builder(target_date)
+    if not tickets:
+        print("No tickets (missing anchor or missing draw).")
+        continue
+    best_hit = 0
+    ge3 = 0
+    for i, t in enumerate(tickets, 1):
+        h = hits(t, target_actual)
+        if h >= 3:
+            ge3 += 1
+        best_hit = max(best_hit, h)
+        print(f"Ticket #{i:02d}: {sorted(t)}  HIT={h}")
+    print(f"TARGET summary: ge3={ge3}  best_hit={best_hit}")

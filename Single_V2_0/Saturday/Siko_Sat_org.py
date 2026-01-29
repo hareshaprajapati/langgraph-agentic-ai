@@ -26,7 +26,7 @@ log_file_path = os.path.join(
     "Siko_Sat_org.log"   # single growing log file
 )
 
-log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
@@ -43,8 +43,11 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-10"
-REAL_DRAW_TARGET = [1, 8, 23, 25, 30, 41]
+TARGET_DATE = "2026-1-24"
+REAL_DRAW_TARGET = [8, 22, 24, 28, 29, 33]
+
+# Backtest: run on the last 5 available draws in the CSV.
+N = 20
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -1677,8 +1680,7 @@ if __name__ == "__main__":
     show_ticket_hits(real_draw, tickets)
     show_ticket_hits(REAL_DRAW_TARGET, tickets)
 
-    # Backtest: run on the last 5 available draws in the CSV.
-    N = 104
+
     backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
 
