@@ -1690,6 +1690,11 @@ if __name__ == "__main__":
     band_stats = []
 
     print(f"\n=== BACKTEST (LAST {N} DRAWS) ===")
+    bt_weeks_ge3 = 0
+    bt_weeks_ge4 = 0
+    bt_weeks_ge5 = 0
+    bt_weeks_ge6 = 0
+    bt_best_hit = 0
     for d in bt_dates:
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]
@@ -1706,6 +1711,21 @@ if __name__ == "__main__":
             vec = _decade_vector(t)
             print(f"Ticket #{i:02d}: {t}  decades={vec}")
         show_ticket_hits(bt_draw, bt_tickets)
+        best = 0
+        for t in bt_tickets:
+            h = len(set(t).intersection(set(bt_draw)))
+            if h > best:
+                best = h
+        if best >= 3:
+            bt_weeks_ge3 += 1
+        if best >= 4:
+            bt_weeks_ge4 += 1
+        if best >= 5:
+            bt_weeks_ge5 += 1
+        if best >= 6:
+            bt_weeks_ge6 += 1
+        if best > bt_best_hit:
+            bt_best_hit = best
 
         collect_winner_tables_and_stats(
             blocks=winner_blocks,
@@ -1718,3 +1738,10 @@ if __name__ == "__main__":
     print_all_winner_tables_at_end(winner_blocks)
     print_date_by_date_band_counts_ascending(band_stats)
     print_band_summary_at_end(band_stats)
+
+    print("\n=== BACKTEST SUMMARY (LAST 20 DRAWS) ===")
+    print(f"Weeks with 3+ hits: {bt_weeks_ge3}")
+    print(f"Weeks with 4+ hits: {bt_weeks_ge4}")
+    print(f"Weeks with 5+ hits: {bt_weeks_ge5}")
+    print(f"Weeks with 6+ hits: {bt_weeks_ge6}")
+    print(f"Max hit observed : {bt_best_hit}")
