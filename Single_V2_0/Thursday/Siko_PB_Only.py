@@ -37,7 +37,7 @@ from typing import List, Dict, Tuple, Optional
 # Config / knobs (tuneable)
 # ----------------------------
 
-targate_date = "2026-01-22"
+targate_date = "2026-01-29"
 
 PB_MIN = 1
 PB_MAX = 20
@@ -767,7 +767,7 @@ if __name__ == "__main__":
 
     run_predictions_for_first_n_csv_rows(
         csv_path=csv_path,
-        n=10,
+        n=20,
         top_k=20,
         debug=False
     )

@@ -46,7 +46,7 @@ from collections import Counter
 # =========================
 CSV_PATH = "../cross_lotto_data.csv"   # keep in same folder as this script (or change path)
 RANDOM_SEED_BASE = 0               # base seed; per-date seed = base + YYYYMMDD
-TICKETS_PER_DRAW = 20
+TICKETS_PER_DRAW = 10
 
 # BEST CONFIG (LOCKED)
 OFFSETS_DAYS = [7, 1]              # use prev Thu (t-7) and Wed (t-1)
