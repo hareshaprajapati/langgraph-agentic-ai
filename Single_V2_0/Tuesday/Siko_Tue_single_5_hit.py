@@ -23,10 +23,10 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "Siko_Tue_single_4_hit_twice_bit_fast.log"   # single growing log file
+    "siko_tue_single_5_hit_logs.log"   # single growing log file
 )
 
-log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
@@ -34,7 +34,7 @@ sys.stderr = Tee(sys.stderr, log_file)
 import pandas as pd
 from dataclasses import dataclass
 from datetime import date
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
 import random
 import math
 import io
@@ -46,13 +46,16 @@ import contextlib
 # ============================================================
 
 CSV_PATH = "Oz_Lotto_transformed.csv"
-TARGET_DATE = "2026-01-06"
+TARGET_DATE = "2026-01-27"
 # TARGET_DATE = "2026-1-3"
 # Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [45, 30, 17, 13, 14, 19, 2]
+REAL_DRAW = [1,15,17,22,23,28,41]
+# REAL_DRAW = None
 # If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
-USE_REAL_DRAW_FALLBACK = True
+USE_REAL_DRAW_FALLBACK = False
 
+# Backtest: run on the last 5 available draws in the CSV.
+N = 10
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 7
 
@@ -61,6 +64,7 @@ MAIN_MAX = 47
 
 LOOKBACK_DAYS = 210
 LOOKBACK_DAYS_12MO = 365
+RECENT_DECADE_PATTERN_DAYS = 42
 SEASON_WINDOW_DAYS = 5
 SEASON_LOOKBACK_YEARS = 20
 MIN_SEASON_SAMPLES = 50
@@ -79,6 +83,7 @@ COLD_FORCE_COUNT = 2
 FORCE_COVERAGE = False
 RANDOM_SEED = 0
 DEBUG_PRINT = True
+AVOID_RECENT_DECADE_PATTERNS = True
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -125,6 +130,7 @@ SEASON_DECADE_WEIGHT = 0.6
 # Optional: enforce exact decade counts (set None to disable)
 # Example: {1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
 DECADE_TARGET_COUNTS = None
+# DECADE_TARGET_COUNTS = {1: 2, 2: 2, 3: 0, 4: 3, 5: 0}
 
 # Acceptance behavior
 PENALTY_SCALE = 0.65
@@ -174,12 +180,6 @@ AUTO_TUNE_MAX_SECONDS = 300
 AUTO_TUNE_LOOKBACK_DAYS = [120, 180, 210, 270]
 AUTO_TUNE_LOOKBACK_12MO = [270, 365, 450]
 AUTO_TUNE_SEASON_WINDOWS = [5, 7, 9, 11]
-
-# Faster tuning for backtests only
-AUTO_TUNE_BACKTEST_MAX_SECONDS = 30
-AUTO_TUNE_BACKTEST_LOOKBACK_DAYS = [180, 210]
-AUTO_TUNE_BACKTEST_LOOKBACK_12MO = [365, 450]
-AUTO_TUNE_BACKTEST_SEASON_WINDOWS = [5, 9]
 
 
 
@@ -636,6 +636,28 @@ def _decade_vector(nums: List[int]) -> Dict[int, int]:
         if did in v:
             v[did] += 1
     return v
+
+
+def _decade_pattern_key(vec: Dict[int, int]) -> Tuple[int, ...]:
+    return tuple(int(vec.get(d, 0)) for d in DECADE_IDS)
+
+
+def _recent_decade_patterns(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    days: int,
+) -> Set[Tuple[int, ...]]:
+    t = pd.Timestamp(target_date)
+    if pd.isna(t):
+        return set()
+    start = t - pd.Timedelta(days=days)
+    sub = df[(df["Date"] >= start) & (df["Date"] < t)]
+    patterns: Set[Tuple[int, ...]] = set()
+    for _, row in sub.iterrows():
+        nums = [int(row[c]) for c in main_cols]
+        patterns.add(_decade_pattern_key(_decade_vector(nums)))
+    return patterns
 
 
 def _normalize_decade_target(target: Dict[int, int]) -> Dict[int, int]:
@@ -1243,6 +1265,11 @@ def generate_tickets(
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     dist = _history_distributions(train, main_cols, target_date)
+    recent_decade_patterns = set()
+    if AVOID_RECENT_DECADE_PATTERNS:
+        recent_decade_patterns = _recent_decade_patterns(
+            df, main_cols, target_date, RECENT_DECADE_PATTERN_DAYS
+        )
 
     # build pool
     if pool_override is not None:
@@ -1670,6 +1697,11 @@ def generate_portfolio_tickets(
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
+    recent_decade_patterns = set()
+    if AVOID_RECENT_DECADE_PATTERNS:
+        recent_decade_patterns = _recent_decade_patterns(
+            df, main_cols, target_date, RECENT_DECADE_PATTERN_DAYS
+        )
     score_map = {c.n: c.total_score for c in scored}
     rank_map = {c.n: c.rank_recent for c in scored}
     pair_counts = _build_pair_counts(train, main_cols)
@@ -1682,6 +1714,15 @@ def generate_portfolio_tickets(
 
     cohesive_candidates = _generate_candidate_pool(scored, PORTFOLIO_CANDIDATES, rng, include_cold=False)
     diffuse_candidates = _generate_candidate_pool(scored, int(PORTFOLIO_CANDIDATES * 0.5), rng, include_cold=True)
+    if recent_decade_patterns:
+        cohesive_candidates = [
+            t for t in cohesive_candidates
+            if _decade_pattern_key(_decade_vector(t)) not in recent_decade_patterns
+        ]
+        diffuse_candidates = [
+            t for t in diffuse_candidates
+            if _decade_pattern_key(_decade_vector(t)) not in recent_decade_patterns
+        ]
 
     cohesive_scored: List[Tuple[List[int], float]] = []
     diffuse_scored: List[Tuple[List[int], float]] = []
@@ -1706,6 +1747,9 @@ def generate_portfolio_tickets(
     base_tickets = [t for t, _ in cohesive_scored[:BASE_TICKET_COUNT]]
     for base in base_tickets:
         for variant in _swap_variants(base, scored, rng, BASE_SWAP_VARIANTS):
+            if recent_decade_patterns:
+                if _decade_pattern_key(_decade_vector(variant)) in recent_decade_patterns:
+                    continue
             q = _ticket_quality(
                 variant, score_map, rank_map, pair_counts, pair_base,
                 COHESION_TOP_RANK, STRICT_MAX_SPREAD, STRICT_MAX_GAP, 0, strict_weights
@@ -1738,6 +1782,11 @@ def generate_greedy_tickets(
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     dist = _history_distributions(train, main_cols, target_date)
+    recent_decade_patterns = set()
+    if AVOID_RECENT_DECADE_PATTERNS:
+        recent_decade_patterns = _recent_decade_patterns(
+            df, main_cols, target_date, RECENT_DECADE_PATTERN_DAYS
+        )
 
     top_pool = [c.n for c in scored[:GREEDY_POOL_SIZE]]
     mid_pool = [c.n for c in scored[GREEDY_POOL_SIZE:GREEDY_POOL_SIZE + MID_POOL_SIZE]]
@@ -1905,6 +1954,15 @@ def generate_greedy_tickets(
         if any(len(s_pick.intersection(t)) > overlap_cap for t in tickets):
             continue
 
+        if DECADE_TARGET_COUNTS is not None:
+            vec = _decade_vector(pick)
+            if any(vec.get(d, 0) != DECADE_TARGET_COUNTS.get(d, 0) for d in DECADE_IDS):
+                continue
+        if recent_decade_patterns:
+            vec = _decade_vector(pick)
+            if _decade_pattern_key(vec) in recent_decade_patterns:
+                continue
+
         penalty = _ticket_penalty(pick, dist)
         scale = PENALTY_SCALE
         accept_prob = math.exp(-penalty * scale)
@@ -1988,23 +2046,6 @@ def _auto_tune_config(
                     best_key = key
 
     return best if best is not None else (LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS)
-
-
-def _auto_tune_config_backtest(
-    df: pd.DataFrame,
-    main_cols: List[str],
-    supp_cols: List[str],
-    train_dates: List[pd.Timestamp],
-) -> Tuple[int, int, int]:
-    global AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS
-    saved = (AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS)
-    AUTO_TUNE_LOOKBACK_DAYS = AUTO_TUNE_BACKTEST_LOOKBACK_DAYS
-    AUTO_TUNE_LOOKBACK_12MO = AUTO_TUNE_BACKTEST_LOOKBACK_12MO
-    AUTO_TUNE_SEASON_WINDOWS = AUTO_TUNE_BACKTEST_SEASON_WINDOWS
-    try:
-        return _auto_tune_config(df, main_cols, supp_cols, train_dates, AUTO_TUNE_BACKTEST_MAX_SECONDS)
-    finally:
-        AUTO_TUNE_LOOKBACK_DAYS, AUTO_TUNE_LOOKBACK_12MO, AUTO_TUNE_SEASON_WINDOWS = saved
 
 
 def _print_backtest_hit_summary(summaries: List[Dict[str, object]]) -> None:
@@ -2111,8 +2152,7 @@ if __name__ == "__main__":
 
     show_ticket_hits(real_draw, tickets)
 
-    # Backtest: run on the last 5 available draws in the CSV.
-    N = 5
+
     backtest_rows = df.sort_values("Date").tail(N)
     bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
 
@@ -2130,7 +2170,7 @@ if __name__ == "__main__":
         if AUTO_TUNE_MODE:
             idx = df.index[df["Date"] == d].tolist()[0]
             train_dates = df.iloc[max(0, idx - AUTO_TUNE_TRAIN_DRAWS):idx]["Date"].tolist()
-            tuned = _auto_tune_config_backtest(df, main_cols, supp_cols, train_dates)
+            tuned = _auto_tune_config(df, main_cols, supp_cols, train_dates, AUTO_TUNE_MAX_SECONDS)
             LOOKBACK_DAYS, LOOKBACK_DAYS_12MO, SEASON_WINDOW_DAYS = tuned
             print(f"AUTO_TUNE for {bt_date}: LOOKBACK_DAYS={LOOKBACK_DAYS} LOOKBACK_DAYS_12MO={LOOKBACK_DAYS_12MO} SEASON_WINDOW_DAYS={SEASON_WINDOW_DAYS}")
         bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT, supp_cols=supp_cols)

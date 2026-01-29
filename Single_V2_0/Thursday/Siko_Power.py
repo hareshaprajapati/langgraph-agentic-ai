@@ -40,10 +40,10 @@ import math
 # USER CONFIG (edit only these)
 # ============================================================
 
-N = 10
+N = 20
 # 3 hit with without decade
-TARGET_DATE = "2026-01-15"
-REAL_DRAW_TARGET = [1, 2, 4, 24, 25, 27, 35]
+TARGET_DATE = "2026-01-22"
+REAL_DRAW_TARGET = [6, 9, 20, 21, 22, 30, 34]
 # 4 hit without decade, with decade 3
 # TARGET_DATE = "2026-01-08"
 # REAL_DRAW_TARGET = [7, 15, 16, 17, 25, 26, 27]
