@@ -30,7 +30,7 @@ sys.stderr = Tee(sys.stderr, log_file)
 
 # ==========================================================
 # Siko_Thu_PB_PBTop5_Best_WithLogs.py
-# Predict TOP-5 Powerball numbers (1–20) for Thursday
+# Predict TOP-K Powerball numbers (1–20) for Thursday
 # Proven better-than-random on cross_lotto_data.csv
 # ==========================================================
 
@@ -134,17 +134,25 @@ def pick_topk(score, target):
     if not DIVERSIFY_BANDS:
         return ranked[:TOP_K]
 
+    # First pass: pick one per band if possible
     chosen = []
     used_bands = set()
     for n in ranked:
         b = pb_band(n)
-        if b not in used_bands or len(chosen) < 2:
+        if b not in used_bands:
             chosen.append(n)
             used_bands.add(b)
-        if len(chosen) == TOP_K:
+        if len(used_bands) == 4:
             break
 
-    return chosen
+    # Second pass: fill to TOP_K by rank
+    for n in ranked:
+        if len(chosen) >= TOP_K:
+            break
+        if n not in chosen:
+            chosen.append(n)
+
+    return chosen[:TOP_K]
 
 def predict_pb_topk(target, others_by_date):
     score = Counter()
@@ -189,7 +197,7 @@ def main():
     h_all, _ = run(thursdays)
     h_20, rows_20 = run(last20)
 
-    print("MODE = THU_PB_TOP5")
+    print("MODE = THU_PB_TOPK")
     print(f"Usable Thursdays: {len(thursdays)}")
     print(f"Last20 range: {last20[0]} .. {last20[-1]}")
     print()
