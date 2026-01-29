@@ -51,6 +51,7 @@ THU_HIST_WEEKS = 8       # recent Thursday memory
 GLOBAL_THU_PRIOR_WEEKS = 104   # ~2 years
 W_GLOBAL = 0.25          # light prior weight
 DIVERSIFY_BANDS = True  # spread across PB bands
+TARGET_DATE = "2026-01-29"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
 
 # =========================
 # HELPERS
@@ -90,6 +91,16 @@ def pb_band(pb):
 
 def per_date_seed(d):
     return int(d.strftime("%Y%m%d"))
+
+def resolve_target_date(thursdays):
+    if not TARGET_DATE:
+        return thursdays[-1]
+    if isinstance(TARGET_DATE, str):
+        s = TARGET_DATE.strip()
+        if "-" in s and len(s) == 10:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        return parse_date(s)
+    return TARGET_DATE
 
 # =========================
 # SCORING COMPONENTS
@@ -209,6 +220,18 @@ def main():
     print("==== LAST 20 DETAILS ====")
     for d, pred, actual, hit in rows_20:
         print(f"THU={d}  TOP{TOP_K}={pred}  ACTUAL={actual}  HIT={hit}")
+
+    # Target date prediction (works even if target not in CSV)
+    target = resolve_target_date(thursdays)
+    pred = predict_pb_topk(target, others_by_date)
+    actual = identify_pb(others_by_date.get(target, []))
+    print()
+    print(f"==== TARGET PREDICTION (THU={target}) ====")
+    print(f"TOP{TOP_K}={pred}")
+    if actual is not None:
+        print(f"ACTUAL={actual}  HIT={actual in pred}")
+    else:
+        print("ACTUAL=<not available in CSV>")
 
 # =========================
 if __name__ == "__main__":
