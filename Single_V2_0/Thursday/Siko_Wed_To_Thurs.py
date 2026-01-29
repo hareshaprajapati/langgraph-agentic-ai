@@ -43,10 +43,13 @@ TICKETS_PER_DRAW = 10
 TARGET_DATE = "2026-01-29"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
 
 # BEST CONFIG (LOCKED)
-OFFSETS_DAYS = [7, 1]              # use prev Thu (t-7) and Wed (t-1)
-EXT_K = 2                          # expand pool by ±2
-NEIGHBOR_BONUS = 2                 # add score if neighbor exists in pool
-WEIGHT_SCHEME = "flat"             # flat weights work best here
+OFFSETS_DAYS = [3, 4, 7]           # Sun/Mon/prev Thu
+EXT_K = 1                          # expand pool by ±1
+NEIGHBOR_BONUS = 1                 # add score if neighbor exists in pool
+WEIGHT_SCHEME = "flat"             # flat weights
+TOP_REGION_K = 18                  # top region size for run seeding
+RUN_PROB = 0.85                    # chance to seed with a run
+RUN_EXTEND_PROB = 0.2              # chance to extend run by ±1
 
 PRINT_DATE_BY_DATE = True
 PRINT_TICKETS_FOR_LAST_THU = True  # prints the 20 tickets for the most recent Thu in CSV
@@ -166,7 +169,7 @@ def pick_tickets(score, pool, seed):
     # base weights
     w = [max(0.05, score[i] + 0.5) for i in items]
     sorted_items = sorted(items, key=lambda x: (-score[x], x))
-    top_region = set(sorted_items[:min(18, len(sorted_items))])
+    top_region = set(sorted_items[:min(TOP_REGION_K, len(sorted_items))])
 
     tickets = []
     for _ in range(TICKETS_PER_DRAW):
@@ -174,12 +177,12 @@ def pick_tickets(score, pool, seed):
 
         # seed with a run (adjacent numbers) often
         runs = [n for n in top_region if (n + 1 in pool)]
-        if runs and random.random() < 0.85:
+        if runs and random.random() < RUN_PROB:
             a = random.choice(runs)
             chosen.update([a, a + 1])
-            if a - 1 in pool and random.random() < 0.35:
+            if a - 1 in pool and random.random() < RUN_EXTEND_PROB:
                 chosen.add(a - 1)
-            if a + 2 in pool and random.random() < 0.35:
+            if a + 2 in pool and random.random() < RUN_EXTEND_PROB:
                 chosen.add(a + 2)
 
         while len(chosen) < 7:
