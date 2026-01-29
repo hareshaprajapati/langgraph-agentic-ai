@@ -47,11 +47,15 @@ CSV_PATH = "../cross_lotto_data.csv"
 
 TOP_K = 10                # <<< THIS IS THE ONLY THING YOU CHANGE
 WED_WEEKS = 10           # Wed anchors (weekly inertia)
-THU_HIST_WEEKS = 8       # recent Thursday memory
+THU_HIST_WEEKS = 4       # recent Thursday memory
 GLOBAL_THU_PRIOR_WEEKS = 104   # ~2 years
-W_GLOBAL = 0.25          # light prior weight
+W_GLOBAL = 0.0           # light prior weight
 DIVERSIFY_BANDS = True  # spread across PB bands
 TARGET_DATE = "2026-01-29"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
+TOP2_MODE = "diff_band"  # "overall" or "diff_band"
+RECENCY_PENALTY = 0.75    # subtract from score if seen recently (0 disables)
+RECENCY_WEEKS = 4         # how many recent Thu weeks to penalize
+TRANSITION_WEIGHT = 2.0   # weight for last-Thu -> next-Thu transition bonus
 
 # =========================
 # HELPERS
@@ -132,6 +136,38 @@ def score_global_thu_prior(target, others_by_date):
             score[pb] += 1
     return score
 
+def recency_weeks(target, pb, others_by_date):
+    for w in range(1, RECENCY_WEEKS + 1):
+        d = target - timedelta(days=7*w)
+        prev = identify_pb(others_by_date.get(d, []))
+        if prev == pb:
+            return w
+    return None
+
+def build_transition(others_by_date, thursdays, max_back=200):
+    trans = Counter()
+    for i in range(1, min(len(thursdays), max_back)):
+        d_prev = thursdays[-(i+1)]
+        d_cur = thursdays[-i]
+        prev = identify_pb(others_by_date.get(d_prev, []))
+        cur = identify_pb(others_by_date.get(d_cur, []))
+        if prev and cur:
+            trans[(prev, cur)] += 1
+    out = {}
+    for (prev, cur), cnt in trans.items():
+        out.setdefault(prev, Counter())[cur] += cnt
+    return out
+
+def transition_bonus(target, others_by_date, trans):
+    d_prev = target - timedelta(days=7)
+    prev = identify_pb(others_by_date.get(d_prev, []))
+    if prev is None:
+        return Counter()
+    score = Counter()
+    for nxt, cnt in trans.get(prev, {}).items():
+        score[nxt] += TRANSITION_WEIGHT * cnt
+    return score
+
 # =========================
 # PREDICT
 # =========================
@@ -141,6 +177,24 @@ def pick_topk(score, target):
         return rng.sample(range(1, 21), TOP_K)
 
     ranked = sorted(range(1, 21), key=lambda x: (-score[x], x))
+
+    if TOP_K == 2 and TOP2_MODE == "diff_band":
+        chosen = []
+        used_bands = set()
+        for n in ranked:
+            b = pb_band(n)
+            if b not in used_bands:
+                chosen.append(n)
+                used_bands.add(b)
+            if len(chosen) == 2:
+                break
+        if len(chosen) < 2:
+            for n in ranked:
+                if n not in chosen:
+                    chosen.append(n)
+                if len(chosen) == 2:
+                    break
+        return chosen
 
     if not DIVERSIFY_BANDS:
         return ranked[:TOP_K]
@@ -165,7 +219,7 @@ def pick_topk(score, target):
 
     return chosen[:TOP_K]
 
-def predict_pb_topk(target, others_by_date):
+def predict_pb_topk(target, others_by_date, trans):
     score = Counter()
     score += score_wed_weekly(target, others_by_date)
     score += score_thu_history(target, others_by_date)
@@ -173,6 +227,14 @@ def predict_pb_topk(target, others_by_date):
     prior = score_global_thu_prior(target, others_by_date)
     for k, v in prior.items():
         score[k] += v * W_GLOBAL
+
+    if RECENCY_PENALTY > 0:
+        for n in range(1, 21):
+            if recency_weeks(target, n, others_by_date) is not None:
+                score[n] -= RECENCY_PENALTY
+
+    if TRANSITION_WEIGHT > 0:
+        score += transition_bonus(target, others_by_date, trans)
 
     return pick_topk(score, target)
 
@@ -192,6 +254,7 @@ def main():
         if d.weekday() == 3 and identify_pb(others_by_date[d]) is not None
     )
 
+    trans = build_transition(others_by_date, thursdays)
     last20 = thursdays[-20:]
 
     def run(days):
@@ -199,7 +262,7 @@ def main():
         rows = []
         for d in days:
             actual = identify_pb(others_by_date[d])
-            pred = predict_pb_topk(d, others_by_date)
+            pred = predict_pb_topk(d, others_by_date, trans)
             hit = actual in pred
             hits += int(hit)
             rows.append((d, pred, actual, hit))
@@ -219,15 +282,23 @@ def main():
 
     print("==== LAST 20 DETAILS ====")
     for d, pred, actual, hit in rows_20:
-        print(f"THU={d}  TOP{TOP_K}={pred}  ACTUAL={actual}  HIT={hit}")
+        if TOP_K == 2 and TOP2_MODE == "diff_band":
+            mode_label = "TOP2(diff_band)"
+        else:
+            mode_label = f"TOP{TOP_K}"
+        print(f"THU={d}  {mode_label}={pred}  ACTUAL={actual}  HIT={hit}")
 
     # Target date prediction (works even if target not in CSV)
     target = resolve_target_date(thursdays)
-    pred = predict_pb_topk(target, others_by_date)
+    pred = predict_pb_topk(target, others_by_date, trans)
     actual = identify_pb(others_by_date.get(target, []))
     print()
     print(f"==== TARGET PREDICTION (THU={target}) ====")
-    print(f"TOP{TOP_K}={pred}")
+    if TOP_K == 2 and TOP2_MODE == "diff_band":
+        mode_label = "TOP2(diff_band)"
+    else:
+        mode_label = f"TOP{TOP_K}"
+    print(f"{mode_label}={pred}")
     if actual is not None:
         print(f"ACTUAL={actual}  HIT={actual in pred}")
     else:
