@@ -68,13 +68,12 @@ MID_POOL_SIZE = 10
 COLD_POOL_SIZE = 10
 HOT_POOL_SIZE = 8
 OVERDUE_POOL_SIZE = 8
-SEASON_POOL_SIZE = 8
-COLD_FORCE_COUNT = 2
 
-# Hard-force coverage mix
-FORCE_COVERAGE = False
 RANDOM_SEED = 0
-DEBUG_PRINT = True
+# Shape reference window (logging)
+SHAPE_REF_LAST_N = 80
+# Band profile window (training)
+BAND_PROFILE_LAST_N = 120
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -85,9 +84,6 @@ COLD_BOOST = 0.25
 # Overdue gap boost (date-agnostic)
 W_GAP = 0.25
 GAP_CAP = 0.30
-
-# Use Power-style CandidateScoreMain totals for ranking/selection
-USE_POWER_STYLE_SCORE = False
 
 # Ticket constraints (soft)
 OVERLAP_CAP = 5
@@ -136,7 +132,6 @@ COHESION_W_CENTRAL = 0.15
 DEFAULT_STRATEGY_NAME = "COHESION_SOFT"
 
 # Portfolio selection (20-ticket optimizer)
-PORTFOLIO_MODE = False
 PORTFOLIO_CANDIDATES = 20000
 COHESIVE_TICKETS = 14
 DIFFUSE_TICKETS = 6
@@ -154,9 +149,6 @@ COHESIVE_DIVERSITY_PENALTY = 0.30
 DIFFUSE_DIVERSITY_PENALTY = 0.15
 
 # Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [3, 5, 20, 26, 28, 40]
-# If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
-USE_REAL_DRAW_FALLBACK = False
 
 # ============================================================
 # INTERNALS
@@ -379,6 +371,21 @@ def print_date_by_date_band_counts_ascending(band_stats: List[DrawBandStats]) ->
         )
 
     print()
+
+
+def _print_candidate_score_main(
+    scored_main: List[CandidateScoreMain],
+    label: str,
+    only_numbers: List[int] = None,
+) -> None:
+    if not scored_main:
+        return
+    only_set = set(only_numbers) if only_numbers else None
+    print(f"\n=== CANDIDATE SCORE MAIN (POWER-STYLE) | {label} ===")
+    for c in scored_main:
+        if only_set is not None and c.n not in only_set:
+            continue
+        print(c)
 
 
 def _parse_date(d: str) -> pd.Timestamp:
@@ -852,13 +859,6 @@ def score_numbers(df: pd.DataFrame, main_cols: List[str], target_date: str, debu
     scored.sort(key=lambda x: x.total_score, reverse=True)
 
     scored_main = compute_candidate_score_main(df, main_cols, target_date)
-    if USE_POWER_STYLE_SCORE and scored_main:
-        power_score_map = {c.n: float(c.total_score) for c in scored_main}
-        for c in scored:
-            if c.n in power_score_map:
-                c.total_score = round(power_score_map[c.n], 6)
-        scored.sort(key=lambda x: x.total_score, reverse=True)
-
     if scored_main:
         main_map = {c.n: c for c in scored_main}
         scored_main = [main_map[n.n] for n in scored if n.n in main_map]
@@ -1109,6 +1109,134 @@ def _ticket_penalty(nums: List[int], dist: Dict[str, object]) -> float:
     return penalty
 
 
+def _shape_profile(train: pd.DataFrame, main_cols: List[str], last_n: int) -> Dict[str, object]:
+    if last_n and last_n > 0:
+        rows = train.sort_values("Date").tail(int(last_n))
+    else:
+        rows = train
+    odd_counts = []
+    low_counts = []
+    sums = []
+    decade_vectors = []
+    for _, row in rows.iterrows():
+        nums = [int(row[c]) for c in main_cols]
+        odd_counts.append(sum(1 for n in nums if n % 2 == 1))
+        low_counts.append(sum(1 for n in nums if n <= LOW_RANGE_MAX))
+        sums.append(sum(nums))
+        decade_vectors.append(_decade_vector(nums))
+    total = max(len(odd_counts), 1)
+    odd_freq = pd.Series(odd_counts).value_counts(normalize=True).to_dict()
+    low_freq = pd.Series(low_counts).value_counts(normalize=True).to_dict()
+    s_series = pd.Series(sums) if sums else pd.Series([0])
+    sum_mean = float(s_series.mean())
+    sum_std = float(pd.Series(sums).std()) if len(sums) > 1 else 1.0
+    if sum_std <= 0:
+        sum_std = 1.0
+    sum_qs = [float(q) for q in s_series.quantile([0.2, 0.4, 0.6, 0.8]).tolist()]
+    decade_mean = {d: 0.0 for d in DECADE_IDS}
+    decade_std = {d: 0.75 for d in DECADE_IDS}
+    if decade_vectors:
+        for v in decade_vectors:
+            for d in DECADE_IDS:
+                decade_mean[d] += v[d]
+        for d in DECADE_IDS:
+            decade_mean[d] /= float(len(decade_vectors))
+        if len(decade_vectors) > 1:
+            for d in DECADE_IDS:
+                vals = [v[d] for v in decade_vectors]
+                std = float(pd.Series(vals).std())
+                decade_std[d] = std if std > 0 else 0.75
+    return {
+        "odd_freq": odd_freq,
+        "low_freq": low_freq,
+        "sum_mean": sum_mean,
+        "sum_std": sum_std,
+        "sum_qs": sum_qs,
+        "decade_mean": decade_mean,
+        "decade_std": decade_std,
+        "sample_n": total,
+    }
+
+
+def _shape_score(nums: List[int], profile: Dict[str, object]) -> float:
+    odd_ct = sum(1 for n in nums if n % 2 == 1)
+    low_ct = sum(1 for n in nums if n <= LOW_RANGE_MAX)
+    s = sum(nums)
+    odd_freq = profile.get("odd_freq", {})
+    low_freq = profile.get("low_freq", {})
+    odd_max = max(odd_freq.values()) if odd_freq else 0.01
+    low_max = max(low_freq.values()) if low_freq else 0.01
+    odd_score = min(odd_freq.get(odd_ct, 0.0) / odd_max, 1.0) if odd_max > 0 else 0.0
+    low_score = min(low_freq.get(low_ct, 0.0) / low_max, 1.0) if low_max > 0 else 0.0
+    sum_mean = float(profile.get("sum_mean", 0.0))
+    sum_std = float(profile.get("sum_std", 1.0))
+    sum_score = math.exp(-((s - sum_mean) ** 2) / (2.0 * (sum_std ** 2))) if sum_std > 0 else 0.0
+    vec = _decade_vector(nums)
+    decade_mean = profile.get("decade_mean", {})
+    decade_std = profile.get("decade_std", {})
+    decade_scores = []
+    for d in DECADE_IDS:
+        m = float(decade_mean.get(d, 0.0))
+        sd = float(decade_std.get(d, 0.75))
+        if sd <= 0:
+            sd = 0.75
+        decade_scores.append(math.exp(-((vec[d] - m) ** 2) / (2.0 * (sd ** 2))))
+    decade_score = sum(decade_scores) / float(len(decade_scores)) if decade_scores else 0.0
+    return (odd_score + low_score + sum_score + decade_score) / 4.0
+
+
+def _prob_map_from_scored(scored: List[CandidateScore]) -> Dict[int, float]:
+    if not scored:
+        return {}
+    min_score = min(c.total_score for c in scored)
+    shifted = {c.n: (c.total_score - min_score) + 0.01 for c in scored}
+    total = sum(shifted.values())
+    if total <= 0:
+        return {c.n: 1.0 / float(len(shifted)) for c in shifted}
+    return {n: v / total for n, v in shifted.items()}
+
+
+def _build_band_profile_from_scored(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: str,
+    scored: List[CandidateScore],
+    last_n: int,
+) -> Dict[Tuple[int, int, int, int], int]:
+    t = pd.Timestamp(target_date)
+    train = df[df["Date"] < t].sort_values("Date")
+    if last_n and last_n > 0:
+        train = train.tail(int(last_n))
+    rank_map = {c.n: i for i, c in enumerate(scored, 1)}
+    patterns: Dict[Tuple[int, int, int, int], int] = {}
+    for _, row in train.iterrows():
+        nums = [int(row[c]) for c in main_cols]
+        counts = {"B_LEADER": 0, "A_CORE": 0, "C_TAIL": 0, "OTHER": 0}
+        for n in nums:
+            rnk = rank_map.get(n, 999)
+            band = _band_of_rank(rnk)
+            counts[band] += 1
+        key = (counts["B_LEADER"], counts["A_CORE"], counts["C_TAIL"], counts["OTHER"])
+        patterns[key] = patterns.get(key, 0) + 1
+    return patterns
+
+
+def _band_profile_stats(patterns: Dict[Tuple[int, int, int, int], int]) -> Dict[str, float]:
+    total = sum(patterns.values()) if patterns else 0
+    if total <= 0:
+        return {"B_LEADER": 0.0, "A_CORE": 0.0, "C_TAIL": 0.0, "OTHER": 0.0}
+    sums = {"B_LEADER": 0.0, "A_CORE": 0.0, "C_TAIL": 0.0, "OTHER": 0.0}
+    for (b, a, c, o), cnt in patterns.items():
+        sums["B_LEADER"] += b * cnt
+        sums["A_CORE"] += a * cnt
+        sums["C_TAIL"] += c * cnt
+        sums["OTHER"] += o * cnt
+    for k in sums:
+        sums[k] /= float(total)
+    return sums
+
+
+
 def generate_tickets(
     scored: List[CandidateScore],
     df: pd.DataFrame,
@@ -1118,7 +1246,6 @@ def generate_tickets(
     seed_hot_overdue: bool = True,
     penalty_scale: float = None,
     pool_override: List[int] = None,
-    force_coverage: bool = False,
     fixed_seed: List[int] = None,
     overlap_cap_override: int = None,
     global_max_override: int = None,
@@ -1147,14 +1274,10 @@ def generate_tickets(
     else:
         weights = [1.0 for _ in pool]
 
-    # hot + overdue + seasonal + cold pools (for enforced mix)
+    # hot + overdue pools (for mix)
     hot_pool = [c.n for c in scored[:HOT_POOL_SIZE]]
-    season_sorted = sorted(scored, key=lambda x: (x.freq_season, x.total_score), reverse=True)
-    season_pool = [c.n for c in season_sorted[:SEASON_POOL_SIZE]]
     overdue_sorted = sorted(scored, key=lambda x: (x.gap_days, x.total_score), reverse=True)
     overdue_pool = [c.n for c in overdue_sorted[:OVERDUE_POOL_SIZE]]
-    cold_sorted = sorted(scored, key=lambda x: (x.freq_recent, x.total_score))
-    cold_pool_force = [c.n for c in cold_sorted[:COLD_POOL_SIZE]]
 
     pair_counts = _build_pair_counts(train, main_cols)
     pair_base = _percentile(list(pair_counts.values()), COHESION_PAIR_BASE_PCTL) if pair_counts else 0
@@ -1187,39 +1310,6 @@ def generate_tickets(
 
         if fixed_seed:
             seed = list(dict.fromkeys(fixed_seed))[:NUMBERS_PER_TICKET]
-            remaining_k = NUMBERS_PER_TICKET - len(seed)
-            remaining_items = [n for n in pool if n not in seed]
-            remaining_weights = [w for n, w in zip(pool, weights) if n not in seed]
-            if remaining_k > 0 and remaining_items:
-                rest = _weighted_sample_no_replace(remaining_items, remaining_weights, remaining_k, rng)
-            else:
-                rest = []
-            pick = sorted(seed + rest)
-        elif force_coverage:
-            seed = []
-            for pool_pick in (hot_pool, season_pool, overdue_pool, cold_pool_force):
-                if not pool_pick:
-                    continue
-                pick_n = rng.choice(pool_pick)
-                if pick_n not in seed:
-                    seed.append(pick_n)
-            # force additional cold numbers
-            if cold_pool_force and COLD_FORCE_COUNT > 1:
-                extras = [n for n in cold_pool_force if n not in seed]
-                rng.shuffle(extras)
-                for n in extras[: max(0, COLD_FORCE_COUNT - 1)]:
-                    if n not in seed:
-                        seed.append(n)
-            # fallback: if we overfilled, trim to size while keeping at least one cold
-            if len(seed) > NUMBERS_PER_TICKET:
-                cold_keep = None
-                for n in seed:
-                    if n in cold_pool_force:
-                        cold_keep = n
-                        break
-                if cold_keep is not None:
-                    seed = [cold_keep] + [n for n in seed if n != cold_keep]
-                seed = seed[:NUMBERS_PER_TICKET]
             remaining_k = NUMBERS_PER_TICKET - len(seed)
             remaining_items = [n for n in pool if n not in seed]
             remaining_weights = [w for n, w in zip(pool, weights) if n not in seed]
@@ -1357,7 +1447,25 @@ def _evaluate_strategy(
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]
         bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
+        if PRINT_BACKTEST_DETAIL:
+            bt_train = df[df["Date"] < d]
+            bt_profile = _shape_profile(bt_train, main_cols, SHAPE_REF_LAST_N)
+            bt_pair_counts = _build_pair_counts(bt_train, main_cols)
+            bt_pair_base = _percentile(list(bt_pair_counts.values()), COHESION_PAIR_BASE_PCTL) if bt_pair_counts else 0
+            bt_odd = sum(1 for n in bt_draw if n % 2 == 1)
+            bt_low = sum(1 for n in bt_draw if n <= LOW_RANGE_MAX)
+            bt_sum = sum(bt_draw)
+            bt_vec = _decade_vector(bt_draw)
+            bt_shape = _shape_score(bt_draw, bt_profile)
+            bt_pair = _pair_density(bt_draw, bt_pair_counts, bt_pair_base)
+            print(f"\nShape actual: odd={bt_odd} low={bt_low} sum={bt_sum} decades={bt_vec} shape_score={bt_shape:.3f} pair_score={bt_pair:.3f}")
+        bt_scored = score_numbers(df, main_cols, bt_date, False)
+        if PRINT_BACKTEST_DETAIL:
+            prob_map = _prob_map_from_scored(bt_scored)
+            avg_prob_actual = sum(prob_map.get(n, 0.0) for n in bt_draw) / float(len(bt_draw))
+            pool_nums, _ = _build_sampling_pool(bt_scored, include_cold=True)
+            in_pool = sum(1 for n in bt_draw if n in set(pool_nums))
+            print(f"Actual avg_prob={avg_prob_actual:.4f} | actual_in_pool={in_pool}/{len(bt_draw)}")
         bt_tickets = generate_tickets(
             bt_scored,
             df,
@@ -1365,7 +1473,6 @@ def _evaluate_strategy(
             bt_date,
             use_weights=True,
             seed_hot_overdue=False,
-            force_coverage=FORCE_COVERAGE,
             cohesion_config=cohesion_config,
         )
         summary = _hit_summary(bt_draw, bt_tickets)
@@ -1469,6 +1576,7 @@ def _generate_candidate_pool(
         seen.add(key)
         candidates.append(pick)
     return candidates
+
 
 
 def _swap_variants(
@@ -1646,28 +1754,34 @@ if __name__ == "__main__":
         row = df_target.iloc[0]
         real_draw = [int(row[c]) for c in main_cols]
     else:
-        real_draw = REAL_DRAW if (USE_REAL_DRAW_FALLBACK and REAL_DRAW) else []
-        if real_draw:
-            print("TARGET_DATE not found in CSV; using REAL_DRAW override.")
-        else:
-            print("TARGET_DATE not found in CSV; generating prediction without hit summary.")
+        real_draw = []
+        print("TARGET_DATE not found in CSV; generating prediction without hit summary.")
 
-    scored = score_numbers(df, main_cols, run_date, DEBUG_PRINT)
+    scored = score_numbers(df, main_cols, run_date, False)
+    scored_main_target = compute_candidate_score_main(df, main_cols, run_date)
+    _print_candidate_score_main(scored_main_target, f"TARGET {run_date}", None)
 
     strategies = _strategy_configs()
     main_cfg = next((s["cohesion"] for s in strategies if s["name"] == DEFAULT_STRATEGY_NAME), None)
     if main_cfg is None:
         raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
 
-    if PORTFOLIO_MODE:
-        tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
-    else:
-        tickets = generate_tickets(scored, df, main_cols, run_date,
-                                   use_weights=True, seed_hot_overdue=False,
-                                   force_coverage=FORCE_COVERAGE,
-                                   cohesion_config=main_cfg)
+    band_patterns = _build_band_profile_from_scored(df, main_cols, run_date, scored, BAND_PROFILE_LAST_N)
+    band_profile_stats = _band_profile_stats(band_patterns)
+    if band_patterns:
+        top_patterns = sorted(band_patterns.items(), key=lambda x: x[1], reverse=True)[:5]
+        print("\n=== BAND PROFILE (HISTORY-BASED, FROM SCORED RANKS) ===")
+        print(f"Window: last {BAND_PROFILE_LAST_N} draws | Patterns: {len(band_patterns)}")
+        print("Top patterns (B_LEADER, A_CORE, C_TAIL, OTHER) -> count")
+        for p, cnt in top_patterns:
+            print(f"{p} -> {cnt}")
+        print(f"Avg band counts: {band_profile_stats}")
 
-    mode_label = "HARD_FORCE" if FORCE_COVERAGE else "WEIGHTED"
+    tickets = generate_tickets(scored, df, main_cols, run_date,
+                               use_weights=True, seed_hot_overdue=False,
+                               cohesion_config=main_cfg)
+
+    mode_label = "WEIGHTED"
     print(f"\n=== {mode_label} STRATEGY ===")
     print(f"Target: {run_date}")
     print(f"Tickets: {NUM_TICKETS} | Pool size: {POOL_SIZE} + mid {MID_POOL_SIZE} + cold {COLD_POOL_SIZE}")
@@ -1700,17 +1814,31 @@ if __name__ == "__main__":
         bt_date = d.strftime("%Y-%m-%d")
         row = df[df["Date"] == d].iloc[0]
         bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
-        if PORTFOLIO_MODE:
-            bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
-        else:
-            bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
-                                          use_weights=True, seed_hot_overdue=False,
-                                          force_coverage=FORCE_COVERAGE, cohesion_config=main_cfg)
+        bt_scored = score_numbers(df, main_cols, bt_date, False)
+        bt_scored_main = compute_candidate_score_main(df, main_cols, bt_date)
+        _print_candidate_score_main(bt_scored_main, f"BACKTEST {bt_date} WINNERS ONLY", bt_draw)
+
+        bt_patterns = _build_band_profile_from_scored(df, main_cols, bt_date, bt_scored, BAND_PROFILE_LAST_N)
+        bt_band_stats = _band_profile_stats(bt_patterns)
+        if bt_patterns:
+            top_patterns = sorted(bt_patterns.items(), key=lambda x: x[1], reverse=True)[:3]
+            print("\nBand profile (backtest window) top patterns:")
+            for p, cnt in top_patterns:
+                print(f"{p} -> {cnt}")
+            print(f"Avg band counts: {bt_band_stats}")
+
+        bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
+                                      use_weights=True, seed_hot_overdue=False,
+                                      cohesion_config=main_cfg)
         print(f"\nTarget: {bt_date}")
         for i, t in enumerate(bt_tickets, 1):
             vec = _decade_vector(t)
             print(f"Ticket #{i:02d}: {t}  decades={vec}")
+        bt_rank_map = {c.n: i for i, c in enumerate(bt_scored, 1)}
+        bt_counts = {"B_LEADER": 0, "A_CORE": 0, "C_TAIL": 0, "OTHER": 0}
+        for n in bt_draw:
+            bt_counts[_band_of_rank(bt_rank_map.get(n, 999))] += 1
+        print(f"Actual draw band counts: {bt_counts}")
         show_ticket_hits(bt_draw, bt_tickets)
         best = 0
         for t in bt_tickets:
