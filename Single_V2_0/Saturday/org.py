@@ -23,7 +23,7 @@ class Tee:
 
 log_file_path = os.path.join(
     ".",
-    "Siko_Sat_org.log"   # single growing log file
+    "org.log"   # single growing log file
 )
 
 log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
@@ -73,7 +73,7 @@ COLD_FORCE_COUNT = 2
 
 # Hard-force coverage mix
 FORCE_COVERAGE = False
-RANDOM_SEED = 57
+RANDOM_SEED = 0
 DEBUG_PRINT = True
 
 # Score weights (date-agnostic)
