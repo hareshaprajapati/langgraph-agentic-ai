@@ -1690,6 +1690,7 @@ if __name__ == "__main__":
     band_stats = []
 
     print(f"\n=== BACKTEST (LAST {N} DRAWS) ===")
+    bt_weeks_lt3 = 0
     bt_weeks_ge3 = 0
     bt_weeks_ge4 = 0
     bt_weeks_ge5 = 0
@@ -1716,6 +1717,8 @@ if __name__ == "__main__":
             h = len(set(t).intersection(set(bt_draw)))
             if h > best:
                 best = h
+        if best < 3:
+            bt_weeks_lt3 += 1
         if best >= 3:
             bt_weeks_ge3 += 1
         if best >= 4:
@@ -1739,7 +1742,8 @@ if __name__ == "__main__":
     print_date_by_date_band_counts_ascending(band_stats)
     print_band_summary_at_end(band_stats)
 
-    print("\n=== BACKTEST SUMMARY (LAST 20 DRAWS) ===")
+    print(f"\n=== BACKTEST SUMMARY (LAST {N} DRAWS) ===")
+    print(f"Weeks with <3 hits: {bt_weeks_lt3}")
     print(f"Weeks with 3+ hits: {bt_weeks_ge3}")
     print(f"Weeks with 4+ hits: {bt_weeks_ge4}")
     print(f"Weeks with 5+ hits: {bt_weeks_ge5}")
