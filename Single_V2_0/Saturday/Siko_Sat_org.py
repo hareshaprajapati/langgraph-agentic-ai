@@ -43,8 +43,11 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-1-24"
-REAL_DRAW_TARGET = [8, 22, 24, 28, 29, 33]
+TARGET_DATE = "2026-2-07"
+REAL_DRAW_TARGET = None
+
+# TARGET_DATE = "2026-1-31"
+# REAL_DRAW_TARGET = [9, 20, 33, 34, 42, 45]
 
 # Backtest: run on the last 5 available draws in the CSV.
 N = 20
