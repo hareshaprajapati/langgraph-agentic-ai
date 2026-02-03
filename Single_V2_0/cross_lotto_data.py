@@ -160,9 +160,11 @@ def main():
 
     # Map date -> set_for_life string
     set_for_life_by_date = {}
+    set_for_life_only_by_date = {}
 
     # Map date -> list of other draw strings (we'll join with " | ")
     others_by_date = defaultdict(list)
+    others_only_by_date = defaultdict(list)
 
     # 1) Set for Life (daily)
     # sfl = scrape_past_results(PAGES["set_for_life"])
@@ -182,10 +184,9 @@ def main():
             seen.add(k)
 
             if within_range(dt, start, end):
-                if supp_nums:
-                    others_by_date[dt.date()].append(f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]")
-                else:
-                    others_by_date[dt.date()].append(f"{normalize_nums(main_nums)}")
+                sfl_val = f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]" if supp_nums else f"{normalize_nums(main_nums)}"
+                set_for_life_by_date[dt.date()] = sfl_val
+                set_for_life_only_by_date[dt.date()] = sfl_val
 
 
 
@@ -204,9 +205,12 @@ def main():
 
                 if within_range(dt, start, end):
                     if supp_nums:
+                        others_only_by_date[dt.date()].append(
+                            f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]")
                         others_by_date[dt.date()].append(
                             f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]")
                     else:
+                        others_only_by_date[dt.date()].append(f"{normalize_nums(main_nums)}")
                         others_by_date[dt.date()].append(f"{normalize_nums(main_nums)}")
 
     # 3) Build full date series (daily)
@@ -230,6 +234,32 @@ def main():
 
         print(f"{date_label},{q(sfl_str)},{q(oth_str)}")
         cur -= timedelta(days=1)
+
+    # Additional CSVs (do not alter existing output)
+    sfl_path = os.path.join(".", "cross_lotto_data_set_for_life.csv")
+    others_path = os.path.join(".", "cross_lotto_data_others.csv")
+
+    def _q_csv(s: str) -> str:
+        if "," in s or "|" in s or "+" in s:
+            return f"\"{s}\""
+        return s
+
+    cur = end.date()
+    with open(sfl_path, "w", buffering=1, encoding="utf-8") as f_sfl, \
+         open(others_path, "w", buffering=1, encoding="utf-8") as f_oth:
+        f_sfl.write("Date,Set for Life (incl supp)\n")
+        f_oth.write("Date,Others (incl supp)\n")
+
+        while cur >= start_date:
+            dt = datetime.combine(cur, datetime.min.time())
+            date_label = fmt_date_day(dt)
+
+            sfl_only = set_for_life_only_by_date.get(cur, "")
+            oth_only = " | ".join(others_only_by_date.get(cur, []))
+
+            f_sfl.write(f"{date_label},{_q_csv(sfl_only)}\n")
+            f_oth.write(f"{date_label},{_q_csv(oth_only)}\n")
+            cur -= timedelta(days=1)
 
 
 if __name__ == "__main__":
