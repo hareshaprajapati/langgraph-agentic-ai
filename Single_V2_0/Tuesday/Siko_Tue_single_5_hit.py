@@ -46,10 +46,10 @@ import contextlib
 # ============================================================
 
 CSV_PATH = "Oz_Lotto_transformed.csv"
-TARGET_DATE = "2026-01-27"
+TARGET_DATE = "2026-02-03"
 # TARGET_DATE = "2026-1-3"
 # Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [1,15,17,22,23,28,41]
+REAL_DRAW = [4, 10, 19, 27, 29, 41, 46]
 # REAL_DRAW = None
 # If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
 USE_REAL_DRAW_FALLBACK = False

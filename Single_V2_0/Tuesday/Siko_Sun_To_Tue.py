@@ -38,12 +38,12 @@ from collections import defaultdict
 # =========================
 # CONSTANTS (EDIT ONLY HERE)
 # =========================
-CSV_PATH = "cross_lotto_data.csv"
+CSV_PATH = "../cross_lotto_data.csv"
 
-TARGET_DATE = dt.date(2026, 1, 27)   # <-- change as needed (Tuesday)
+TARGET_DATE = dt.date(2026, 2, 3)   # <-- change as needed (Tuesday)
 N_TICKETS = 20
 
-SUNDAY_ANCHOR_OVERRIDE = [1, 9, 17, 18, 23, 40, 42]  # set [] to force CSV lookup
+SUNDAY_ANCHOR_OVERRIDE = [2, 8, 9, 13, 14, 28, 43]  # set [] to force CSV lookup
 
 BALL_MAX = 47
 BALL_COUNT = 7
