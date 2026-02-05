@@ -2,32 +2,6 @@ import sys
 import os
 from datetime import datetime
 
-class Tee:
-    def __init__(self, *files):
-        self.files = files
-
-    def write(self, obj):
-        for f in self.files:
-            f.write(obj)
-            f.flush()
-
-    def flush(self):
-        for f in self.files:
-            f.flush()
-
-# LOG_DIR = ""
-# os.makedirs(LOG_DIR, exist_ok=True)
-
-log_file_path = os.path.join(
-    ".",
-    f"cross_lotto_data.csv"   # single growing log file
-)
-
-log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
-
-sys.stdout = Tee(sys.stdout, log_file)
-sys.stderr = Tee(sys.stderr, log_file)
-
 import re
 import sys
 from datetime import datetime, timedelta
@@ -152,11 +126,72 @@ def archive_urls_for_range(past_url: str, start: datetime, end: datetime) -> lis
     years = range(start.year, end.year + 1)
     return [f"{base}/{y}-archive" for y in years]
 
+def parse_date_label(s: str) -> datetime:
+    return datetime.strptime(s.strip(), "%a %d-%b-%Y")
+
+def read_existing_csv(path: str) -> tuple[str | None, list[str], datetime | None]:
+    if not os.path.exists(path):
+        return None, [], None
+
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [ln.rstrip("\n") for ln in f]
+
+    if not lines:
+        return None, [], None
+
+    header = lines[0]
+    data_lines = [ln for ln in lines[1:] if ln.strip()]
+
+    latest_date = None
+    for ln in data_lines:
+        date_str = ln.split(",", 1)[0].strip()
+        try:
+            latest_date = parse_date_label(date_str)
+            break
+        except Exception:
+            continue
+
+    return header, data_lines, latest_date
+
+def write_csv(path: str, header: str, new_lines: list[str], existing_lines: list[str]):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(header + "\n")
+        for ln in new_lines:
+            f.write(ln + "\n")
+        for ln in existing_lines:
+            f.write(ln + "\n")
+
 
 # ---------- MAIN ----------
 def main():
     end = datetime.now()
-    start = end - timedelta(days=DAYS_BACK)
+    default_start = end - timedelta(days=DAYS_BACK)
+
+    main_path = os.path.join(".", "cross_lotto_data.csv")
+    sfl_path = os.path.join(".", "cross_lotto_data_set_for_life.csv")
+    others_path = os.path.join(".", "cross_lotto_data_others.csv")
+
+    main_header_default = "Date,Set for Life (incl supp),Others (incl supp)"
+    sfl_header_default = "Date,Set for Life (incl supp)"
+    others_header_default = "Date,Others (incl supp)"
+
+    main_header, main_existing, main_latest = read_existing_csv(main_path)
+    sfl_header, sfl_existing, sfl_latest = read_existing_csv(sfl_path)
+    others_header, others_existing, others_latest = read_existing_csv(others_path)
+
+    main_header = main_header or main_header_default
+    sfl_header = sfl_header or sfl_header_default
+    others_header = others_header or others_header_default
+
+    main_start = (main_latest + timedelta(days=1)) if main_latest else default_start
+    sfl_start = (sfl_latest + timedelta(days=1)) if sfl_latest else default_start
+    others_start = (others_latest + timedelta(days=1)) if others_latest else default_start
+
+    global_start = min(main_start, sfl_start, others_start)
+
+    if global_start.date() > end.date():
+        print("No new dates to fetch.")
+        return
 
     # Map date -> set_for_life string
     set_for_life_by_date = {}
@@ -172,7 +207,7 @@ def main():
     #     if within_range(dt, start, end):
     #         set_for_life_by_date[dt.date()] = f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]"
     #
-    urls = [PAGES["set_for_life"]] + archive_urls_for_range(PAGES["set_for_life"], start, end)
+    urls = [PAGES["set_for_life"]] + archive_urls_for_range(PAGES["set_for_life"], global_start, end)
 
     seen = set()  # (date, main_tuple, supp_tuple)
     for url in urls:
@@ -183,7 +218,7 @@ def main():
                 continue
             seen.add(k)
 
-            if within_range(dt, start, end):
+            if within_range(dt, global_start, end):
                 sfl_val = f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]" if supp_nums else f"{normalize_nums(main_nums)}"
                 set_for_life_by_date[dt.date()] = sfl_val
                 set_for_life_only_by_date[dt.date()] = sfl_val
@@ -192,7 +227,7 @@ def main():
 
     # 2) Others
     for key in ["weekday_windfall", "oz_lotto", "powerball", "saturday_lotto"]:
-        urls = [PAGES[key]] + archive_urls_for_range(PAGES[key], start, end)
+        urls = [PAGES[key]] + archive_urls_for_range(PAGES[key], global_start, end)
 
         seen = set()  # (date, main_tuple, supp_tuple)
         for url in urls:
@@ -203,7 +238,7 @@ def main():
                     continue
                 seen.add(k)
 
-                if within_range(dt, start, end):
+                if within_range(dt, global_start, end):
                     if supp_nums:
                         others_only_by_date[dt.date()].append(
                             f"[{normalize_nums(main_nums)}], [{normalize_nums(supp_nums)}]")
@@ -213,53 +248,65 @@ def main():
                         others_only_by_date[dt.date()].append(f"{normalize_nums(main_nums)}")
                         others_by_date[dt.date()].append(f"{normalize_nums(main_nums)}")
 
-    # 3) Build full date series (daily)
-    cur = end.date()
-    start_date = start.date()
-
-    # CSV header
-    print("Date,Set for Life (incl supp),Others (incl supp)")
-    while cur >= start_date:
-        dt = datetime.combine(cur, datetime.min.time())
-        date_label = fmt_date_day(dt)
-
-        sfl_str = set_for_life_by_date.get(cur, "")
-        oth_list = others_by_date.get(cur, [])
-        oth_str = " | ".join(oth_list)
-
-        def q(s):
-            if "," in s or "|" in s or "+" in s:
-                return f"\"{s}\""
-            return s
-
-        print(f"{date_label},{q(sfl_str)},{q(oth_str)}")
-        cur -= timedelta(days=1)
-
-    # Additional CSVs (do not alter existing output)
-    sfl_path = os.path.join(".", "cross_lotto_data_set_for_life.csv")
-    others_path = os.path.join(".", "cross_lotto_data_others.csv")
-
     def _q_csv(s: str) -> str:
         if "," in s or "|" in s or "+" in s:
             return f"\"{s}\""
         return s
 
-    cur = end.date()
-    with open(sfl_path, "w", buffering=1, encoding="utf-8") as f_sfl, \
-         open(others_path, "w", buffering=1, encoding="utf-8") as f_oth:
-        f_sfl.write("Date,Set for Life (incl supp)\n")
-        f_oth.write("Date,Others (incl supp)\n")
+    def _build_new_lines(start_dt: datetime, include_sfl: bool, include_others: bool) -> list[str]:
+        lines = []
+        cur = end.date()
+        start_date = start_dt.date()
+        if start_date > cur:
+            return lines
 
         while cur >= start_date:
             dt = datetime.combine(cur, datetime.min.time())
             date_label = fmt_date_day(dt)
 
-            sfl_only = set_for_life_only_by_date.get(cur, "")
-            oth_only = " | ".join(others_only_by_date.get(cur, []))
+            sfl_str = set_for_life_by_date.get(cur, "")
+            oth_list = others_by_date.get(cur, [])
+            oth_str = " | ".join(oth_list)
 
-            f_sfl.write(f"{date_label},{_q_csv(sfl_only)}\n")
-            f_oth.write(f"{date_label},{_q_csv(oth_only)}\n")
+            parts = [date_label]
+            if include_sfl:
+                parts.append(_q_csv(sfl_str))
+            if include_others:
+                parts.append(_q_csv(oth_str))
+
+            lines.append(",".join(parts))
             cur -= timedelta(days=1)
+
+        return lines
+
+    def _build_new_lines_only(start_dt: datetime, which: str) -> list[str]:
+        lines = []
+        cur = end.date()
+        start_date = start_dt.date()
+        if start_date > cur:
+            return lines
+
+        while cur >= start_date:
+            dt = datetime.combine(cur, datetime.min.time())
+            date_label = fmt_date_day(dt)
+
+            if which == "sfl":
+                val = set_for_life_only_by_date.get(cur, "")
+            else:
+                val = " | ".join(others_only_by_date.get(cur, []))
+
+            lines.append(f"{date_label},{_q_csv(val)}")
+            cur -= timedelta(days=1)
+
+        return lines
+
+    main_new = _build_new_lines(main_start, include_sfl=True, include_others=True)
+    sfl_new = _build_new_lines_only(sfl_start, "sfl")
+    others_new = _build_new_lines_only(others_start, "others")
+
+    write_csv(main_path, main_header, main_new, main_existing)
+    write_csv(sfl_path, sfl_header, sfl_new, sfl_existing)
+    write_csv(others_path, others_header, others_new, others_existing)
 
 
 if __name__ == "__main__":
