@@ -139,7 +139,11 @@ if __name__ == "__main__":
         # for lot, dt in core.TARGET_DRAWS_FOR_LEARNING:
         #     print(" ", lot, dt)
 
-        run_data = core.main()
+        try:
+            run_data = core.main()
+        except RuntimeError as e:
+            print(f"[WARN] {e} for date {target_date} â€” skipping run.")
+            continue
         if run_data and run_data.get("prediction_actual") is not None:
             core.LOCKED_REGIME_SNAPSHOT_CACHE[target_date] = run_data["prediction_actual"]
         if run_data and run_data.get("prediction_actual") is None:
