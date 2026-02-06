@@ -1698,6 +1698,10 @@ if __name__ == "__main__":
     bt_weeks_ge4 = 0
     bt_weeks_ge5 = 0
     bt_weeks_ge6 = 0
+    bt_ticket_hit3 = 0
+    bt_ticket_hit4 = 0
+    bt_ticket_hit5 = 0
+    bt_ticket_hit6p = 0
     bt_best_hit = 0
     for d in bt_dates:
         bt_date = d.strftime("%Y-%m-%d")
@@ -1720,6 +1724,14 @@ if __name__ == "__main__":
             h = len(set(t).intersection(set(bt_draw)))
             if h > best:
                 best = h
+            if h == 3:
+                bt_ticket_hit3 += 1
+            if h == 4:
+                bt_ticket_hit4 += 1
+            if h == 5:
+                bt_ticket_hit5 += 1
+            if h >= 6:
+                bt_ticket_hit6p += 1
         if best < 3:
             bt_weeks_lt3 += 1
         if best >= 3:
@@ -1752,3 +1764,8 @@ if __name__ == "__main__":
     print(f"Weeks with 5+ hits: {bt_weeks_ge5}")
     print(f"Weeks with 6+ hits: {bt_weeks_ge6}")
     print(f"Max hit observed : {bt_best_hit}")
+    print(f"Total tickets (hits=3): {bt_ticket_hit3}")
+    print(f"Total tickets (hits=4): {bt_ticket_hit4}")
+    print(f"Total tickets (hits=5): {bt_ticket_hit5}")
+    print(f"Total tickets (hits>=6): {bt_ticket_hit6p}")
+    print(f"Total tickets (hits>=3): {bt_ticket_hit3 + bt_ticket_hit4 + bt_ticket_hit5 + bt_ticket_hit6p}")

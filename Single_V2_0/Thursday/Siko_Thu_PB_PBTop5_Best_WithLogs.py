@@ -45,13 +45,15 @@ from collections import Counter
 # =========================
 CSV_PATH = "../cross_lotto_data.csv"
 
-TOP_K = 10                # <<< THIS IS THE ONLY THING YOU CHANGE
+TOP_K = 10                # <<< T
+
+# HIS IS THE ONLY THING YOU CHANGE
 WED_WEEKS = 10           # Wed anchors (weekly inertia)
 THU_HIST_WEEKS = 4       # recent Thursday memory
 GLOBAL_THU_PRIOR_WEEKS = 104   # ~2 years
 W_GLOBAL = 0.0           # light prior weight
 DIVERSIFY_BANDS = True  # spread across PB bands
-TARGET_DATE = "2026-01-29"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
+TARGET_DATE = "2026-02-05"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
 TOP2_MODE = "diff_band"  # "overall" or "diff_band"
 RECENCY_PENALTY = 0.75    # subtract from score if seen recently (0 disables)
 RECENCY_WEEKS = 4         # how many recent Thu weeks to penalize

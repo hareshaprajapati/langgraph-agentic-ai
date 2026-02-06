@@ -12,6 +12,10 @@ import math
 import random
 import datetime
 import itertools
+import os
+import csv
+import ast
+import re
 from collections import Counter, defaultdict
 from statistics import mean, median
 
@@ -3068,6 +3072,7 @@ def build_locked_tickets(
         tickets = _dedup_tickets(tickets + top_p_tickets)
 
     tickets.sort(key=lambda t: (t["P_total"], t["sum_log_score"], t["product_P"]), reverse=True)
+    tickets_ranked = list(tickets)
     if not tickets:
         return {
             "tickets": [],
@@ -3116,6 +3121,17 @@ def build_locked_tickets(
                 if max_tickets_to_print and len(diversified) >= max_tickets_to_print:
                     break
         tickets = diversified if diversified else tickets
+
+        if max_tickets_to_print and len(tickets) < max_tickets_to_print:
+            existing = set((t["leader"], tuple(sorted(t["cohort"]))) for t in tickets)
+            for t in tickets_ranked:
+                key = (t["leader"], tuple(sorted(t["cohort"])))
+                if key in existing:
+                    continue
+                tickets.append(t)
+                existing.add(key)
+                if len(tickets) >= max_tickets_to_print:
+                    break
 
     if max_tickets_to_print:
         tickets = tickets[:max_tickets_to_print]
@@ -3545,167 +3561,68 @@ def add_draw(date, lottery, main, supp=None, powerball=None):
     global_draws.append(Draw(date, lottery, main, supp, powerball))
 
 def addDraws():
-    # Set for Life
-    def setForLife():
-        add_draw(d(5, 1,2026), "Set for Life", [4,5,13,22,36,37,41], [1,6])
-        add_draw(d(5, 1,2026), "Set for Life", [3,5,15,17,30,33,40], [11,43])
-        add_draw(d(5, 1,2026), "Set for Life", [1,3,8,15,27,41,42], [7,34])
-        add_draw(d(5, 1,2026), "Set for Life", [20,23,26,27,30,34,41], [21,29])
-        add_draw(d(5, 1,2026), "Set for Life", [13,17,22,23,27,31,42], [20,32])
-        add_draw(d(5, 1,2026), "Set for Life", [1,2,17,20,28,32,37], [6,38])
-        add_draw(d(5, 1,2026), "Set for Life", [1,10,11,16,33,36,44], [8,32])
-        add_draw(d(5, 1,2026), "Set for Life", [9,11,16,17,18,21,32], [4,13])
-        add_draw(d(5, 1,2026), "Set for Life", [22,24,31,34,35,36,37], [28,42])
-        add_draw(d(5, 1,2026), "Set for Life", [40, 34, 9, 44, 41, 29, 36], [16, 7])
-        add_draw(d(4, 1,2026), "Set for Life", [3, 39, 31, 1, 11, 42, 25], [44, 40])
-        add_draw(d(3, 1,2026), "Set for Life", [9, 29, 3, 38, 22, 4, 1], [11,6])
-        add_draw(d(2, 1,2026), "Set for Life", [15, 31, 11, 6, 27, 22, 18], [4, 23])
-        add_draw(d(1, 1, 2026), "Set for Life", [33, 42, 12, 1, 43, 32, 44], [22, 20])
-        add_draw(d(31, 12), "Set for Life", [41, 42, 29, 40, 44, 39, 10], [11, 37])
-        add_draw(d(30, 12), "Set for Life", [13, 42, 7, 38, 25, 33, 34], [24, 22])
-        add_draw(d(29, 12), "Set for Life", [23, 13, 12, 6, 38, 9, 7], [27, 33])
-        add_draw(d(28, 12), "Set for Life", [16, 30, 25, 6, 13, 20, 15], [5, 28])
-        add_draw(d(27, 12), "Set for Life", [8, 44, 41, 36, 27, 10, 3], [2, 28])
-        add_draw(d(26, 12), "Set for Life", [6, 41, 3, 9, 13, 11, 15], [36, 30])
-        add_draw(d(25, 12), "Set for Life", [26, 18, 16, 23, 30, 21, 4], [29, 17])
-        add_draw(d(24, 12), "Set for Life", [1, 26, 20, 9, 22, 24, 3], [37, 23])
-        add_draw(d(23, 12), "Set for Life", [29, 35, 44, 5, 30, 19, 13], [28, 6])
-        add_draw(d(22, 12), "Set for Life", [44, 7, 11, 38, 1, 8, 4], [15, 31])
-        add_draw(d(21, 12), "Set for Life", [34, 23, 39, 20, 6, 18, 5], [40, 37])
-        add_draw(d(20, 12), "Set for Life", [23, 6, 29, 39, 14, 20, 28], [41, 12])
-        add_draw(d(19, 12), "Set for Life", [29, 21, 2, 32, 37, 20, 36], [17, 19])
-        add_draw(d(18, 12), "Set for Life", [14, 13, 27, 37, 30, 36, 42], [35, 15])
-        add_draw(d(17, 12), "Set for Life", [27, 34, 26, 23, 1, 13, 7], [9, 12])
-        add_draw(d(16, 12), "Set for Life", [8, 27, 34, 2, 38, 29, 1], [5, 31])
-        add_draw(d(15, 12), "Set for Life", [21, 22, 43, 16, 17, 31, 25], [3, 30])
-        add_draw(d(14, 12), "Set for Life", [40, 28, 30, 17, 7, 4, 24], [41, 44])
-        add_draw(d(13, 12), "Set for Life", [27, 33, 31, 20, 30, 4, 41], [12, 7])
-        add_draw(d(12, 12), "Set for Life", [22, 2, 36, 29, 10, 23, 13], [15, 27])
-        add_draw(d(11, 12), "Set for Life", [27, 12, 16, 3, 30, 8, 29], [41, 31])
-        add_draw(d(10, 12), "Set for Life", [1, 36, 40, 28, 37, 10, 3], [12, 19])
-        add_draw(d(9, 12), "Set for Life", [12, 20, 16, 38, 26, 13, 39], [22, 40])
-        add_draw(d(8, 12), "Set for Life", [39, 4, 42, 11, 16, 43, 37], [21, 32])
-        add_draw(d(7, 12), "Set for Life", [4, 34, 30, 21, 23, 35, 15], [22, 18])
-        add_draw(d(6, 12), "Set for Life", [42, 15, 24, 31, 5, 40, 39], [19, 1])
-        add_draw(d(5, 12), "Set for Life", [5, 25, 21, 17, 31, 1, 15], [24, 22])
-        add_draw(d(4, 12), "Set for Life", [35, 2, 25, 8, 6, 17, 28], [3, 31])
-        add_draw(d(3, 12), "Set for Life", [22, 29, 44, 31, 10, 25, 30], [8, 14])
-        add_draw(d(2, 12), "Set for Life", [37, 13, 15, 19, 25, 39, 26], [3, 5])
-        add_draw(d(1, 12), "Set for Life", [18, 1, 10, 41, 24, 11, 3], [25, 2])
-        add_draw(d(30, 11), "Set for Life", [7, 44, 18, 27, 32, 22, 11], [38, 9])
-        add_draw(d(29, 11), "Set for Life", [8, 31, 4, 6, 42, 16, 14], [13, 19])
-        add_draw(d(28, 11), "Set for Life", [15, 27, 8, 39, 5, 43, 20], [19, 29])
-        add_draw(d(27, 11), "Set for Life", [12, 36, 6, 7, 37, 41, 29], [8, 43])
-        add_draw(d(26, 11), "Set for Life", [29, 37, 34, 14, 5, 21, 20], [18, 19])
-        add_draw(d(25, 11), "Set for Life", [26, 16, 23, 15, 31, 1, 27], [8, 41])
-        add_draw(d(24, 11), "Set for Life", [41, 1, 17, 29, 14, 40, 22], [35, 31])
-        add_draw(d(23, 11), "Set for Life", [25, 27, 42, 18, 26, 9, 33], [22, 19])
-        add_draw(d(22, 11), "Set for Life", [24, 23, 31, 30, 26, 5, 17], [6, 27])
-        add_draw(d(21, 11), "Set for Life", [27, 32, 10, 42, 38, 33, 17], [19, 39])
-        add_draw(d(20, 11), "Set for Life", [28, 10, 11, 35, 34, 41, 23], [30, 26])
-        add_draw(d(19, 11), "Set for Life", [4, 44, 5, 33, 21, 30, 39], [9, 18])
-        add_draw(d(18, 11), "Set for Life", [33, 35, 44, 32, 20, 29, 39], [5, 41])
-        add_draw(d(17, 11), "Set for Life", [15, 23, 40, 43, 28, 1, 37], [18, 34])
-        add_draw(d(16, 11), "Set for Life", [8, 19, 21, 27, 40, 14, 7], [20, 44])
-        add_draw(d(15, 11), "Set for Life", [13, 4, 27, 14, 2, 5, 42], [33, 39])
-        add_draw(d(14, 11), "Set for Life", [7, 25, 23, 35, 13, 18, 6], [3, 39])
-        add_draw(d(13, 11), "Set for Life", [25, 24, 3, 21, 5, 33, 36], [22, 11])
-        add_draw(d(12, 11), "Set for Life", [15, 20, 29, 21, 5, 10, 6], [32, 17])
-        add_draw(d(11, 11), "Set for Life", [4, 7, 10, 44, 32, 30, 26], [5, 18])
-        add_draw(d(10, 11), "Set for Life", [5, 36, 13, 23, 39, 3, 9], [35, 6])
-        add_draw(d(9, 11), "Set for Life", [11, 4, 44, 26, 6, 31, 40], [21, 33])
-        add_draw(d(8, 11), "Set for Life", [7, 31, 5, 37, 43, 38, 2], [42, 10])
-        add_draw(d(7, 11), "Set for Life", [30, 18, 6, 28, 33, 41, 14], [38, 29])
-        add_draw(d(6, 11), "Set for Life", [12, 20, 35, 42, 41, 10, 18], [33, 32])
-        add_draw(d(5, 11), "Set for Life", [16, 22, 13, 34, 25, 3, 18], [33, 43])
-        add_draw(d(4, 11), "Set for Life", [38, 9, 27, 25, 10, 23, 37], [13, 17])
-        add_draw(d(3, 11), "Set for Life", [8, 15, 25, 26, 13, 24, 23], [4, 2])
-        add_draw(d(2, 11), "Set for Life", [6, 28, 26, 24, 13, 11, 19], [22, 12])
-        add_draw(d(1, 11), "Set for Life", [8, 31, 42, 24, 15, 7, 4], [19, 18])
+    # Prefer loading draws from shared CSV to avoid manual updates.
+    def _parse_list_cells(cell_text):
+        if cell_text is None:
+            return []
+        text = str(cell_text).strip()
+        if not text:
+            return []
+        lists = []
+        for token in re.findall(r"\[[^\]]*\]", text):
+            try:
+                lists.append(ast.literal_eval(token))
+            except Exception:
+                continue
+        return lists
 
-    setForLife()
+    def _load_draws_from_csv(csv_path):
+        with open(csv_path, "r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                date_text = (row.get("Date") or "").strip()
+                if not date_text:
+                    continue
+                dt = datetime.datetime.strptime(date_text, "%a %d-%b-%Y").date()
 
-    # Weekday Windfall
-    def weekdayWindfall():
-        add_draw(d(14, 1, 2026),"Weekday Windfall", [2,11,15,35,36,43], [31,44])
-        add_draw(d(12, 1, 2026),"Weekday Windfall", [10,15,16,23,29,42], [4,43])
-        add_draw(d(9, 1, 2026),"Weekday Windfall", [4,5,9,15,29,36], [17,19])
-        add_draw(d(7, 1, 2026),"Weekday Windfall", [1,13,18,26,28,30], [2,44])
-        add_draw(d(5, 1, 2026),"Weekday Windfall", [25, 41, 38, 29, 22, 6], [5, 30])
-        add_draw(d(2, 1, 2026),"Weekday Windfall", [8, 23, 36, 15, 39, 31], [21, 5])
-        add_draw(d(31, 12), "Weekday Windfall", [2, 40, 22, 42, 9, 6], [28, 27])
-        add_draw(d(29, 12), "Weekday Windfall", [38, 7, 6, 30, 42, 27], [19, 34])
-        add_draw(d(26, 12), "Weekday Windfall", [36, 7, 44, 33, 13, 19], [39, 1])
-        add_draw(d(24, 12), "Weekday Windfall", [36, 39, 11, 19, 28, 41], [45, 44])
-        add_draw(d(22, 12), "Weekday Windfall", [22, 5, 37, 40, 20, 14], [8, 28])
-        add_draw(d(19, 12), "Weekday Windfall", [17, 3, 25, 5, 38, 2], [9, 7])
-        add_draw(d(17, 12), "Weekday Windfall", [36, 14, 7, 17, 45, 29], [12, 32])
-        add_draw(d(15, 12), "Weekday Windfall", [33, 14, 8, 23, 9, 27], [4, 3])
-        add_draw(d(12, 12), "Weekday Windfall", [10, 36, 45, 2, 15, 39], [25, 38])
-        add_draw(d(10, 12), "Weekday Windfall", [15, 2, 10, 33, 38, 26], [19, 14])
-        add_draw(d(8, 12), "Weekday Windfall", [26, 40, 6, 39, 37, 12], [24, 7])
-        add_draw(d(5, 12), "Weekday Windfall", [9, 23, 8, 16, 11, 33], [34, 1])
-        add_draw(d(3, 12), "Weekday Windfall", [15, 2, 38, 37, 22, 35], [39, 6])
-        add_draw(d(1, 12), "Weekday Windfall", [8, 6, 30, 38, 36, 1], [43, 5])
-        add_draw(d(28, 11), "Weekday Windfall", [30, 8, 25, 43, 39, 24], [21, 1])
-        add_draw(d(26, 11), "Weekday Windfall", [44, 43, 8, 36, 16, 27], [31, 30])
-        add_draw(d(24, 11), "Weekday Windfall", [44, 15, 20, 17, 4, 18], [7, 11])
-        add_draw(d(21, 11), "Weekday Windfall", [4, 5, 26, 10, 40, 20], [14, 24])
-        add_draw(d(19, 11), "Weekday Windfall", [43, 26, 35, 25, 42, 13], [24, 5])
-        add_draw(d(17, 11), "Weekday Windfall", [37, 11, 4, 2, 5, 7], [30, 22])
-        add_draw(d(14, 11), "Weekday Windfall", [34, 11, 28, 15, 44, 31], [9, 20])
-        add_draw(d(12, 11), "Weekday Windfall", [35, 11, 33, 15, 34, 45], [8, 37])
-        add_draw(d(10, 11), "Weekday Windfall", [38, 3, 31, 22, 28, 5], [26, 14])
-        add_draw(d(7, 11), "Weekday Windfall", [31, 16, 23, 30, 6, 3], [13, 18])
-        add_draw(d(5, 11), "Weekday Windfall", [26, 15, 18, 27, 7, 37], [19, 44])
-        add_draw(d(3, 11), "Weekday Windfall", [25, 14, 29, 23, 45, 13], [31, 8])
+                # Set for Life (always present in column)
+                sfl_lists = _parse_list_cells(row.get("Set for Life (incl supp)"))
+                if sfl_lists:
+                    sfl_main = sfl_lists[0]
+                    sfl_supp = sfl_lists[1] if len(sfl_lists) > 1 else None
+                    add_draw(dt, "Set for Life", sfl_main, sfl_supp)
 
-    weekdayWindfall()
+                # Others column: map by weekday
+                weekday = dt.weekday()  # Mon=0 Tue=1 Wed=2 Thu=3 Fri=4 Sat=5 Sun=6
+                if weekday in (0, 2):
+                    other_lottery = "Weekday Windfall"
+                elif weekday == 1:
+                    other_lottery = "OZ Lotto"
+                elif weekday == 3:
+                    other_lottery = "Powerball"
+                elif weekday == 5:
+                    other_lottery = "Saturday Lotto"
+                else:
+                    other_lottery = None
 
-    # OZ Lotto
-    def ozLott():
-        add_draw(d(13, 1,2026), "OZ Lotto", [17,23,31,35,38,39,42], [7,24,29])
-        add_draw(d(6, 1,2026), "OZ Lotto", [2,13,14,17,19,30,45], [4,8,33])
-        add_draw(d(30, 12), "OZ Lotto", [14, 11, 31, 20, 19, 12, 27], [43, 1, 13])
-        add_draw(d(23, 12), "OZ Lotto", [47, 29, 36, 2, 23, 37, 12], [34, 43, 3])
-        add_draw(d(16, 12), "OZ Lotto", [43, 41, 20, 9, 46, 4, 19], [45, 8, 21])
-        add_draw(d(9, 12), "OZ Lotto", [21, 15, 3, 6, 9, 33, 19], [31, 14, 7])
-        add_draw(d(2, 12), "OZ Lotto", [40, 26, 43, 28, 22, 42, 7], [29, 6, 47])
-        add_draw(d(25, 11), "OZ Lotto", [12, 43, 28, 1, 47, 35, 14], [15, 16, 46])
-        add_draw(d(18, 11), "OZ Lotto", [39, 2, 22, 8, 27, 6, 4], [47, 5, 24])
-        add_draw(d(11, 11), "OZ Lotto", [44, 30, 7, 28, 17, 34, 42], [20, 32, 3])
-        add_draw(d(4, 11), "OZ Lotto", [21, 17, 43, 25, 12, 18, 14], [15, 42, 24])
+                if other_lottery:
+                    other_lists = _parse_list_cells(row.get("Others (incl supp)"))
+                    if not other_lists:
+                        continue
+                    other_main = other_lists[0]
+                    other_tail = other_lists[1] if len(other_lists) > 1 else None
+                    if other_lottery == "Powerball":
+                        add_draw(dt, "Powerball", other_main, None, other_tail or [])
+                    else:
+                        add_draw(dt, other_lottery, other_main, other_tail)
 
-    ozLott()
-
-    # Powerball
-    def powerball():
-        add_draw(d(8, 1,2026), "Powerball", [7,15,16,17,25,26,27], [9])
-        add_draw(d(1, 1,2026), "Powerball", [30, 9, 7, 27, 18, 15, 29], None, [3])
-        add_draw(d(25, 12), "Powerball", [7, 23, 29, 20, 11, 16, 17], None, [17])
-        add_draw(d(18, 12), "Powerball", [31, 25, 19, 2, 35, 15, 16], None, [14])
-        add_draw(d(11, 12), "Powerball", [12, 23, 25, 16, 10, 5, 4], None, [10])
-        add_draw(d(4, 12), "Powerball", [19, 23, 32, 12, 11, 15, 9], None, [14])
-        add_draw(d(27, 11), "Powerball", [2, 17, 11, 9, 19, 28, 24], None, [1])
-        add_draw(d(20, 11), "Powerball", [19, 11, 12, 4, 29, 13, 27], None, [20])
-        add_draw(d(13, 11), "Powerball", [22, 10, 6, 15, 2, 8, 7], None, [13])
-        add_draw(d(6, 11), "Powerball", [11, 34, 7, 33, 15, 22, 16], None, [13])
-
-    powerball()
-
-    # Saturday Lotto
-    def saturdayLotto():
-        # add_draw(d(10, 1,2026), "Saturday Lotto", [1,8,23,25,30,41], [32,37])
-        add_draw(d(3, 1,2026), "Saturday Lotto", [19, 36, 21, 10, 9, 13],[39, 2])
-        add_draw(d(27, 12), "Saturday Lotto", [26, 20, 40, 3, 5, 28],[22, 42])
-        add_draw(d(20, 12), "Saturday Lotto", [8, 32, 31, 19, 43, 41],[14, 6])
-        add_draw(d(13, 12), "Saturday Lotto", [28, 20, 35, 17, 32, 6],[41, 25])
-        add_draw(d(6, 12), "Saturday Lotto", [17, 42, 5, 10, 33, 45], [31, 44])
-        add_draw(d(29, 11), "Saturday Lotto", [22, 10, 17, 5, 44, 36], [3, 11])
-        add_draw(d(22, 11), "Saturday Lotto", [7, 31, 15, 39, 42, 12], [5, 8])
-        add_draw(d(15, 11), "Saturday Lotto", [36, 19, 33, 41, 39, 1], [25, 20])
-        add_draw(d(8, 11), "Saturday Lotto", [28, 13, 1, 41, 14, 16], [39, 34])
-        add_draw(d(1, 11), "Saturday Lotto", [42, 31, 21, 28, 17, 13], [36, 15])
-
-    saturdayLotto()
+    csv_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "Single_V2_0", "cross_lotto_data.csv")
+    )
+    if os.path.exists(csv_path):
+        try:
+            _load_draws_from_csv(csv_path)
+            return
+        except Exception as e:
+            print(f"[addDraws] CSV load failed ({csv_path}): {e}. Falling back to hardcoded draws.")
 

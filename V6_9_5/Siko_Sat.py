@@ -23,7 +23,7 @@ log_file_path = os.path.join(
     f"siko_sat_logs.log"   # single growing log file
 )
 
-log_file = open(log_file_path, "a", buffering=1, encoding="utf-8")
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 
 sys.stdout = Tee(sys.stdout, log_file)
 sys.stderr = Tee(sys.stderr, log_file)
@@ -68,46 +68,12 @@ core.finalize_data()
 
 # can change below code
 # *****************
-
-# core.PREDICTION_CONFIG = {
-#     # "BASE_TRIALS": 80000,
-#     # "MIN_TRIALS": 200000,
-#     # "MAX_TRIALS": 250000,
-#     # "CLUSTER_TRIAL_FRAC": 0.25,
-#     # "APPLY_PREDICTION_OVERRIDES": True,
-#     "CLUSTER_TRIAL_FRAC": 0.10,
-#     "EXPLORE_FRAC": 0.65,
-#     "APPLY_PREDICTION_OVERRIDES": True,
-#     "HWC_OVERRIDE": (0, 2, 4),
-#     "DECADE_FACTORS_OVERRIDE": {1: 1.0, 2: 1.6, 3: 1.0, 4: 1.4, 5: 0.7},
-#
-# }
-
-# core.PREDICTION_TARGET = ("Saturday Lotto", core.d(20,12), 6)
-#
-# core.TARGET_DRAWS_FOR_LEARNING = core.build_targets_for_learning()
-
-# print("\n[SANITY] PREDICTION_TARGET =", core.PREDICTION_TARGET)
-# print("[SANITY] TARGET_DRAWS_FOR_LEARNING =")
-# for lot, dt in core.TARGET_DRAWS_FOR_LEARNING:
-#     print(" ", lot, dt)
-
-# if __name__ == "__main__":
-#     start_ts = time.time()
-#     start_dt = datetime.datetime.now()
-#
-#     print(f"\n=== RUN START ===")
-#     print(f"Start time: {start_dt.strftime('%Y-%m-%d %H:%M:%S')}")
-#     core.main()
-#     end_ts = time.time()
-#     end_dt = datetime.datetime.now()
-#
-#     elapsed_sec = end_ts - start_ts
-#
-#     print(f"\n=== RUN END ===")
-#     print(f"End time:   {end_dt.strftime('%Y-%m-%d %H:%M:%S')}")
-#     print(f"Total run time: {elapsed_sec:.2f} seconds "
-#           f"({elapsed_sec / 60:.2f} minutes)")
+# today = datetime.date.today() # - datetime.timedelta(days=1)
+today = datetime.date(2026, 2, 7)  # keep explicit & reproducible
+# today = datetime.date(2025, 12, 27)  # keep explicit & reproducible
+real_draw_date = today
+real_draw_result = None
+N = 40
 
 def last_n_saturdays(today, n):
     dates = []
@@ -119,8 +85,8 @@ def last_n_saturdays(today, n):
     return dates
 
 LEADER_POOL_RANK_MAX = 5
-LEARNING_DRAW_COUNT = 8
-MAX_TICKETS_TO_PRINT = 10
+LEARNING_DRAW_COUNT = 14
+MAX_TICKETS_TO_PRINT = 20
 COHORT_USAGE_CAP_FRAC = 0.40      # e.g. 0.40 to cap cohort repeats
 COHORT_AUTOPRED_EVAL_LAST_N = None  # e.g. 2 or 3 for auto predictor window
 OVERRIDE_COHORT_HWC = None         # e.g. (0, 2, 4)
@@ -137,12 +103,18 @@ OVERRIDE_P_MAX = None               # e.g. 0.030
 
 if __name__ == "__main__":
 
-    # today = datetime.date.today() # - datetime.timedelta(days=1)
-    today = datetime.date(2026, 1, 10)  # keep explicit & reproducible
-    # today = datetime.date(2025, 12, 27)  # keep explicit & reproducible
-    real_draw_date = today
-    real_draw_result = [1, 8, 23, 25, 30, 41]
-    saturday_dates = last_n_saturdays(today, 6)
+    weeks_lt3 = 0
+    weeks_3p = 0
+    weeks_4p = 0
+    weeks_5p = 0
+    weeks_6p = 0
+    max_hit_observed = 0
+    total_3_hits = 0
+    total_4_hits = 0
+    total_5_hits = 0
+    total_6_hits = 0
+
+    saturday_dates = last_n_saturdays(today, N)
 
     start_ts = time.time()
     start_dt = datetime.datetime.now()
@@ -214,16 +186,70 @@ if __name__ == "__main__":
                     print("[HITS] No tickets to evaluate.")
                 else:
                     best_hits = 0
+                    hit_summary = {"<3": 0, "3": 0, "4": 0, "5": 0, "6": 0}
                     for i, t in enumerate(tickets, 1):
                         nums = sorted([t["leader"]] + list(t["cohort"]))
                         hits = sorted(set(nums) & set(actual_numbers))
                         best_hits = max(best_hits, len(hits))
+                        hit_count = len(hits)
+                        if hit_count < 3:
+                            hit_summary["<3"] += 1
+                        elif hit_count == 3:
+                            hit_summary["3"] += 1
+                        elif hit_count == 4:
+                            hit_summary["4"] += 1
+                        elif hit_count == 5:
+                            hit_summary["5"] += 1
+                        elif hit_count == 6:
+                            hit_summary["6"] += 1
+
+                        if hit_count == 3:
+                            total_3_hits += 1
+                        if hit_count == 4:
+                            total_4_hits += 1
+                        if hit_count == 5:
+                            total_5_hits += 1
+                        if hit_count == 6:
+                            total_6_hits += 1
                         print(f"[HITS] Ticket #{i}: {nums} | Hits ({len(hits)}): {hits}")
                     print(f"[HITS] Best ticket hits: {best_hits} of {len(actual_numbers)}")
+                    print(
+                        "[HITS] Summary: "
+                        f"<3={hit_summary['<3']}, "
+                        f"3={hit_summary['3']}, "
+                        f"4={hit_summary['4']}, "
+                        f"5={hit_summary['5']}, "
+                        f"6={hit_summary['6']}"
+                    )
+
+                    if best_hits < 3:
+                        weeks_lt3 += 1
+                    if best_hits >= 3:
+                        weeks_3p += 1
+                    if best_hits >= 4:
+                        weeks_4p += 1
+                    if best_hits >= 5:
+                        weeks_5p += 1
+                    if best_hits >= 6:
+                        weeks_6p += 1
+                    if best_hits > max_hit_observed:
+                        max_hit_observed = best_hits
 
     end_ts = time.time()
     end_dt = datetime.datetime.now()
     elapsed_sec = end_ts - start_ts
+
+    print("\n=== BACKTEST SUMMARY (LAST 20 DRAWS) ===")
+    print(f"Weeks with <3 hits: {weeks_lt3}")
+    print(f"Weeks with 3+ hits: {weeks_3p}")
+    print(f"Weeks with 4+ hits: {weeks_4p}")
+    print(f"Weeks with 5+ hits: {weeks_5p}")
+    print(f"Weeks with 6+ hits: {weeks_6p}")
+    print(f"Max hit observed : {max_hit_observed}")
+    print(f"Total hits (=3): {total_3_hits}")
+    print(f"Total hits (=4): {total_4_hits}")
+    print(f"Total hits (=5): {total_5_hits}")
+    print(f"Total hits (=6): {total_6_hits}")
 
     print(f"\n=== RUN END ===")
     print(f"End time:   {end_dt.strftime('%Y-%m-%d %H:%M:%S')}")

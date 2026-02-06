@@ -40,7 +40,7 @@ from collections import Counter
 CSV_PATH = "../cross_lotto_data.csv"   # keep in same folder as this script (or change path)
 RANDOM_SEED_BASE = 0               # base seed; per-date seed = base + YYYYMMDD
 TICKETS_PER_DRAW = 10
-TARGET_DATE = "2026-01-29"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
+TARGET_DATE = "2026-02-05"  # e.g. "2026-01-29" or "Thu 29-Jan-2026"; None = most recent Thu in CSV
 
 # BEST CONFIG (LOCKED)
 OFFSETS_DAYS = [3, 4, 7]           # Sun/Mon/prev Thu
