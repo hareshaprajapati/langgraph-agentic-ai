@@ -73,7 +73,7 @@ today = datetime.date(2026, 2, 7)  # keep explicit & reproducible
 # today = datetime.date(2025, 12, 27)  # keep explicit & reproducible
 real_draw_date = today
 real_draw_result = None
-N = 40
+N = 20
 
 def last_n_saturdays(today, n):
     dates = []
