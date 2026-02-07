@@ -35,6 +35,8 @@ sys.stderr = Tee(sys.stderr, log_file)
 import Siko_Core as core
 import time
 import datetime
+import random
+from collections import Counter
 
 core.global_draws.clear()
 
@@ -72,8 +74,8 @@ core.finalize_data()
 today = datetime.date(2026, 2, 7)  # keep explicit & reproducible
 # today = datetime.date(2025, 12, 27)  # keep explicit & reproducible
 real_draw_date = today
-real_draw_result = None
-N = 20
+real_draw_result = [3, 8, 9, 27, 33, 41]
+N = 21
 
 def last_n_saturdays(today, n):
     dates = []
@@ -89,6 +91,17 @@ LEARNING_DRAW_COUNT = 14
 MAX_TICKETS_TO_PRINT = 20
 COHORT_USAGE_CAP_FRAC = 0.40      # e.g. 0.40 to cap cohort repeats
 COHORT_AUTOPRED_EVAL_LAST_N = None  # e.g. 2 or 3 for auto predictor window
+core.COHORT_USAGE_CAP_FRAC = COHORT_USAGE_CAP_FRAC
+core.COHORT_AUTOPRED_EVAL_LAST_N = COHORT_AUTOPRED_EVAL_LAST_N
+core.COHORT_ALLOWED_HWC_TOP_K = 3
+core.COHORT_ALLOWED_DEC_TOP_K = 3
+core.LEADER_USAGE_CAP = None
+core.TICKET_DIVERSITY_LAMBDA = None
+core.TOP_P_COMBO_ENABLED = True
+core.TOP_P_COMBO_N = 14
+core.TOP_P_COMBO_MAX = 80
+core.COVERAGE_MODE = True
+core.COVERAGE_ALPHA = 0.8
 OVERRIDE_COHORT_HWC = None         # e.g. (0, 2, 4)
 # OVERRIDE_COHORT_HWC = (0, 4, 1)          # e.g. (0, 2, 4)
 OVERRIDE_COHORT_DECADES = None      # e.g. {1:1, 2:2, 3:0, 4:2, 5:1}
@@ -99,6 +112,123 @@ OVERRIDE_RANK_MIN = None           # e.g. 12
 OVERRIDE_RANK_MAX = None            # e.g. 40
 OVERRIDE_P_MIN = None               # e.g. 0.010
 OVERRIDE_P_MAX = None               # e.g. 0.030
+
+USE_NEW_ALGO = True
+
+NEW_ALGO_RECENT_DRAWS = 14
+NEW_ALGO_POOL_SIZE = 24
+NEW_ALGO_WARM_SIZE = 14
+NEW_ALGO_HOT_SIZE = 16
+NEW_ALGO_RECENCY_DECAY = 0.15
+NEW_ALGO_COMPOSITIONS = [
+    (3, 2, 1),  # hot, warm, cold
+    (3, 1, 2),
+    (2, 3, 1),
+    (2, 2, 2),
+]
+
+def _recent_saturday_draws(target_date, count):
+    draws = []
+    for d in sorted(core.draws_by_date.keys()):
+        if d >= target_date:
+            break
+        for dr in core.draws_by_date[d]:
+            if dr.lottery == "Saturday Lotto":
+                draws.append(dr)
+    return draws[-count:]
+
+def _build_pair_counts(draws):
+    pair_counts = Counter()
+    for dr in draws:
+        nums = sorted(set(dr.main))
+        for i in range(len(nums)):
+            for j in range(i + 1, len(nums)):
+                pair_counts[(nums[i], nums[j])] += 1
+    return pair_counts
+
+def _score_numbers(draws):
+    freq = Counter()
+    recency = Counter()
+    # Most recent draw gets highest recency weight
+    for idx, dr in enumerate(reversed(draws), 1):
+        weight = 1.0 + (NEW_ALGO_RECENCY_DECAY * idx)
+        for n in dr.main:
+            freq[n] += 1
+            recency[n] += weight
+    scores = {}
+    for n in range(core.MAIN_NUMBER_MIN, core.MAIN_NUMBER_MAX + 1):
+        scores[n] = freq[n] + recency[n]
+    return scores
+
+def _weighted_pick(candidates, weights, rng):
+    total = sum(weights.get(n, 0.0) for n in candidates)
+    if total <= 0:
+        return rng.choice(list(candidates))
+    r = rng.random() * total
+    acc = 0.0
+    for n in candidates:
+        acc += weights.get(n, 0.0)
+        if acc >= r:
+            return n
+    return list(candidates)[-1]
+
+def _build_tickets_new_algo(target_date, max_tickets):
+    draws = _recent_saturday_draws(target_date, NEW_ALGO_RECENT_DRAWS)
+    if not draws:
+        return []
+
+    scores = _score_numbers(draws)
+    pair_counts = _build_pair_counts(draws)
+
+    ranked = [n for n, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)]
+    hot = set(ranked[:NEW_ALGO_HOT_SIZE])
+    warm = set(ranked[NEW_ALGO_HOT_SIZE:NEW_ALGO_HOT_SIZE + NEW_ALGO_WARM_SIZE])
+    cold = set(ranked[NEW_ALGO_HOT_SIZE + NEW_ALGO_WARM_SIZE:NEW_ALGO_POOL_SIZE])
+    if not cold:
+        cold = set(ranked[NEW_ALGO_HOT_SIZE + NEW_ALGO_WARM_SIZE:])
+
+    rng = random.Random(0)
+    used_counts = Counter()
+    tickets = []
+
+    for i in range(max_tickets):
+        h, w, c = NEW_ALGO_COMPOSITIONS[i % len(NEW_ALGO_COMPOSITIONS)]
+        ticket = []
+        pools = [
+            (hot, h),
+            (warm, w),
+            (cold, c),
+        ]
+        for pool, count in pools:
+            pool = [n for n in pool if n not in ticket]
+            for _ in range(count):
+                if not pool:
+                    break
+                weights = {}
+                for n in pool:
+                    penalty = 1.0 / (1.0 + used_counts[n])
+                    synergy = 0
+                    for t in ticket:
+                        a, b = sorted((n, t))
+                        synergy += pair_counts.get((a, b), 0)
+                    weights[n] = scores.get(n, 0.0) * penalty + 0.2 * synergy
+                pick = _weighted_pick(pool, weights, rng)
+                ticket.append(pick)
+                pool.remove(pick)
+
+        # Fill if short
+        remaining = [n for n in ranked if n not in ticket]
+        while len(ticket) < 6 and remaining:
+            pick = _weighted_pick(remaining, scores, rng)
+            ticket.append(pick)
+            remaining.remove(pick)
+
+        ticket = sorted(ticket)
+        tickets.append(ticket)
+        for n in ticket:
+            used_counts[n] += 1
+
+    return tickets
 
 
 if __name__ == "__main__":
@@ -128,116 +258,69 @@ if __name__ == "__main__":
         print(f"PREDICTION RUN FOR Saturday Lotto on {target_date}")
         print("="*80)
 
-        core.PREDICTION_TARGET = ("Saturday Lotto", target_date, 6)
-        core.TARGET_DRAWS_FOR_LEARNING = core.build_targets_for_learning()
-        core.LOCKED_REGIME_DATES = saturday_dates
-        core.LOCKED_REGIME_LOTTERY = "Saturday Lotto"
-        core.COHORT_USAGE_CAP_FRAC = COHORT_USAGE_CAP_FRAC
-        core.COHORT_AUTOPRED_EVAL_LAST_N = COHORT_AUTOPRED_EVAL_LAST_N
-        # print("\n[SANITY] PREDICTION_TARGET =", core.PREDICTION_TARGET)
-        # print("[SANITY] TARGET_DRAWS_FOR_LEARNING =")
-        # for lot, dt in core.TARGET_DRAWS_FOR_LEARNING:
-        #     print(" ", lot, dt)
-
-        try:
-            run_data = core.main()
-        except RuntimeError as e:
-            print(f"[WARN] {e} for date {target_date} â€” skipping run.")
+        actual_numbers = core.get_actual_main("Saturday Lotto", target_date)
+        if actual_numbers is None and target_date == real_draw_date:
+            actual_numbers = real_draw_result
+        if actual_numbers is None:
+            print("[WARN] No actual numbers available - skipping run.")
             continue
-        if run_data and run_data.get("prediction_actual") is not None:
-            core.LOCKED_REGIME_SNAPSHOT_CACHE[target_date] = run_data["prediction_actual"]
-        if run_data and run_data.get("prediction_actual") is None:
-            core.print_locked_prediction_steps(
-                run_data,
-                leader_pool_rank_max=LEADER_POOL_RANK_MAX,
-                max_tickets_to_print=MAX_TICKETS_TO_PRINT,
-                include_learning_scores=True,
-                allowed_dates=saturday_date_set,
-                allowed_lottery="Saturday Lotto",
-                override_cohort_hwc=OVERRIDE_COHORT_HWC,
-                override_cohort_decades=OVERRIDE_COHORT_DECADES,
-                override_rank_min=OVERRIDE_RANK_MIN,
-                override_rank_max=OVERRIDE_RANK_MAX,
-                override_p_min=OVERRIDE_P_MIN,
-                override_p_max=OVERRIDE_P_MAX,
+
+        actual_numbers = sorted(actual_numbers)
+        print(f"[HITS] Date {target_date} | Actual: {actual_numbers}")
+
+        if USE_NEW_ALGO:
+            tickets = _build_tickets_new_algo(target_date, MAX_TICKETS_TO_PRINT)
+            if not tickets:
+                print("[HITS] No tickets to evaluate.")
+                continue
+            best_hits = 0
+            hit_summary = {"<3": 0, "3": 0, "4": 0, "5": 0, "6": 0}
+            for i, nums in enumerate(tickets, 1):
+                hits = sorted(set(nums) & set(actual_numbers))
+                best_hits = max(best_hits, len(hits))
+                hit_count = len(hits)
+                if hit_count < 3:
+                    hit_summary["<3"] += 1
+                elif hit_count == 3:
+                    hit_summary["3"] += 1
+                elif hit_count == 4:
+                    hit_summary["4"] += 1
+                elif hit_count == 5:
+                    hit_summary["5"] += 1
+                elif hit_count == 6:
+                    hit_summary["6"] += 1
+
+                if hit_count == 3:
+                    total_3_hits += 1
+                if hit_count == 4:
+                    total_4_hits += 1
+                if hit_count == 5:
+                    total_5_hits += 1
+                if hit_count == 6:
+                    total_6_hits += 1
+                print(f"[HITS] Ticket #{i}: {nums} | Hits ({len(hits)}): {hits}")
+            print(f"[HITS] Best ticket hits: {best_hits} of {len(actual_numbers)}")
+            print(
+                "[HITS] Summary: "
+                f"<3={hit_summary['<3']}, "
+                f"3={hit_summary['3']}, "
+                f"4={hit_summary['4']}, "
+                f"5={hit_summary['5']}, "
+                f"6={hit_summary['6']}"
             )
-        if run_data:
-            actual_snapshot = run_data.get("prediction_actual")
-            if actual_snapshot is not None:
-                actual_numbers = sorted(actual_snapshot.get("actual_numbers", []))
-            elif target_date == real_draw_date:
-                actual_numbers = sorted(real_draw_result)
-            else:
-                actual_numbers = []
 
-            if actual_numbers:
-                ticket_data = core.build_locked_tickets(
-                    run_data,
-                    leader_pool_rank_max=LEADER_POOL_RANK_MAX,
-                    max_tickets_to_print=MAX_TICKETS_TO_PRINT,
-                    allowed_dates=saturday_date_set,
-                    allowed_lottery="Saturday Lotto",
-                    override_cohort_hwc=OVERRIDE_COHORT_HWC,
-                    override_cohort_decades=OVERRIDE_COHORT_DECADES,
-                    override_rank_min=OVERRIDE_RANK_MIN,
-                    override_rank_max=OVERRIDE_RANK_MAX,
-                    override_p_min=OVERRIDE_P_MIN,
-                    override_p_max=OVERRIDE_P_MAX,
-                )
-                tickets = ticket_data["tickets"] if ticket_data else []
-                print(f"[HITS] Date {target_date} | Actual: {actual_numbers}")
-                if not tickets:
-                    print("[HITS] No tickets to evaluate.")
-                else:
-                    best_hits = 0
-                    hit_summary = {"<3": 0, "3": 0, "4": 0, "5": 0, "6": 0}
-                    for i, t in enumerate(tickets, 1):
-                        nums = sorted([t["leader"]] + list(t["cohort"]))
-                        hits = sorted(set(nums) & set(actual_numbers))
-                        best_hits = max(best_hits, len(hits))
-                        hit_count = len(hits)
-                        if hit_count < 3:
-                            hit_summary["<3"] += 1
-                        elif hit_count == 3:
-                            hit_summary["3"] += 1
-                        elif hit_count == 4:
-                            hit_summary["4"] += 1
-                        elif hit_count == 5:
-                            hit_summary["5"] += 1
-                        elif hit_count == 6:
-                            hit_summary["6"] += 1
-
-                        if hit_count == 3:
-                            total_3_hits += 1
-                        if hit_count == 4:
-                            total_4_hits += 1
-                        if hit_count == 5:
-                            total_5_hits += 1
-                        if hit_count == 6:
-                            total_6_hits += 1
-                        print(f"[HITS] Ticket #{i}: {nums} | Hits ({len(hits)}): {hits}")
-                    print(f"[HITS] Best ticket hits: {best_hits} of {len(actual_numbers)}")
-                    print(
-                        "[HITS] Summary: "
-                        f"<3={hit_summary['<3']}, "
-                        f"3={hit_summary['3']}, "
-                        f"4={hit_summary['4']}, "
-                        f"5={hit_summary['5']}, "
-                        f"6={hit_summary['6']}"
-                    )
-
-                    if best_hits < 3:
-                        weeks_lt3 += 1
-                    if best_hits >= 3:
-                        weeks_3p += 1
-                    if best_hits >= 4:
-                        weeks_4p += 1
-                    if best_hits >= 5:
-                        weeks_5p += 1
-                    if best_hits >= 6:
-                        weeks_6p += 1
-                    if best_hits > max_hit_observed:
-                        max_hit_observed = best_hits
+            if best_hits < 3:
+                weeks_lt3 += 1
+            if best_hits >= 3:
+                weeks_3p += 1
+            if best_hits >= 4:
+                weeks_4p += 1
+            if best_hits >= 5:
+                weeks_5p += 1
+            if best_hits >= 6:
+                weeks_6p += 1
+            if best_hits > max_hit_observed:
+                max_hit_observed = best_hits
 
     end_ts = time.time()
     end_dt = datetime.datetime.now()

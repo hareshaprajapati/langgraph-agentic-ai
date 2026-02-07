@@ -44,13 +44,13 @@ import math
 
 CSV_PATH = "Tattslotto.csv"
 TARGET_DATE = "2026-2-07"
-REAL_DRAW_TARGET = None
+REAL_DRAW_TARGET = [3, 8, 9, 27, 33, 41]
 
 # TARGET_DATE = "2026-1-31"
 # REAL_DRAW_TARGET = [9, 20, 33, 34, 42, 45]
 
 # Backtest: run on the last 5 available draws in the CSV.
-N = 20
+N = 21
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -1310,6 +1310,7 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
     hit_counts: Dict[int, int] = {}
     any_ge3 = False
     best_near = (-1, None, [])
+    ge3_tickets: List[int] = []
     for i, t in enumerate(tickets, 1):
         hits = sorted(set(t).intersection(rd_set))
         hit_n = len(hits)
@@ -1324,10 +1325,14 @@ def show_ticket_hits(real_draw: List[int], tickets: List[List[int]]):
             best_near = (len(near), i, sorted(set(near)))
         if hit_n >= 3:
             any_ge3 = True
+            ge3_tickets.append(i)
             print(f"Ticket #{i:02d}: hits={hit_n} nums={hits} near_miss={len(near)} near_nums={sorted(set(near))}")
 
     if not any_ge3:
         print("No tickets with 3+ hits.")
+    else:
+        ticket_list = ", ".join(f"#{i:02d}" for i in ge3_tickets)
+        print(f"Tickets with 3+ hits: {ticket_list}")
     if best_near[0] >= 1:
         print(f"Best near-miss: Ticket #{best_near[1]:02d} near_miss={best_near[0]} near_nums={best_near[2]}")
 
@@ -1691,6 +1696,7 @@ if __name__ == "__main__":
 
     winner_blocks = []
     band_stats = []
+    bt_hits_by_date: Dict[str, List[int]] = {}
 
     print(f"\n=== BACKTEST (LAST {N} DRAWS) ===")
     bt_weeks_lt3 = 0
@@ -1720,6 +1726,7 @@ if __name__ == "__main__":
             print(f"Ticket #{i:02d}: {t}  decades={vec}")
         show_ticket_hits(bt_draw, bt_tickets)
         best = 0
+        ge3_tickets = []
         for t in bt_tickets:
             h = len(set(t).intersection(set(bt_draw)))
             if h > best:
@@ -1732,6 +1739,8 @@ if __name__ == "__main__":
                 bt_ticket_hit5 += 1
             if h >= 6:
                 bt_ticket_hit6p += 1
+            if h >= 3:
+                ge3_tickets.append(bt_tickets.index(t) + 1)
         if best < 3:
             bt_weeks_lt3 += 1
         if best >= 3:
@@ -1745,6 +1754,8 @@ if __name__ == "__main__":
         if best > bt_best_hit:
             bt_best_hit = best
 
+        bt_hits_by_date[bt_date] = ge3_tickets
+
         collect_winner_tables_and_stats(
             blocks=winner_blocks,
             stats=band_stats,
@@ -1756,6 +1767,16 @@ if __name__ == "__main__":
     print_all_winner_tables_at_end(winner_blocks)
     print_date_by_date_band_counts_ascending(band_stats)
     print_band_summary_at_end(band_stats)
+
+    print("\n=== TICKETS WITH 3+ HITS BY DATE ===")
+    for d in bt_dates:
+        d_str = d.strftime("%Y-%m-%d")
+        tickets = bt_hits_by_date.get(d_str, [])
+        if tickets:
+            ticket_list = ", ".join(f"#{i:02d}" for i in tickets)
+        else:
+            ticket_list = "none"
+        print(f"{d_str} | {ticket_list}")
 
     print(f"\n=== BACKTEST SUMMARY (LAST {N} DRAWS) ===")
     print(f"Weeks with <3 hits: {bt_weeks_lt3}")

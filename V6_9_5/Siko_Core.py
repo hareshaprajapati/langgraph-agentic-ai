@@ -137,6 +137,16 @@ LOCKED_REGIME_SNAPSHOT_CACHE = {}
 COHORT_USAGE_CAP_FRAC = None
 # Auto predictor evaluation window for cohort envelopes
 COHORT_AUTOPRED_EVAL_LAST_N = 3
+# Optional multi-shape allowance for initial ticket build
+COHORT_ALLOWED_HWC_TOP_K = 1
+COHORT_ALLOWED_DEC_TOP_K = 1
+# Optional leader repetition cap (per leader value)
+LEADER_USAGE_CAP = None
+# Optional ticket selection diversity penalty (higher => more unique numbers)
+TICKET_DIVERSITY_LAMBDA = None
+# Optional coverage-optimized ticket selection (tries to avoid <3-hit weeks)
+COVERAGE_MODE = False
+COVERAGE_ALPHA = 1.0
 
 def apply_prediction_config_overrides():
     """
@@ -2725,11 +2735,17 @@ def print_locked_prediction_steps(
         tickets = _dedup_tickets(tickets + pm1_tickets)
 
     if TOP_P_COMBO_ENABLED:
+        if TOP_P_COMBO_MAX:
+            max_top_p = TOP_P_COMBO_MAX
+            if max_tickets_to_print:
+                max_top_p = max(max_top_p, max_tickets_to_print)
+        else:
+            max_top_p = max_tickets_to_print
         top_p_tickets = _build_top_p_combo_tickets(
             pred,
             meta_map,
             top_n=TOP_P_COMBO_N,
-            max_tickets=(max_tickets_to_print or TOP_P_COMBO_MAX),
+            max_tickets=max_top_p,
             decade_ids=decade_ids,
         )
         tickets = _dedup_tickets(tickets + top_p_tickets)
@@ -3009,8 +3025,19 @@ def build_locked_tickets(
             out.append(t)
         return out
 
+    def _top_k_shapes(counter, k):
+        return {shape for shape, _ in counter.most_common(k)} if k and k > 0 else None
+
     allowed_hwc_shapes = {(target_h, target_w, target_c)}
     allowed_dec_shapes = {target_dec_tuple}
+    if COHORT_ALLOWED_HWC_TOP_K and COHORT_ALLOWED_HWC_TOP_K > 1:
+        hwc_counter = Counter(hwc_shapes)
+        allowed_hwc_shapes = _top_k_shapes(hwc_counter, COHORT_ALLOWED_HWC_TOP_K)
+        allowed_hwc_shapes.add((target_h, target_w, target_c))
+    if COHORT_ALLOWED_DEC_TOP_K and COHORT_ALLOWED_DEC_TOP_K > 1:
+        dec_counter = Counter(dec_shapes)
+        allowed_dec_shapes = _top_k_shapes(dec_counter, COHORT_ALLOWED_DEC_TOP_K)
+        allowed_dec_shapes.add(target_dec_tuple)
     if PM1_ONLY_MODE and pm1_counts is not None:
         allowed_hwc_shapes = None
         allowed_dec_shapes = None
@@ -3062,11 +3089,17 @@ def build_locked_tickets(
         tickets = _dedup_tickets(tickets + pm1_tickets)
 
     if TOP_P_COMBO_ENABLED:
+        if TOP_P_COMBO_MAX:
+            max_top_p = TOP_P_COMBO_MAX
+            if max_tickets_to_print:
+                max_top_p = max(max_top_p, max_tickets_to_print)
+        else:
+            max_top_p = max_tickets_to_print
         top_p_tickets = _build_top_p_combo_tickets(
             pred,
             meta_map,
             top_n=TOP_P_COMBO_N,
-            max_tickets=(max_tickets_to_print or TOP_P_COMBO_MAX),
+            max_tickets=max_top_p,
             decade_ids=decade_ids,
         )
         tickets = _dedup_tickets(tickets + top_p_tickets)
@@ -3132,6 +3165,87 @@ def build_locked_tickets(
                 existing.add(key)
                 if len(tickets) >= max_tickets_to_print:
                     break
+
+    if LEADER_USAGE_CAP:
+        leader_counts = Counter()
+        capped = []
+        seen = set()
+        for t in tickets:
+            key = (t["leader"], tuple(sorted(t["cohort"])))
+            if key in seen:
+                continue
+            if leader_counts[t["leader"]] >= LEADER_USAGE_CAP:
+                continue
+            capped.append(t)
+            seen.add(key)
+            leader_counts[t["leader"]] += 1
+            if max_tickets_to_print and len(capped) >= max_tickets_to_print:
+                break
+        if max_tickets_to_print and len(capped) < max_tickets_to_print:
+            for t in tickets:
+                key = (t["leader"], tuple(sorted(t["cohort"])))
+                if key in seen:
+                    continue
+                capped.append(t)
+                seen.add(key)
+                if len(capped) >= max_tickets_to_print:
+                    break
+        tickets = capped if capped else tickets
+
+    if max_tickets_to_print and TICKET_DIVERSITY_LAMBDA:
+        selected = []
+        used_counts = Counter()
+        remaining = list(tickets)
+        while remaining and len(selected) < max_tickets_to_print:
+            best_idx = None
+            best_score = None
+            for i, t in enumerate(remaining):
+                nums = [t["leader"]] + list(t["cohort"])
+                penalty = sum(used_counts[n] for n in nums)
+                score = t["P_total"] - (float(TICKET_DIVERSITY_LAMBDA) * penalty)
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_idx = i
+            if best_idx is None:
+                break
+            chosen = remaining.pop(best_idx)
+            selected.append(chosen)
+            for n in [chosen["leader"]] + list(chosen["cohort"]):
+                used_counts[n] += 1
+        tickets = selected if selected else tickets
+
+    if max_tickets_to_print and COVERAGE_MODE:
+        weights = {n: meta_map[n]["P"] for n in meta_map}
+        selected = []
+        used_counts = Counter()
+        remaining = list(tickets_ranked)
+        seen = set()
+        while remaining and len(selected) < max_tickets_to_print:
+            best_idx = None
+            best_score = None
+            for i, t in enumerate(remaining):
+                key = (t["leader"], tuple(sorted(t["cohort"])))
+                if key in seen:
+                    continue
+                nums = [t["leader"]] + list(t["cohort"])
+                score = 0.0
+                for n in nums:
+                    w = weights.get(n, 0.0)
+                    score += w / (1.0 + (float(COVERAGE_ALPHA) * used_counts[n]))
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_idx = i
+            if best_idx is None:
+                break
+            chosen = remaining.pop(best_idx)
+            key = (chosen["leader"], tuple(sorted(chosen["cohort"])))
+            if key in seen:
+                continue
+            selected.append(chosen)
+            seen.add(key)
+            for n in [chosen["leader"]] + list(chosen["cohort"]):
+                used_counts[n] += 1
+        tickets = selected if selected else tickets
 
     if max_tickets_to_print:
         tickets = tickets[:max_tickets_to_print]
