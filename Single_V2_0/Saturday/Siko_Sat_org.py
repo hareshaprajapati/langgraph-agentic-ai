@@ -49,8 +49,12 @@ REAL_DRAW_TARGET = [3, 8, 9, 27, 33, 41]
 # TARGET_DATE = "2026-1-31"
 # REAL_DRAW_TARGET = [9, 20, 33, 34, 42, 45]
 
+# Restrict ticket numbers to this list for TARGET_DATE only ([] disables).
+# ALLOWED_NUMBERS_FOR_TARGET_DATE = [3, 13, 25, 34, 45,6, 7, 8, 11, 18, 26, 36, 39, 40,1, 4, 9, 27, 29, 30, 44,]
+ALLOWED_NUMBERS_FOR_TARGET_DATE = []
+
 # Backtest: run on the last 5 available draws in the CSV.
-N = 21
+N = 20
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -202,6 +206,29 @@ class CandidateScoreMain:
     seasonal_success: int
     penalties: Dict[str, float]
     components: Dict[str, float]
+
+
+def _normalize_allowed_numbers(allowed: List[int]) -> List[int]:
+    if not allowed:
+        return []
+    out: List[int] = []
+    for n in allowed:
+        try:
+            n_int = int(n)
+        except (TypeError, ValueError):
+            raise ValueError("ALLOWED_NUMBERS_FOR_TARGET_DATE must contain integers")
+        if n_int < MAIN_MIN or n_int > MAIN_MAX:
+            raise ValueError(
+                f"ALLOWED_NUMBERS_FOR_TARGET_DATE contains out-of-range number: {n_int}"
+            )
+        out.append(n_int)
+    out = sorted(set(out))
+    if len(out) < NUMBERS_PER_TICKET:
+        raise ValueError(
+            "ALLOWED_NUMBERS_FOR_TARGET_DATE must contain at least "
+            f"{NUMBERS_PER_TICKET} unique numbers"
+        )
+    return out
 
 
 # ----- WINNER BAND SUMMARY (Powerball-style logging) -----
@@ -1127,10 +1154,13 @@ def generate_tickets(
     global_max_override: int = None,
     cohesion_config: Dict[str, object] = None,
     ticket_count: int = None,
+    allowed_numbers: List[int] = None,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     dist = _history_distributions(train, main_cols, target_date)
+
+    allowed_set = set(_normalize_allowed_numbers(allowed_numbers)) if allowed_numbers else set()
 
     # build pool
     if pool_override is not None:
@@ -1140,6 +1170,13 @@ def generate_tickets(
         mid_pool = [c.n for c in scored[POOL_SIZE:POOL_SIZE + MID_POOL_SIZE]]
         cold_pool = [c.n for c in scored if c.freq_recent <= 1][:COLD_POOL_SIZE]
         pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
+
+    if allowed_set:
+        pool = [n for n in pool if n in allowed_set]
+        if len(pool) < NUMBERS_PER_TICKET:
+            raise ValueError(
+                "ALLOWED_NUMBERS_FOR_TARGET_DATE is too restrictive for ticket generation"
+            )
 
     # weights from scores
     score_map = {c.n: c.total_score for c in scored}
@@ -1158,6 +1195,11 @@ def generate_tickets(
     overdue_pool = [c.n for c in overdue_sorted[:OVERDUE_POOL_SIZE]]
     cold_sorted = sorted(scored, key=lambda x: (x.freq_recent, x.total_score))
     cold_pool_force = [c.n for c in cold_sorted[:COLD_POOL_SIZE]]
+    if allowed_set:
+        hot_pool = [n for n in hot_pool if n in allowed_set]
+        season_pool = [n for n in season_pool if n in allowed_set]
+        overdue_pool = [n for n in overdue_pool if n in allowed_set]
+        cold_pool_force = [n for n in cold_pool_force if n in allowed_set]
 
     pair_counts = _build_pair_counts(train, main_cols)
     pair_base = _percentile(list(pair_counts.values()), COHESION_PAIR_BASE_PCTL) if pair_counts else 0
@@ -1183,13 +1225,14 @@ def generate_tickets(
     global_use = {n: 0 for n in range(MAIN_MIN, MAIN_MAX + 1)}
     overlap_cap = OVERLAP_CAP if overlap_cap_override is None else int(overlap_cap_override)
     global_max = GLOBAL_MAX_USES if global_max_override is None else int(global_max_override)
-
     attempts = 0
     while len(tickets) < ticket_count and attempts < MAX_ATTEMPTS:
         attempts += 1
 
         if fixed_seed:
             seed = list(dict.fromkeys(fixed_seed))[:NUMBERS_PER_TICKET]
+            if allowed_set:
+                seed = [n for n in seed if n in allowed_set]
             remaining_k = NUMBERS_PER_TICKET - len(seed)
             remaining_items = [n for n in pool if n not in seed]
             remaining_weights = [w for n, w in zip(pool, weights) if n not in seed]
@@ -1559,7 +1602,15 @@ def generate_portfolio_tickets(
     df: pd.DataFrame,
     main_cols: List[str],
     target_date: str,
+    allowed_numbers: List[int] = None,
 ) -> List[List[int]]:
+    if allowed_numbers:
+        allowed_set = set(_normalize_allowed_numbers(allowed_numbers))
+        scored = [c for c in scored if c.n in allowed_set]
+        if len(scored) < NUMBERS_PER_TICKET:
+            raise ValueError(
+                "ALLOWED_NUMBERS_FOR_TARGET_DATE is too restrictive for ticket generation"
+            )
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     score_map = {c.n: c.total_score for c in scored}
@@ -1660,6 +1711,8 @@ if __name__ == "__main__":
         else:
             print("TARGET_DATE not found in CSV; generating prediction without hit summary.")
 
+    allowed_numbers = _normalize_allowed_numbers(ALLOWED_NUMBERS_FOR_TARGET_DATE)
+
     scored = score_numbers(df, main_cols, run_date, DEBUG_PRINT)
 
     strategies = _strategy_configs()
@@ -1668,12 +1721,17 @@ if __name__ == "__main__":
         raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
 
     if PORTFOLIO_MODE:
-        tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
+        tickets = generate_portfolio_tickets(
+            scored, df, main_cols, run_date, allowed_numbers=allowed_numbers
+        )
     else:
-        tickets = generate_tickets(scored, df, main_cols, run_date,
-                                   use_weights=True, seed_hot_overdue=False,
-                                   force_coverage=FORCE_COVERAGE,
-                                   cohesion_config=main_cfg)
+        tickets = generate_tickets(
+            scored, df, main_cols, run_date,
+            use_weights=True, seed_hot_overdue=False,
+            force_coverage=FORCE_COVERAGE,
+            cohesion_config=main_cfg,
+            allowed_numbers=allowed_numbers,
+        )
 
     mode_label = "HARD_FORCE" if FORCE_COVERAGE else "WEIGHTED"
     print(f"\n=== {mode_label} STRATEGY ===")
