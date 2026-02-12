@@ -45,7 +45,7 @@ from collections import Counter
 # =========================
 CSV_PATH = "../cross_lotto_data.csv"
 
-TOP_K = 10                # <<< T
+TOP_K = 2                # <<< T
 
 # HIS IS THE ONLY THING YOU CHANGE
 WED_WEEKS = 10           # Wed anchors (weekly inertia)
@@ -146,7 +146,9 @@ def recency_weeks(target, pb, others_by_date):
             return w
     return None
 
-def build_transition(others_by_date, thursdays, max_back=200):
+def build_transition(others_by_date, thursdays, max_back=200, cutoff_date=None):
+    if cutoff_date is not None:
+        thursdays = [d for d in thursdays if d < cutoff_date]
     trans = Counter()
     for i in range(1, min(len(thursdays), max_back)):
         d_prev = thursdays[-(i+1)]
@@ -256,7 +258,7 @@ def main():
         if d.weekday() == 3 and identify_pb(others_by_date[d]) is not None
     )
 
-    trans = build_transition(others_by_date, thursdays)
+    trans_all = build_transition(others_by_date, thursdays)
     last20 = thursdays[-20:]
 
     def run(days):
@@ -264,6 +266,7 @@ def main():
         rows = []
         for d in days:
             actual = identify_pb(others_by_date[d])
+            trans = build_transition(others_by_date, thursdays, cutoff_date=d)
             pred = predict_pb_topk(d, others_by_date, trans)
             hit = actual in pred
             hits += int(hit)
@@ -292,6 +295,7 @@ def main():
 
     # Target date prediction (works even if target not in CSV)
     target = resolve_target_date(thursdays)
+    trans = build_transition(others_by_date, thursdays, cutoff_date=target)
     pred = predict_pb_topk(target, others_by_date, trans)
     actual = identify_pb(others_by_date.get(target, []))
     print()

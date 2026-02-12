@@ -58,7 +58,7 @@ USE_REAL_DRAW_FALLBACK = False
 ALLOWED_NUMBERS_FOR_TARGET_DATE = []
 
 # Backtest: run on the last 5 available draws in the CSV.
-N = 10
+N = 1
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 7
 
