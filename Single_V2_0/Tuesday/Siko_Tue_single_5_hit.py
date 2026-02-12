@@ -45,14 +45,17 @@ import contextlib
 # USER CONFIG (edit only these)
 # ============================================================
 
-CSV_PATH = "Oz_Lotto_transformed.csv"
-TARGET_DATE = "2026-02-03"
+CSV_PATH = "..\\cross_lotto_data_others.csv"
+TARGET_DATE = "2026-02-10"
 # TARGET_DATE = "2026-1-3"
 # Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [4, 10, 19, 27, 29, 41, 46]
+REAL_DRAW = [4, 20, 23, 26, 27, 31, 44]
 # REAL_DRAW = None
 # If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
 USE_REAL_DRAW_FALLBACK = False
+
+# Restrict ticket numbers to this list for TARGET_DATE only ([] disables).
+ALLOWED_NUMBERS_FOR_TARGET_DATE = []
 
 # Backtest: run on the last 5 available draws in the CSV.
 N = 10
@@ -224,6 +227,29 @@ class CandidateScoreMain:
     seasonal_success: int
     penalties: Dict[str, float]
     components: Dict[str, float]
+
+
+def _normalize_allowed_numbers(allowed: List[int]) -> List[int]:
+    if not allowed:
+        return []
+    out: List[int] = []
+    for n in allowed:
+        try:
+            n_int = int(n)
+        except (TypeError, ValueError):
+            raise ValueError("ALLOWED_NUMBERS_FOR_TARGET_DATE must contain integers")
+        if n_int < MAIN_MIN or n_int > MAIN_MAX:
+            raise ValueError(
+                f"ALLOWED_NUMBERS_FOR_TARGET_DATE contains out-of-range number: {n_int}"
+            )
+        out.append(n_int)
+    out = sorted(set(out))
+    if len(out) < NUMBERS_PER_TICKET:
+        raise ValueError(
+            "ALLOWED_NUMBERS_FOR_TARGET_DATE must contain at least "
+            f"{NUMBERS_PER_TICKET} unique numbers"
+        )
+    return out
 
 
 # ----- WINNER BAND SUMMARY (Powerball-style logging) -----
@@ -442,6 +468,51 @@ def _detect_supp_cols(df: pd.DataFrame) -> List[str]:
 
 def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str], List[str]]:
     df = pd.read_csv(csv_path)
+    if "Others (incl supp)" in df.columns and "Date" in df.columns:
+        import ast
+        import re
+        df = df[df["Date"].astype(str).str.startswith("Tue")].copy()
+        df["Date"] = pd.to_datetime(df["Date"], format="%a %d-%b-%Y", errors="coerce")
+        df = df.dropna(subset=["Date"]).copy()
+
+        rows = []
+        for _, row in df.iterrows():
+            raw = row.get("Others (incl supp)")
+            if pd.isna(raw):
+                continue
+            parts = re.findall(r"\[[^\]]*\]", str(raw))
+            if not parts:
+                continue
+            main = ast.literal_eval(parts[0])
+            supp = ast.literal_eval(parts[1]) if len(parts) > 1 else []
+            if len(main) < NUMBERS_PER_TICKET:
+                continue
+            rec = {"Date": row["Date"]}
+            for i in range(NUMBERS_PER_TICKET):
+                rec[f"N{i+1}"] = int(main[i])
+            for i in range(3):
+                rec[f"S{i+1}"] = int(supp[i]) if i < len(supp) else pd.NA
+            rows.append(rec)
+
+        df = pd.DataFrame(rows)
+        if df.empty:
+            raise ValueError("No valid Tuesday rows found in cross_lotto_data_others.csv")
+        main_cols = [f"N{i+1}" for i in range(NUMBERS_PER_TICKET)]
+        supp_cols = [f"S{i+1}" for i in range(3)]
+        for c in main_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df = df.dropna(subset=main_cols).copy()
+        for c in main_cols:
+            df[c] = df[c].astype(int)
+        for c in supp_cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+            df.loc[(df[c] < MAIN_MIN) | (df[c] > MAIN_MAX), c] = pd.NA
+        for c in main_cols:
+            df = df[(df[c] >= MAIN_MIN) & (df[c] <= MAIN_MAX)]
+        df = df.sort_values("Date").reset_index(drop=True)
+
+        return df, main_cols, supp_cols
+
     date_col = "Date" if "Date" in df.columns else "Draw date"
     if date_col not in df.columns:
         raise ValueError("CSV must contain column: 'Date'")
@@ -1261,6 +1332,7 @@ def generate_tickets(
     global_max_override: int = None,
     cohesion_config: Dict[str, object] = None,
     ticket_count: int = None,
+    allowed_numbers: List[int] = None,
 ) -> List[List[int]]:
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
@@ -1271,6 +1343,8 @@ def generate_tickets(
             df, main_cols, target_date, RECENT_DECADE_PATTERN_DAYS
         )
 
+    allowed_set = set(_normalize_allowed_numbers(allowed_numbers)) if allowed_numbers else set()
+
     # build pool
     if pool_override is not None:
         pool = list(dict.fromkeys(pool_override))
@@ -1279,6 +1353,13 @@ def generate_tickets(
         mid_pool = [c.n for c in scored[POOL_SIZE:POOL_SIZE + MID_POOL_SIZE]]
         cold_pool = [c.n for c in scored if c.freq_recent <= 1][:COLD_POOL_SIZE]
         pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
+
+    if allowed_set:
+        pool = [n for n in pool if n in allowed_set]
+        if len(pool) < NUMBERS_PER_TICKET:
+            raise ValueError(
+                "ALLOWED_NUMBERS_FOR_TARGET_DATE is too restrictive for ticket generation"
+            )
 
     # weights from scores
     score_map = {c.n: c.total_score for c in scored}
@@ -1297,6 +1378,11 @@ def generate_tickets(
     overdue_pool = [c.n for c in overdue_sorted[:OVERDUE_POOL_SIZE]]
     cold_sorted = sorted(scored, key=lambda x: (x.freq_recent, x.total_score))
     cold_pool_force = [c.n for c in cold_sorted[:COLD_POOL_SIZE]]
+    if allowed_set:
+        hot_pool = [n for n in hot_pool if n in allowed_set]
+        season_pool = [n for n in season_pool if n in allowed_set]
+        overdue_pool = [n for n in overdue_pool if n in allowed_set]
+        cold_pool_force = [n for n in cold_pool_force if n in allowed_set]
 
     pair_counts = _build_pair_counts(train, main_cols)
     pair_base = _percentile(list(pair_counts.values()), COHESION_PAIR_BASE_PCTL) if pair_counts else 0
@@ -1329,6 +1415,8 @@ def generate_tickets(
 
         if fixed_seed:
             seed = list(dict.fromkeys(fixed_seed))[:NUMBERS_PER_TICKET]
+            if allowed_set:
+                seed = [n for n in seed if n in allowed_set]
             remaining_k = NUMBERS_PER_TICKET - len(seed)
             remaining_items = [n for n in pool if n not in seed]
             remaining_weights = [w for n, w in zip(pool, weights) if n not in seed]
@@ -1694,7 +1782,15 @@ def generate_portfolio_tickets(
     df: pd.DataFrame,
     main_cols: List[str],
     target_date: str,
+    allowed_numbers: List[int] = None,
 ) -> List[List[int]]:
+    if allowed_numbers:
+        allowed_set = set(_normalize_allowed_numbers(allowed_numbers))
+        scored = [c for c in scored if c.n in allowed_set]
+        if len(scored) < NUMBERS_PER_TICKET:
+            raise ValueError(
+                "ALLOWED_NUMBERS_FOR_TARGET_DATE is too restrictive for ticket generation"
+            )
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     recent_decade_patterns = set()
@@ -1778,7 +1874,15 @@ def generate_greedy_tickets(
     target_date: str,
     cohesion_config: Dict[str, object],
     ticket_count: int = None,
+    allowed_numbers: List[int] = None,
 ) -> List[List[int]]:
+    if allowed_numbers:
+        allowed_set = set(_normalize_allowed_numbers(allowed_numbers))
+        scored = [c for c in scored if c.n in allowed_set]
+        if len(scored) < NUMBERS_PER_TICKET:
+            raise ValueError(
+                "ALLOWED_NUMBERS_FOR_TARGET_DATE is too restrictive for ticket generation"
+            )
     rng = random.Random(RANDOM_SEED)
     train = df[df["Date"] < pd.Timestamp(target_date)]
     dist = _history_distributions(train, main_cols, target_date)
@@ -1792,6 +1896,12 @@ def generate_greedy_tickets(
     mid_pool = [c.n for c in scored[GREEDY_POOL_SIZE:GREEDY_POOL_SIZE + MID_POOL_SIZE]]
     cold_pool = [c.n for c in scored if c.freq_recent <= 1][:COLD_POOL_SIZE]
     pool = list(dict.fromkeys(top_pool + mid_pool + cold_pool))
+    if allowed_numbers:
+        pool = [n for n in pool if n in allowed_set]
+        if len(pool) < NUMBERS_PER_TICKET:
+            raise ValueError(
+                "ALLOWED_NUMBERS_FOR_TARGET_DATE is too restrictive for ticket generation"
+            )
 
     score_map = {c.n: c.total_score for c in scored}
     rank_map = {c.n: c.rank_recent for c in scored}
@@ -2112,6 +2222,8 @@ if __name__ == "__main__":
         else:
             print("TARGET_DATE not found in CSV; generating prediction without hit summary.")
 
+    allowed_numbers = _normalize_allowed_numbers(ALLOWED_NUMBERS_FOR_TARGET_DATE)
+
     if AUTO_TUNE_MODE:
         t_idx = df.index[df["Date"] == t_target].tolist()
         if t_idx:
@@ -2131,14 +2243,21 @@ if __name__ == "__main__":
         raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
 
     if PORTFOLIO_MODE:
-        tickets = generate_portfolio_tickets(scored, df, main_cols, run_date)
+        tickets = generate_portfolio_tickets(
+            scored, df, main_cols, run_date, allowed_numbers=allowed_numbers
+        )
     elif GREEDY_MODE:
-        tickets = generate_greedy_tickets(scored, df, main_cols, run_date, main_cfg)
+        tickets = generate_greedy_tickets(
+            scored, df, main_cols, run_date, main_cfg, allowed_numbers=allowed_numbers
+        )
     else:
-        tickets = generate_tickets(scored, df, main_cols, run_date,
-                                   use_weights=True, seed_hot_overdue=False,
-                                   force_coverage=FORCE_COVERAGE,
-                                   cohesion_config=main_cfg)
+        tickets = generate_tickets(
+            scored, df, main_cols, run_date,
+            use_weights=True, seed_hot_overdue=False,
+            force_coverage=FORCE_COVERAGE,
+            cohesion_config=main_cfg,
+            allowed_numbers=allowed_numbers,
+        )
 
     mode_label = "HARD_FORCE" if FORCE_COVERAGE else "WEIGHTED"
     print(f"\n=== {mode_label} STRATEGY ===")

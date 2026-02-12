@@ -22,7 +22,7 @@ log_file_path = os.path.join(
     ".",
     f"Siko_Power.log"   # single growing log file
 )
-CSV_PATH = "Powerball.csv"
+CSV_PATH = "..\\cross_lotto_data_others.csv"
 
 log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
 
@@ -51,7 +51,10 @@ REAL_DRAW_TARGET = [6, 9, 20, 21, 22, 30, 34]
 # TARGET_DATE = "2026-01-01"
 # REAL_DRAW_TARGET = [30, 9, 7, 27, 18, 15, 29]
 # Example: {1: 2, 2: 2, 3: 3, 4: 0}
-DECADE_TARGET_COUNTS = {1: 3, 2: 0, 3: 3, 4: 1}
+DECADE_TARGET_COUNTS = None
+
+# Restrict ticket numbers to this list for TARGET_DATE only ([] disables).
+ALLOWED_NUMBERS_FOR_TARGET_DATE = []
 
 NUM_TICKETS = 10
 NUMBERS_PER_TICKET = 7
@@ -187,6 +190,29 @@ class CandidateScoreMain:
     components: Dict[str, float]
 
 
+def _normalize_allowed_numbers(allowed: List[int]) -> List[int]:
+    if not allowed:
+        return []
+    out: List[int] = []
+    for n in allowed:
+        try:
+            n_int = int(n)
+        except (TypeError, ValueError):
+            raise ValueError("ALLOWED_NUMBERS_FOR_TARGET_DATE must contain integers")
+        if n_int < MAIN_MIN or n_int > MAIN_MAX:
+            raise ValueError(
+                f"ALLOWED_NUMBERS_FOR_TARGET_DATE contains out-of-range number: {n_int}"
+            )
+        out.append(n_int)
+    out = sorted(set(out))
+    if len(out) < NUMBERS_PER_TICKET:
+        raise ValueError(
+            "ALLOWED_NUMBERS_FOR_TARGET_DATE must contain at least "
+            f"{NUMBERS_PER_TICKET} unique numbers"
+        )
+    return out
+
+
 # ---------- helpers ----------
 def _parse_date(d: str) -> pd.Timestamp:
     return pd.to_datetime(d, dayfirst=True, errors="coerce")
@@ -208,6 +234,47 @@ def _detect_main_cols(df: pd.DataFrame) -> List[str]:
 
 def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str]]:
     df = pd.read_csv(csv_path)
+    if "Others (incl supp)" in df.columns and "Date" in df.columns:
+        import ast
+        import re
+        df = df[df["Date"].astype(str).str.startswith("Thu")].copy()
+        df["Date"] = pd.to_datetime(df["Date"], format="%a %d-%b-%Y", errors="coerce")
+        df = df.dropna(subset=["Date"]).copy()
+
+        rows = []
+        for _, row in df.iterrows():
+            raw = row.get("Others (incl supp)")
+            if pd.isna(raw):
+                continue
+            parts = re.findall(r"\[[^\]]*\]", str(raw))
+            if not parts:
+                continue
+            main = ast.literal_eval(parts[0])
+            supp = ast.literal_eval(parts[1]) if len(parts) > 1 else []
+            if len(main) < NUMBERS_PER_TICKET:
+                continue
+            rec = {"Date": row["Date"]}
+            for i in range(NUMBERS_PER_TICKET):
+                rec[f"N{i+1}"] = int(main[i])
+            rec[POWERBALL_COL] = int(supp[0]) if supp else pd.NA
+            rows.append(rec)
+
+        df = pd.DataFrame(rows)
+        if df.empty:
+            raise ValueError("No valid Thursday rows found in cross_lotto_data_others.csv")
+        main_cols = [f"N{i+1}" for i in range(NUMBERS_PER_TICKET)]
+        for c in main_cols + [POWERBALL_COL]:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df = df.dropna(subset=main_cols + [POWERBALL_COL]).copy()
+        for c in main_cols + [POWERBALL_COL]:
+            df[c] = df[c].astype(int)
+        for c in main_cols:
+            df = df[(df[c] >= MAIN_MIN) & (df[c] <= MAIN_MAX)]
+        df = df[(df[POWERBALL_COL] >= POWERBALL_MIN) & (df[POWERBALL_COL] <= POWERBALL_MAX)]
+        df = df.sort_values("Date").reset_index(drop=True)
+
+        return df, main_cols
+
     if "Draw date" not in df.columns:
         raise ValueError("CSV must contain column: 'Draw date'")
     df = df.copy()
@@ -971,7 +1038,14 @@ def _ticket_overlap_ok(candidate: List[int], chosen: List[List[int]], overlap_ca
     return True
 
 
-def generate_tickets(scored, season_decades, band_quota_counts=None, band_quota_strict=False, band_min_requirements=None):
+def generate_tickets(
+    scored,
+    season_decades,
+    band_quota_counts=None,
+    band_quota_strict=False,
+    band_min_requirements=None,
+    allowed_numbers: List[int] = None,
+):
     """
     Production ticket generator:
       1) Sample MANY valid candidate tickets from the score pool (stacking enabled)
@@ -985,8 +1059,12 @@ def generate_tickets(scored, season_decades, band_quota_counts=None, band_quota_
     rng = random.Random(RANDOM_SEED)
     rank_map = {c.n: i + 1 for i, c in enumerate(scored)}
 
+    allowed_set = set(_normalize_allowed_numbers(allowed_numbers)) if allowed_numbers else set()
+
     # --- pool ---
     pool = scored[:min(TOP_POOL, len(scored))]
+    if allowed_set:
+        pool = [c for c in pool if c.n in allowed_set]
     if len(pool) < NUMBERS_PER_TICKET:
         raise RuntimeError(
             f"Pool too small: pool_size={len(pool)} TOP_POOL={TOP_POOL} "
@@ -1715,6 +1793,7 @@ if __name__ == "__main__":
     target_band_quota = band_quota_from_stats(band_stats)
     if target_band_quota:
         print(f"BAND_QUOTA (target from backtest): {target_band_quota}")
+    allowed_numbers = _normalize_allowed_numbers(ALLOWED_NUMBERS_FOR_TARGET_DATE)
     scored, season_profile, season_decades = score_main_numbers(
         target_date=TARGET_DATE,
         csv_path=CSV_PATH,
@@ -1725,7 +1804,8 @@ if __name__ == "__main__":
         scored,
         season_decades,
         band_quota_counts=target_band_quota,
-        band_quota_strict=False
+        band_quota_strict=False,
+        allowed_numbers=allowed_numbers,
     )
     # pb_scored, pb_season_profile = score_powerball_numbers(
     #     target_date=TARGET_DATE,
