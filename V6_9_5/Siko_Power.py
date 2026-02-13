@@ -151,13 +151,13 @@ def last_n_thursday(today, n):
 
 LEADER_POOL_RANK_MAX = 8
 LEARNING_DRAW_COUNT = 8
-MAX_TICKETS_TO_PRINT = 20
+MAX_TICKETS_TO_PRINT = 10
 COHORT_USAGE_CAP_FRAC = None      # e.g. 0.40 to cap cohort repeats
 COHORT_AUTOPRED_EVAL_LAST_N = 2  # e.g. 2 or 3 for auto predictor window
 # OVERRIDE_COHORT_HWC = None          # e.g. (1, 6, 0)
 OVERRIDE_COHORT_HWC = None          # e.g. (1, 6, 0)
 # OVERRIDE_COHORT_DECADES = None
-OVERRIDE_COHORT_DECADES = None      # e.g. {1:2, 2:2, 3:2, 4:1}
+OVERRIDE_COHORT_DECADES = {1:0, 2:4, 3:2, 4:0}      # e.g. {1:2, 2:2, 3:2, 4:1}
 OVERRIDE_RANK_MIN = None            # e.g. 10
 OVERRIDE_RANK_MAX = None            # e.g. 30
 OVERRIDE_P_MIN = None               # e.g. 0.010
@@ -176,10 +176,10 @@ FAST_TRIALS = {
 
 if __name__ == "__main__":
     REAL_RESULTS = {
-        datetime.date(2026, 1, 8): [7, 15, 16, 17, 25, 26, 27],
+        datetime.date(2026, 2, 12): [11, 12, 14, 18, 20, 21, 30],
     }
     # today = datetime.date.today() # - datetime.timedelta(days=1)
-    today = datetime.date(2026, 1, 8)  # keep explicit & reproducible
+    today = datetime.date(2026, 2, 12)  # keep explicit & reproducible
     N = 8
     thursday_dates = last_n_thursday(today, N)
     # print(tuesday_dates)

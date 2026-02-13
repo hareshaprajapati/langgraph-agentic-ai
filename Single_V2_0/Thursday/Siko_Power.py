@@ -40,10 +40,10 @@ import math
 # USER CONFIG (edit only these)
 # ============================================================
 
-N = 20
+N = 2
 # 3 hit with without decade
-TARGET_DATE = "2026-01-22"
-REAL_DRAW_TARGET = [6, 9, 20, 21, 22, 30, 34]
+TARGET_DATE = "2026-02-12"
+REAL_DRAW_TARGET = [11, 12, 14, 18, 20, 21, 30]
 # 4 hit without decade, with decade 3
 # TARGET_DATE = "2026-01-08"
 # REAL_DRAW_TARGET = [7, 15, 16, 17, 25, 26, 27]
@@ -51,9 +51,10 @@ REAL_DRAW_TARGET = [6, 9, 20, 21, 22, 30, 34]
 # TARGET_DATE = "2026-01-01"
 # REAL_DRAW_TARGET = [30, 9, 7, 27, 18, 15, 29]
 # Example: {1: 2, 2: 2, 3: 3, 4: 0}
-DECADE_TARGET_COUNTS = None
+DECADE_TARGET_COUNTS = {1: 0, 2: 5, 3: 2, 4: 0}
 
 # Restrict ticket numbers to this list for TARGET_DATE only ([] disables).
+# ALLOWED_NUMBERS_FOR_TARGET_DATE = [16,18,22,9,12,25,33,1,4,11,27,35,]
 ALLOWED_NUMBERS_FOR_TARGET_DATE = []
 
 NUM_TICKETS = 10
@@ -86,6 +87,7 @@ DECADE_SOFT_PENALTY = 0.6    # per unit distance outside tolerance (soft mode)
 # Optional: exact decade counts to prefer per ticket (soft rule)
 
 DECADE_TARGET_SOFT_PENALTY = 0.25
+DECADE_TARGET_STRICT = True
 
 # Optional: verify against a known real draw (set [] to disable)
 # REAL_DRAW = [30, 9, 7, 27, 18, 15, 29]
@@ -1185,7 +1187,7 @@ def generate_tickets(
     while len(candidates) < needed and attempts < max_attempts:
         attempts += 1
 
-        if band_quota_counts and band_pools:
+        if band_quota_counts and band_pools and not globals().get("DECADE_TARGET_STRICT", False):
             pick = []
             valid = True
             for band, count in band_quota_counts.items():
@@ -1214,20 +1216,26 @@ def generate_tickets(
 
         if DECADE_MODE == "hard":
             if not in_band:
-                continue
-            if dist > (2 * DECADE_MEDIAN_TOL):
-                continue
+                if not globals().get("DECADE_TARGET_STRICT", False):
+                    continue
+            else:
+                if dist > (2 * DECADE_MEDIAN_TOL):
+                    if not globals().get("DECADE_TARGET_STRICT", False):
+                        continue
         else:
             # soft: probabilistic rejection (keep your existing constants if present)
-            soft_pen = globals().get("DECADE_SOFT_PENALTY", 1.0)
-            reject_prob = min(0.85, dist * float(soft_pen) * 0.15)
-            if rng.random() < reject_prob:
-                continue
+            if not globals().get("DECADE_TARGET_STRICT", False):
+                soft_pen = globals().get("DECADE_SOFT_PENALTY", 1.0)
+                reject_prob = min(0.85, dist * float(soft_pen) * 0.15)
+                if rng.random() < reject_prob:
+                    continue
 
         # optional target decade counts (if you use it)
         if "DECADE_TARGET_COUNTS" in globals() and globals()["DECADE_TARGET_COUNTS"] is not None:
             target = globals()["DECADE_TARGET_COUNTS"]
             tdist = decade_target_distance(vec, target)
+            if tdist > 0 and globals().get("DECADE_TARGET_STRICT", False):
+                continue
             if tdist > 0:
                 tsoft = globals().get("DECADE_TARGET_SOFT_PENALTY", 0.25)
                 if rng.random() < min(0.90, tdist * float(tsoft)):
