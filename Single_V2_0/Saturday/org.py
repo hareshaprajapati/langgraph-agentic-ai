@@ -42,7 +42,7 @@ import math
 # USER CONFIG (edit only these)
 # ============================================================
 
-CSV_PATH = "..\\cross_lotto_data_others.csv"
+CSV_PATH = "Tattslotto.csv"
 TARGET_DATE = "2026-2-14"
 REAL_DRAW_TARGET = [3, 6, 7, 12, 14, 22]
 
@@ -50,7 +50,7 @@ REAL_DRAW_TARGET = [3, 6, 7, 12, 14, 22]
 # REAL_DRAW_TARGET = [9, 20, 33, 34, 42, 45]
 
 # Backtest: run on the last 5 available draws in the CSV.
-N = 20
+N = 30
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -404,44 +404,6 @@ def _detect_main_cols(df: pd.DataFrame) -> List[str]:
 
 def _load_csv(csv_path: str) -> Tuple[pd.DataFrame, List[str]]:
     df = pd.read_csv(csv_path)
-    if "Others (incl supp)" in df.columns and "Date" in df.columns:
-        import ast
-        import re
-        df = df[df["Date"].astype(str).str.startswith("Sat")].copy()
-        df["Date"] = pd.to_datetime(df["Date"], format="%a %d-%b-%Y", errors="coerce")
-        df = df.dropna(subset=["Date"]).copy()
-
-        rows = []
-        for _, row in df.iterrows():
-            raw = row.get("Others (incl supp)")
-            if pd.isna(raw):
-                continue
-            parts = re.findall(r"\[[^\]]*\]", str(raw))
-            if not parts:
-                continue
-            main = ast.literal_eval(parts[0])
-            if len(main) < NUMBERS_PER_TICKET:
-                continue
-            rec = {"Date": row["Date"]}
-            for i in range(NUMBERS_PER_TICKET):
-                rec[f"N{i+1}"] = int(main[i])
-            rows.append(rec)
-
-        df = pd.DataFrame(rows)
-        if df.empty:
-            raise ValueError("No valid Saturday rows found in cross_lotto_data_others.csv")
-        main_cols = [f"N{i+1}" for i in range(NUMBERS_PER_TICKET)]
-        for c in main_cols:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-        df = df.dropna(subset=main_cols).copy()
-        for c in main_cols:
-            df[c] = df[c].astype(int)
-        for c in main_cols:
-            df = df[(df[c] >= MAIN_MIN) & (df[c] <= MAIN_MAX)]
-        df = df.sort_values("Date").reset_index(drop=True)
-
-        return df, main_cols
-
     date_col = "Date" if "Date" in df.columns else "Draw date"
     if date_col not in df.columns:
         raise ValueError("CSV must contain column: 'Date'")
