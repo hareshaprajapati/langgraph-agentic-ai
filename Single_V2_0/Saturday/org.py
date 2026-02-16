@@ -43,8 +43,8 @@ import math
 # ============================================================
 
 CSV_PATH = "..\\cross_lotto_data_others.csv"
-TARGET_DATE = "2026-2-07"
-REAL_DRAW_TARGET = [3, 8, 9, 27, 33, 41]
+TARGET_DATE = "2026-2-14"
+REAL_DRAW_TARGET = [3, 6, 7, 12, 14, 22]
 
 # TARGET_DATE = "2026-1-31"
 # REAL_DRAW_TARGET = [9, 20, 33, 34, 42, 45]

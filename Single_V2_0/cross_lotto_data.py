@@ -3,11 +3,13 @@ import os
 from datetime import datetime
 
 import re
+import ast
 import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
 
 import requests
+import pandas as pd
 from bs4 import BeautifulSoup
 
 # ---------- CONFIG ----------
@@ -162,6 +164,101 @@ def write_csv(path: str, header: str, new_lines: list[str], existing_lines: list
             f.write(ln + "\n")
 
 
+def _read_text_with_fallback(path: str) -> tuple[list[str], str]:
+    if not os.path.exists(path):
+        return [], "utf-8"
+    for enc in ("utf-8", "utf-16"):
+        try:
+            with open(path, "r", encoding=enc) as f:
+                return [ln.rstrip("\n") for ln in f], enc
+        except UnicodeDecodeError:
+            continue
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        return [ln.rstrip("\n") for ln in f], "utf-8"
+
+
+def update_tattslotto_from_results(
+    sat_results: list[tuple[datetime, list[int], list[int]]],
+    tatts_path: str,
+):
+    header = "Draw,Date,Winning Number 1,Winning Number 2,Winning Number 3,Winning Number 4,Winning Number 5,Winning Number 6,Supplementary Number 1,Supplementary Number 2"
+
+    lines, enc = _read_text_with_fallback(tatts_path)
+    if lines and lines[0].strip().lower().startswith("draw,"):
+        existing_header = lines[0]
+        data_lines = [ln for ln in lines[1:] if ln.strip()]
+    else:
+        existing_header = header
+        data_lines = [ln for ln in lines if ln.strip()]
+
+    def _parse_line(ln: str):
+        parts = [p.strip() for p in ln.split(",")]
+        if len(parts) < 10:
+            return None
+        try:
+            draw = int(parts[0])
+            dt = datetime.strptime(parts[1], "%d/%m/%Y").date()
+            nums = [int(p) for p in parts[2:8]]
+            supp = [int(p) for p in parts[8:10]]
+        except Exception:
+            return None
+        return draw, dt, nums, supp
+
+    parsed = []
+    for ln in data_lines:
+        p = _parse_line(ln)
+        if p:
+            parsed.append(p)
+
+    if parsed:
+        parsed.sort(key=lambda x: x[1], reverse=True)
+        top_draw, top_date, _, _ = parsed[0]
+    else:
+        top_draw, top_date = None, None
+
+    cross_map: dict[datetime.date, tuple[list[int], list[int]]] = {}
+    for dt, main, supp in sat_results:
+        if not isinstance(main, list) or len(main) < 6:
+            continue
+        if not isinstance(supp, list):
+            supp = []
+        cross_map[dt.date()] = ([int(x) for x in main[:6]], [int(x) for x in supp[:2]])
+
+    if not cross_map:
+        return
+
+    # Add only dates newer than current top
+    if top_date:
+        new_dates = sorted([d for d in cross_map.keys() if d > top_date], reverse=True)
+    else:
+        new_dates = sorted(cross_map.keys(), reverse=True)
+
+    if not new_dates:
+        return
+
+    new_lines = []
+    for d in new_dates:
+        main, supp = cross_map[d]
+        # draw numbers in this file advance by 2 each week
+        if top_draw is None:
+            draw = 0
+        else:
+            weeks = max(0, (d - top_date).days // 7)
+            draw = top_draw + (2 * weeks)
+        date_str = d.strftime("%d/%m/%Y")
+        nums = ", ".join(str(n) for n in main)
+        supp_str = ", ".join(str(n) for n in (supp + [0, 0])[:2])
+        new_lines.append(f"{draw},{date_str},{nums},{supp_str}")
+
+    # Keep existing data lines; prepend new lines
+    with open(tatts_path, "w", encoding=enc) as f:
+        f.write(existing_header + "\n")
+        for ln in new_lines:
+            f.write(ln + "\n")
+        for ln in data_lines:
+            f.write(ln + "\n")
+
+
 # ---------- MAIN ----------
 def main():
     end = datetime.now()
@@ -226,6 +323,7 @@ def main():
 
 
     # 2) Others
+    saturday_results: list[tuple[datetime, list[int], list[int]]] = []
     for key in ["weekday_windfall", "oz_lotto", "powerball", "saturday_lotto"]:
         urls = [PAGES[key]] + archive_urls_for_range(PAGES[key], global_start, end)
 
@@ -233,6 +331,8 @@ def main():
         for url in urls:
             rows = scrape_past_results(url)
             for dt, main_nums, supp_nums in rows:
+                if key == "saturday_lotto":
+                    saturday_results.append((dt, main_nums, supp_nums))
                 k = (dt.date(), tuple(main_nums), tuple(supp_nums))
                 if k in seen:
                     continue
@@ -307,6 +407,10 @@ def main():
     write_csv(main_path, main_header, main_new, main_existing)
     write_csv(sfl_path, sfl_header, sfl_new, sfl_existing)
     write_csv(others_path, others_header, others_new, others_existing)
+
+    # Update Tattslotto.csv from freshly scraped Saturday results
+    tatts_path = os.path.join(".", "Saturday", "Tattslotto.csv")
+    update_tattslotto_from_results(saturday_results, tatts_path)
 
 
 if __name__ == "__main__":
