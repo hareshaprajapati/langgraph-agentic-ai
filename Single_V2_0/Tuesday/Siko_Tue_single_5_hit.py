@@ -58,8 +58,8 @@ USE_REAL_DRAW_FALLBACK = False
 ALLOWED_NUMBERS_FOR_TARGET_DATE = []
 
 # Backtest: run on the last 5 available draws in the CSV.
-N = 1
-NUM_TICKETS = 20
+N = 10
+NUM_TICKETS = 10
 NUMBERS_PER_TICKET = 7
 
 MAIN_MIN = 1
@@ -173,11 +173,11 @@ COHESIVE_DIVERSITY_PENALTY = 0.30
 DIFFUSE_DIVERSITY_PENALTY = 0.15
 
 # Greedy ticket builder (score-first incremental selection)
-GREEDY_MODE = True
+GREEDY_MODE = False
 GREEDY_POOL_SIZE = 36
 
 # Auto-tune config (walk-forward) for ge4 hits
-AUTO_TUNE_MODE = True
+AUTO_TUNE_MODE = False
 AUTO_TUNE_TRAIN_DRAWS = 5
 AUTO_TUNE_MAX_SECONDS = 300
 AUTO_TUNE_LOOKBACK_DAYS = [120, 180, 210, 270]
