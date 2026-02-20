@@ -40,7 +40,7 @@ import math
 # USER CONFIG (edit only these)
 # ============================================================
 
-N = 2
+N = 20
 # 3 hit with without decade
 TARGET_DATE = "2026-02-12"
 REAL_DRAW_TARGET = [11, 12, 14, 18, 20, 21, 30]
@@ -51,7 +51,7 @@ REAL_DRAW_TARGET = [11, 12, 14, 18, 20, 21, 30]
 # TARGET_DATE = "2026-01-01"
 # REAL_DRAW_TARGET = [30, 9, 7, 27, 18, 15, 29]
 # Example: {1: 2, 2: 2, 3: 3, 4: 0}
-DECADE_TARGET_COUNTS = {1: 0, 2: 5, 3: 2, 4: 0}
+DECADE_TARGET_COUNTS = None
 
 # Restrict ticket numbers to this list for TARGET_DATE only ([] disables).
 # ALLOWED_NUMBERS_FOR_TARGET_DATE = [16,18,22,9,12,25,33,1,4,11,27,35,]
@@ -1047,6 +1047,7 @@ def generate_tickets(
     band_quota_strict=False,
     band_min_requirements=None,
     allowed_numbers: List[int] = None,
+    allow_relax: bool = True,
 ):
     """
     Production ticket generator:
@@ -1282,6 +1283,29 @@ def generate_tickets(
         candidates.append(pick)
 
     if len(candidates) < max(NUM_TICKETS, 50):
+        if allow_relax and (globals().get("DECADE_TARGET_STRICT", False) or DECADE_MODE == "hard"):
+            print(
+                "generate_tickets(): relaxing decade constraints and retrying once "
+                "(DECADE_MODE='soft', DECADE_TARGET_STRICT=False)."
+            )
+            prev_mode = DECADE_MODE
+            prev_strict = globals().get("DECADE_TARGET_STRICT", False)
+            try:
+                globals()["DECADE_TARGET_STRICT"] = False
+                globals()["DECADE_MODE"] = "soft"
+                return generate_tickets(
+                    scored,
+                    season_decades,
+                    band_quota_counts=band_quota_counts,
+                    band_quota_strict=band_quota_strict,
+                    band_min_requirements=band_min_requirements,
+                    allowed_numbers=allowed_numbers,
+                    allow_relax=False,
+                )
+            finally:
+                globals()["DECADE_TARGET_STRICT"] = prev_strict
+                globals()["DECADE_MODE"] = prev_mode
+
         raise RuntimeError(
             f"generate_tickets(): only {len(candidates)} candidates after {attempts} attempts. "
             f"Try DECADE_MODE='soft', increase DECADE_MEDIAN_TOL, or reduce constraints."
