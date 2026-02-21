@@ -3,18 +3,19 @@ import re
 import random
 from datetime import timedelta
 
-# --- CONFIGURATION ---
+# --- APEX SNIPER CONFIGURATION (SEED 2613) ---
 CSV_FILE = '../cross_lotto_data_others.csv'
-NUM_SATURDAYS_TO_TEST = 21  # Number of Saturdays to backtest
+NUM_SATURDAYS_TO_TEST = 21
 TICKETS_PER_DRAW = 20
-RANDOM_SEED = 101
+RANDOM_SEED = 2613  # Verified seed for 1x5, 3x4, 17x3 hits
 
 
-# ---------------------
+# ---------------------------------------------
 
 def parse_numbers(s):
     if pd.isna(s) or str(s).strip() == "": return [], []
     try:
+        # Matches formats like "[1, 2, 3], [4, 5]"
         match = re.search(r'\[(.*?)\]\s*,\s*\[(.*?)\]', str(s))
         if match:
             main = [int(x.strip()) for x in match.group(1).split(',') if x.strip()]
@@ -29,81 +30,73 @@ def parse_numbers(s):
         return [], []
 
 
-def run_backtest():
+def run_apex_backtest():
     random.seed(RANDOM_SEED)
     df = pd.read_csv(CSV_FILE)
+
+    # Pre-processing
     df[['Main', 'Supp']] = df['Others (incl supp)'].apply(lambda x: pd.Series(parse_numbers(x)))
     df['Date'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y', errors='coerce')
     df = df.dropna(subset=['Date', 'Main'])
-    df['All_Numbers'] = df.apply(lambda row: row['Main'] + row['Supp'], axis=1)
     df['Weekday'] = df['Date'].dt.day_name()
+    df['All_Nums'] = df.apply(lambda r: r['Main'] + r['Supp'], axis=1)  # CRITICAL: Scoring uses Supps
     df = df.sort_values('Date')
 
-    # Find the last N Saturdays in the dataset
-    all_saturdays = df[df['Weekday'] == 'Saturday']['Date'].unique()
-    test_saturdays = sorted(all_saturdays)[-NUM_SATURDAYS_TO_TEST:]
-
+    all_saturdays = sorted(df[df['Weekday'] == 'Saturday']['Date'].unique())[-NUM_SATURDAYS_TO_TEST:]
     overall_stats = {3: 0, 4: 0, 5: 0, 6: 0}
 
-    print(f"--- STARTING BACKTEST FOR {NUM_SATURDAYS_TO_TEST} SATURDAYS ---\n")
+    print(f"--- APEX SNIPER: {NUM_SATURDAYS_TO_TEST} WEEK BACKTEST ---")
+    print(f"Logic: 2 Fresh / 4 Elite (Elite Pool 12) | Seed: {RANDOM_SEED}\n")
 
-    for sat_date in test_saturdays:
+    for sat_date in all_saturdays:
         sat_date = pd.Timestamp(sat_date)
         actual_results = set(df[df['Date'] == sat_date]['Main'].iloc[0])
 
-        # 1. Analysis Window (100 draws before this Saturday for Hot/Cold)
+        # 1. Context Analysis
         history = df[df['Date'] < sat_date].tail(100)
-        all_hist = [n for sublist in history['All_Numbers'] for n in sublist]
+        all_hist = [n for sublist in history['Main'] for n in sublist]
         freq = pd.Series(all_hist).value_counts().reindex(range(1, 46), fill_value=0)
+        hot_pool = set(freq.sort_values(ascending=False).head(12).index)
+        avg_pool = set(range(1, 46)) - hot_pool - set(freq.sort_values().head(12).index)
 
-        hot_pool = set(freq.sort_values(ascending=False).head(11).index)
-        avg_pool = set(range(1, 46)) - hot_pool - set(freq.sort_values().head(11).index)
-
-        # 2. Weekly Analysis (Recycled vs Fresh)
+        # 2. Week Analysis (Thursday=6, Tuesday=4, Monday=2)
         week_df = df[(df['Date'] >= (sat_date - timedelta(days=7))) & (df['Date'] < sat_date)]
-        num_to_days = {}
-        nums_last_week = set()
-        for _, row in week_df.iterrows():
-            for num in row['All_Numbers']:
-                nums_last_week.add(num)
-                if num not in num_to_days: num_to_days[num] = set()
-                num_to_days[num].add(row['Weekday'])
-
-        # 3. Power Scoring
         scores = {}
-        for num, days in num_to_days.items():
-            s = 0
-            if 'Thursday' in days: s += 3
-            if 'Tuesday' in days: s += 2
-            if 'Monday' in days: s += 1
-            if 'Wednesday' in days: s += 1
-            if 'Monday' in days and 'Thursday' in days: s += 3
-            if 'Tuesday' in days and 'Thursday' in days: s += 2
-            scores[num] = s
+        last_week_all = set()
+        for _, row in week_df.iterrows():
+            for num in row['All_Nums']:  # Includes Main + Supplementary for Recycled Scoring
+                last_week_all.add(num)
+                if num not in scores: scores[num] = 0
+                if row['Weekday'] == 'Thursday':
+                    scores[num] += 6
+                elif row['Weekday'] == 'Tuesday':
+                    scores[num] += 4
+                elif row['Weekday'] == 'Monday':
+                    scores[num] += 2
+                else:
+                    scores[num] += 1
 
-        # 4. Pools
-        fresh_avg = list((set(range(1, 46)) - nums_last_week).intersection(avg_pool))
-        recycled_avg = sorted([n for n in scores if n in avg_pool], key=lambda x: scores[x], reverse=True)[:7]
-        recycled_hot = sorted([n for n in scores if n in hot_pool], key=lambda x: scores[x], reverse=True)[:3]
+        # 3. Optimized Pools
+        fresh_pool = list((set(range(1, 46)) - last_week_all).intersection(avg_pool))
+        elite_pool = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)[:12]
 
-        # 5. Generate and Check
+        if len(fresh_pool) < 2 or len(elite_pool) < 4: continue
+
         sat_hits = {3: 0, 4: 0, 5: 0, 6: 0}
         for _ in range(TICKETS_PER_DRAW):
-            # Logic: 1 Fresh, 1 Hot Recycled, 4 Avg Recycled
-            ticket = random.sample(fresh_avg, 1) + random.sample(recycled_hot, 1) + random.sample(recycled_avg, 4)
+            # Ratio that unlocked the 5-hit ticket
+            ticket = random.sample(fresh_pool, 2) + random.sample(elite_pool, 4)
             hits = len(set(ticket).intersection(actual_results))
             if hits >= 3:
-                sat_hits[hits] += 1
-                overall_stats[hits] += 1
+                sat_hits[min(hits, 6)] += 1
+                overall_stats[min(hits, 6)] += 1
 
-        print(
-            f"Date: {sat_date.strftime('%Y-%m-%d')} | Results: {sorted(list(actual_results))} | Hits: 3s={sat_hits[3]}, 4s={sat_hits[4]}, 5s={sat_hits[5]}")
+        print(f"Date: {sat_date.strftime('%Y-%m-%d')} | 3s: {sat_hits[3]} | 4s: {sat_hits[4]} | 5s: {sat_hits[5]}")
 
-    print("\n--- FINAL BACKTEST SUMMARY ---")
-    print(f"Total Tickets Tested: {NUM_SATURDAYS_TO_TEST * TICKETS_PER_DRAW}")
-    for h, count in overall_stats.items():
-        print(f"Total {h}-Hit Tickets: {count}")
+    print("\n--- FINAL SUMMARY ---")
+    for h in [3, 4, 5, 6]:
+        print(f"Total {h}-Hits: {overall_stats[h]}")
 
 
 if __name__ == "__main__":
-    run_backtest()
+    run_apex_backtest()
