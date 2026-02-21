@@ -86,6 +86,7 @@ def run_apex_backtest():
         for _ in range(TICKETS_PER_DRAW):
             # Ratio that unlocked the 5-hit ticket
             ticket = random.sample(fresh_pool, 2) + random.sample(elite_pool, 4)
+            print(ticket)
             hits = len(set(ticket).intersection(actual_results))
             if hits >= 3:
                 sat_hits[min(hits, 6)] += 1
