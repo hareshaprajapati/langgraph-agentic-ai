@@ -5,16 +5,15 @@ from datetime import timedelta
 
 # --- CONFIGURATION ---
 CSV_FILE = '../cross_lotto_data_others.csv'
-TOTAL_TICKETS = 20
-RANDOM_SEED = 13  # Your "Lucky Seed"
-REAL_DRAW_RESULT = [4, 11, 26, 30, 42, 43]
+NUM_SATURDAYS_TO_TEST = 21  # Number of Saturdays to backtest
+TICKETS_PER_DRAW = 20
+RANDOM_SEED = 101
 
 
 # ---------------------
 
 def parse_numbers(s):
-    if pd.isna(s) or str(s).strip() == "":
-        return [], []
+    if pd.isna(s) or str(s).strip() == "": return [], []
     try:
         match = re.search(r'\[(.*?)\]\s*,\s*\[(.*?)\]', str(s))
         if match:
@@ -30,89 +29,81 @@ def parse_numbers(s):
         return [], []
 
 
-def generate_lotto_tickets():
+def run_backtest():
     random.seed(RANDOM_SEED)
-
-    # 1. Load Data
     df = pd.read_csv(CSV_FILE)
     df[['Main', 'Supp']] = df['Others (incl supp)'].apply(lambda x: pd.Series(parse_numbers(x)))
     df['Date'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y', errors='coerce')
-    df = df.dropna(subset=['Date'])
+    df = df.dropna(subset=['Date', 'Main'])
     df['All_Numbers'] = df.apply(lambda row: row['Main'] + row['Supp'], axis=1)
     df['Weekday'] = df['Date'].dt.day_name()
     df = df.sort_values('Date')
 
-    last_date = df['Date'].max()
-    days_to_sat = (5 - last_date.weekday() + 7) % 7
-    if days_to_sat == 0: days_to_sat = 7
-    target_dt = last_date + timedelta(days=days_to_sat)
+    # Find the last N Saturdays in the dataset
+    all_saturdays = df[df['Weekday'] == 'Saturday']['Date'].unique()
+    test_saturdays = sorted(all_saturdays)[-NUM_SATURDAYS_TO_TEST:]
 
-    # 2. Historical Frequency
-    history = df[df['Date'] < target_dt].tail(100)
-    all_history_nums = [n for sublist in history['All_Numbers'] for n in sublist]
-    freq_counts = pd.Series(all_history_nums).value_counts().reindex(range(1, 46), fill_value=0)
+    overall_stats = {3: 0, 4: 0, 5: 0, 6: 0}
 
-    sorted_freq = freq_counts.sort_values(ascending=False)
-    hot_pool = set(sorted_freq.head(11).index)
-    avg_pool = set(range(1, 46)) - hot_pool - set(sorted_freq.tail(11).index)
+    print(f"--- STARTING BACKTEST FOR {NUM_SATURDAYS_TO_TEST} SATURDAYS ---\n")
 
-    # 3. Weekly Analysis
-    past_week_df = df[(df['Date'] >= (target_dt - timedelta(days=7))) & (df['Date'] < target_dt)]
-    num_to_days = {}
-    numbers_last_week = set()
-    for _, row in past_week_df.iterrows():
-        for num in row['All_Numbers']:
-            numbers_last_week.add(num)
-            if num not in num_to_days: num_to_days[num] = set()
-            num_to_days[num].add(row['Weekday'])
+    for sat_date in test_saturdays:
+        sat_date = pd.Timestamp(sat_date)
+        actual_results = set(df[df['Date'] == sat_date]['Main'].iloc[0])
 
-    # 4. Power Scoring
-    recycled_scores = {}
-    for num, days in num_to_days.items():
-        score = 0
-        if 'Thursday' in days: score += 3
-        if 'Tuesday' in days: score += 2
-        if 'Monday' in days: score += 1
-        if 'Wednesday' in days: score += 1
-        if 'Saturday' in days: score += 1
-        if 'Monday' in days and 'Thursday' in days: score += 3
-        if 'Tuesday' in days and 'Thursday' in days: score += 2
-        recycled_scores[num] = score
+        # 1. Analysis Window (100 draws before this Saturday for Hot/Cold)
+        history = df[df['Date'] < sat_date].tail(100)
+        all_hist = [n for sublist in history['All_Numbers'] for n in sublist]
+        freq = pd.Series(all_hist).value_counts().reindex(range(1, 46), fill_value=0)
 
-    # 5. Narrowed Candidate Pools
-    fresh_pool = set(range(1, 46)) - numbers_last_week
-    candidate_fresh_avg = list(fresh_pool.intersection(avg_pool))
+        hot_pool = set(freq.sort_values(ascending=False).head(11).index)
+        avg_pool = set(range(1, 46)) - hot_pool - set(freq.sort_values().head(11).index)
 
-    # SORT AND NARROW TO TOP 7
-    recycled_avg = [n for n in recycled_scores if n in avg_pool]
-    recycled_avg.sort(key=lambda x: recycled_scores[x], reverse=True)
-    top_recycled_avg = recycled_avg[:7]  # NARROWED FROM 10 TO 7
+        # 2. Weekly Analysis (Recycled vs Fresh)
+        week_df = df[(df['Date'] >= (sat_date - timedelta(days=7))) & (df['Date'] < sat_date)]
+        num_to_days = {}
+        nums_last_week = set()
+        for _, row in week_df.iterrows():
+            for num in row['All_Numbers']:
+                nums_last_week.add(num)
+                if num not in num_to_days: num_to_days[num] = set()
+                num_to_days[num].add(row['Weekday'])
 
-    recycled_hot = [n for n in recycled_scores if n in hot_pool]
-    recycled_hot.sort(key=lambda x: recycled_scores[x], reverse=True)
-    top_recycled_hot = recycled_hot[:3]  # NARROWED FOR CONCENTRATION
+        # 3. Power Scoring
+        scores = {}
+        for num, days in num_to_days.items():
+            s = 0
+            if 'Thursday' in days: s += 3
+            if 'Tuesday' in days: s += 2
+            if 'Monday' in days: s += 1
+            if 'Wednesday' in days: s += 1
+            if 'Monday' in days and 'Thursday' in days: s += 3
+            if 'Tuesday' in days and 'Thursday' in days: s += 2
+            scores[num] = s
 
-    # 6. Build
-    print(f"Targeting: {target_dt.strftime('%Y-%m-%d')} | Seed: {RANDOM_SEED}")
-    all_hits = []
+        # 4. Pools
+        fresh_avg = list((set(range(1, 46)) - nums_last_week).intersection(avg_pool))
+        recycled_avg = sorted([n for n in scores if n in avg_pool], key=lambda x: scores[x], reverse=True)[:7]
+        recycled_hot = sorted([n for n in scores if n in hot_pool], key=lambda x: scores[x], reverse=True)[:3]
 
-    for i in range(1, TOTAL_TICKETS + 1):
-        ticket = random.sample(candidate_fresh_avg, 1)  # 1 Fresh
+        # 5. Generate and Check
+        sat_hits = {3: 0, 4: 0, 5: 0, 6: 0}
+        for _ in range(TICKETS_PER_DRAW):
+            # Logic: 1 Fresh, 1 Hot Recycled, 4 Avg Recycled
+            ticket = random.sample(fresh_avg, 1) + random.sample(recycled_hot, 1) + random.sample(recycled_avg, 4)
+            hits = len(set(ticket).intersection(actual_results))
+            if hits >= 3:
+                sat_hits[hits] += 1
+                overall_stats[hits] += 1
 
-        if top_recycled_hot:
-            ticket += random.sample(top_recycled_hot, 1)  # 1 Focused Hot Recycled
-        else:
-            ticket += random.sample(recycled_avg[7:12], 1)
+        print(
+            f"Date: {sat_date.strftime('%Y-%m-%d')} | Results: {sorted(list(actual_results))} | Hits: 3s={sat_hits[3]}, 4s={sat_hits[4]}, 5s={sat_hits[5]}")
 
-        ticket += random.sample(top_recycled_avg, 4)  # 4 Focused Avg Recycled
-        ticket.sort()
-
-        hits = set(ticket).intersection(set(REAL_DRAW_RESULT))
-        all_hits.append(len(hits))
-        print(f"Ticket {i:02}: {ticket} (Hits: {len(hits)}) Matched: {sorted(list(hits)) if hits else ''}")
-
-    print(f"\nSummary: Max Hits {max(all_hits)} | 3+ Hits: {len([h for h in all_hits if h >= 3])}")
+    print("\n--- FINAL BACKTEST SUMMARY ---")
+    print(f"Total Tickets Tested: {NUM_SATURDAYS_TO_TEST * TICKETS_PER_DRAW}")
+    for h, count in overall_stats.items():
+        print(f"Total {h}-Hit Tickets: {count}")
 
 
 if __name__ == "__main__":
-    generate_lotto_tickets()
+    run_backtest()
