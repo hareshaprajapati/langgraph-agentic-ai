@@ -1,3 +1,36 @@
+import sys
+import os
+from datetime import datetime
+
+class Tee:
+    def __init__(self, *files):
+        self.files = files
+
+    def write(self, obj):
+        for f in self.files:
+            try:
+                f.write(obj)
+                f.flush()
+            except OSError:
+                pass
+
+    def flush(self):
+        for f in self.files:
+            try:
+                f.flush()
+            except OSError:
+                pass
+
+log_file_path = os.path.join(
+    ".",
+    "Sikotar_Saturday_Gemini.py.log"   # single growing log file
+)
+
+log_file = open(log_file_path, "w", buffering=1, encoding="utf-8")
+
+sys.stdout = Tee(sys.stdout, log_file)
+sys.stderr = Tee(sys.stderr, log_file)
+
 import pandas as pd
 import re
 import random
@@ -86,7 +119,7 @@ def run_apex_backtest():
         for _ in range(TICKETS_PER_DRAW):
             # Ratio that unlocked the 5-hit ticket
             ticket = random.sample(fresh_pool, 2) + random.sample(elite_pool, 4)
-            print(ticket)
+            # print(ticket)
             hits = len(set(ticket).intersection(actual_results))
             if hits >= 3:
                 sat_hits[min(hits, 6)] += 1
