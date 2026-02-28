@@ -42,8 +42,8 @@ import math
 
 N = 20
 # 3 hit with without decade
-TARGET_DATE = "2026-02-12"
-REAL_DRAW_TARGET = [11, 12, 14, 18, 20, 21, 30]
+TARGET_DATE = "2026-02-26"
+REAL_DRAW_TARGET = [6,8,12,18,25,26,27]
 # 4 hit without decade, with decade 3
 # TARGET_DATE = "2026-01-08"
 # REAL_DRAW_TARGET = [7, 15, 16, 17, 25, 26, 27]
