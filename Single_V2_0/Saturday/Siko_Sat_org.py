@@ -1785,7 +1785,7 @@ if __name__ == "__main__":
         show_ticket_hits(bt_draw, bt_tickets)
         best = 0
         ge3_tickets = []
-        for t in bt_tickets:
+        for idx, t in enumerate(bt_tickets, 1):
             h = len(set(t).intersection(set(bt_draw)))
             if h > best:
                 best = h
@@ -1798,7 +1798,7 @@ if __name__ == "__main__":
             if h >= 6:
                 bt_ticket_hit6p += 1
             if h >= 3:
-                ge3_tickets.append(bt_tickets.index(t) + 1)
+                ge3_tickets.append((idx, h))
         if best < 3:
             bt_weeks_lt3 += 1
         if best >= 3:
@@ -1831,10 +1831,12 @@ if __name__ == "__main__":
         d_str = d.strftime("%Y-%m-%d")
         tickets = bt_hits_by_date.get(d_str, [])
         if tickets:
-            ticket_list = ", ".join(f"#{i:02d}" for i in tickets)
+            ticket_list = ", ".join(f"#{i:02d}" for i, _h in tickets)
+            hits_list = ", ".join(str(h) for _i, h in tickets)
         else:
             ticket_list = "none"
-        print(f"{d_str} | {ticket_list}")
+            hits_list = "none"
+        print(f"{d_str} | {ticket_list} | {hits_list}")
 
     print(f"\n=== BACKTEST SUMMARY (LAST {N} DRAWS) ===")
     print(f"Weeks with <3 hits: {bt_weeks_lt3}")
