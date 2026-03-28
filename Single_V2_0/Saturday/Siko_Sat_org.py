@@ -43,8 +43,8 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-3-14"
-REAL_DRAW_TARGET = [14, 21, 27, 34, 36, 40]
+TARGET_DATE = "2026-3-21"
+REAL_DRAW_TARGET = [11,16,20,27,43,45]
 
 # TARGET_DATE = "2026-1-31"
 # REAL_DRAW_TARGET = [9, 20, 33, 34, 42, 45]
