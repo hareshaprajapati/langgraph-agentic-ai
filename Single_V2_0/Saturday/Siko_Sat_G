@@ -49,21 +49,21 @@ Mathematical Ratios:
 Odd / Even: 3:3 (Primary) or 2:4 / 4:2.
 High / Low: 3:3 (Primary) or 2:4 (High-Heavy preference for current cycle).
 
-6. The Pure Dual-Track Protocol (N=20/20)
+6. The Pure Dual-Track Protocol (N=30/20)
 
-The strategy now splits the 40-ticket budget into two distinct, non-overlapping strikes to ensure a win regardless of the Oscillation Flip.
+The strategy now splits the 50-ticket budget into two distinct, non-overlapping strikes to ensure a win regardless of the Oscillation Flip.
 
 6.1 Mirror Determination:
 
 If Prev Sat = Breadth ($W \ge 4$):
-CORE (20 Tickets): Profile A (Depth)
+CORE (30 Tickets): Profile A (Depth)
 BACKUP (20 Tickets): Profile B (Breadth)
 
 If Prev Sat = Depth ($W \le 3$):
-CORE (20 Tickets): Profile B (Breadth)
+CORE (30 Tickets): Profile B (Breadth)
 BACKUP (20 Tickets): Profile A (Depth)
 
 6.2 Individual Ticket Integrity:
 
- * Each ticket in the 40-set must be unique.
-No "Power Four" clumping—the 20 Backup tickets must be generated as a full set of 20 unique combinations following the Mirror Profile.
+ * Each ticket in the 50-set must be unique.
+No "Power Four" clumping— every ticket is an independent mathematical strike following its assigned Profile.
