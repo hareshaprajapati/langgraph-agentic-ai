@@ -265,6 +265,7 @@ def main():
     default_start = end - timedelta(days=DAYS_BACK)
 
     main_path = os.path.join(".", "cross_lotto_data.csv")
+    backup_path = os.path.join(".", "cross_lotto_data_backup.csv")
     sfl_path = os.path.join(".", "cross_lotto_data_set_for_life.csv")
     others_path = os.path.join(".", "cross_lotto_data_others.csv")
 
@@ -405,6 +406,7 @@ def main():
     others_new = _build_new_lines_only(others_start, "others")
 
     write_csv(main_path, main_header, main_new, main_existing)
+    write_csv(backup_path, main_header, main_new, main_existing)
     write_csv(sfl_path, sfl_header, sfl_new, sfl_existing)
     write_csv(others_path, others_header, others_new, others_existing)
 
