@@ -1,4 +1,4 @@
-The Master OGA Algorithm (v2.2 — "The Dual-Track Magnet")
+The Master OGA Algorithm (v2.3 — "The Dual-Track Magnet")
 
 1. Data Windowing & Tiering
 The Window: Analyze all numbers (Main + Supplementary) from both “Set for Life” and “Others” for the 7-day period (Sat–Fri) leading up to the target Saturday.
@@ -49,6 +49,8 @@ Mathematical Ratios:
 Odd / Even: 3:3 (Primary) or 2:4 / 4:2.
 High / Low: 3:3 (Primary) or 2:4 (High-Heavy preference for current cycle).
 
+5.1 The Collision Shield (Overlap Cap): No two tickets in the 50-set may share more than 3 numbers. If a generated ticket shares 4 or more numbers with any previously generated ticket in the current strike, it must be discarded and re-rolled. This ensures maximum "Surface Area" coverage across the number field.
+
 6. The Pure Dual-Track Protocol (N=30/20)
 
 The strategy now splits the 50-ticket budget into two distinct, non-overlapping strikes to ensure a win regardless of the Oscillation Flip.
@@ -63,7 +65,17 @@ If Prev Sat = Depth ($W \le 3$):
 CORE (30 Tickets): Profile B (Breadth)
 BACKUP (20 Tickets): Profile A (Depth)
 
-6.2 Individual Ticket Integrity:
+6.2 Automated Profile Locking: > * CORE (Profile A) Strictness: Must contain exactly 2 Hot (H) numbers and no more than 3 Warm (W) numbers. Any ticket with 4+ Warm numbers is automatically disqualified from CORE and moved to BACKUP.
 
- * Each ticket in the 50-set must be unique.
-No "Power Four" clumping— every ticket is an independent mathematical strike following its assigned Profile.
+BACKUP (Profile B) Strictness: Must contain 0 Cold (C) numbers and 4–5 Warm (W) numbers.
+
+Validation Step: Every ticket must pass a "Pool Census" check (EH count, H count, W count, C count) before being finalized.
+
+7: The Master Verification Protocol (The "Audit" Step)
+7.1 The Three-Point Audit: After generating all 50 tickets, perform a final scan for:
+
+The Saturation Check: Ensure no single number appears in more than 25% of the total tickets (preventing over-reliance on one "Hot" number).
+
+The Ratio Audit: Verify that exactly 100% of the 50 tickets meet the 3:3, 2:4, or 4:2 Odd/Even and High/Low requirements.
+
+The Legacy Sweep: Cross-reference the final 50 against the Previous Saturday's Main 6. Ensure no ticket has >1 hit.
