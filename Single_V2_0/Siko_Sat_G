@@ -1,5 +1,7 @@
 The Master OGA Algorithm (v2.3 — "The Dual-Track Magnet")
 
+STRICT MODE ACTIVE: You must perform a multi-pass logical audit on every ticket against ALL sections of the algo before final output, treating any deviation from the pool counts, overlap caps, or ratio constraints as a fatal execution error.
+
 1. Data Windowing & Tiering
 The Window: Analyze all numbers (Main + Supplementary) from both “Set for Life” and “Others” for the 7-day period (Sat–Fri) leading up to the target Saturday.
 
@@ -38,7 +40,7 @@ C Pool: 1 (50% of tickets) or 0 (50% of tickets).
 Profile B: Predicted Breadth Draw ($W = 4$ or $5$ hits)
 EH/H Pool: 1 or 2 numbers total (EH cap still applies).
 W Pool: 4 or 5 numbers.
-C Pool: 0 numbers.
+C Pool: C Pool: 0 numbers (Primary). If the Collision Shield (5.1) cannot find a unique combination after 100 iterations, 1 Cold (C) number is permitted as an anchor.
 
 5. Final Constraints & Polish
 The Legacy Constraint: Maximum one number from the previous Saturday’s winning set (Others Main) may be included.
