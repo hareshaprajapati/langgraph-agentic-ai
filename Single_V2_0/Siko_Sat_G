@@ -1,83 +1,110 @@
-The Master OGA Algorithm (v2.3 — "The Dual-Track Magnet")
+The Master OGA Algorithm (v3.1 — "The Unified Strike")
 
-STRICT MODE ACTIVE: You must perform a multi-pass logical audit on every ticket against ALL sections of the algo before final output, treating any deviation from the pool counts, overlap caps, or ratio constraints as a fatal execution error.
+STRICT MODE ACTIVE:
+This is the definitive, logic-locked version of the Unified Strike Model. It replaces the fragmented v2.3 Dual-Track approach with a high-saturation, hybrid-ready strike designed for maximum jackpot probability.
 
-1. Data Windowing & Tiering
-The Window: Analyze all numbers (Main + Supplementary) from both “Set for Life” and “Others” for the 7-day period (Sat–Fri) leading up to the target Saturday.
+---
 
-The Saturday Range Filter: Before tiering, any number identified in the window that is greater than 45 must be discarded. This ensures the pools are natively compatible with the Saturday 1-45 format.
+### 1. Data Windowing & Tiering
 
-Tiering Rule:
-EH (Extra Hot): Numbers with 4+ total occurrences in the window.
-H (Hot): Numbers with 3 total occurrences.
-W (Warm): Numbers with 1–2 total occurrences.
-C (Cold): Numbers with 0 occurrences in the window.
+**The Window:**
+Analyze all numbers (Main + Supplementary) from both Set for Life and Others for the 7-day period (Sat–Fri) leading up to the target Saturday.
 
-2. Oscillation Momentum (The W-Count)
-Definition: Breadth Draw ($W \ge 4$); Depth Draw ($W \le 3$).
+**The Range Filter:**
+Discard any number $> 45$.
 
-The Rule:
+**Tiering Rule:**
 
-If the previous Saturday was a Breadth Draw $\rightarrow$ Predict a Depth Draw.
-If the previous Saturday was a Depth Draw $\rightarrow$ Predict a Breadth Draw.
+* EH (Extra Hot): 4+ occurrences
+* H (Hot): 3 occurrences
+* W (Warm): 1–2 occurrences
+* C (Cold): 0 occurrences
 
-Special Case: If the pattern repeats twice (e.g., two Breadth draws in a row), the prediction for the flip becomes "High Certainty."
+**The H-Pool Promotion (Critical Fix):**
+If the H Pool contains fewer than 4 numbers, promote the top-performing W numbers (those with 2 occurrences) to "Pseudo-H" status to ensure the Saturation Cap is not violated.
 
-3. Gravity Shift (The Decade Filter)
-Identify Density: Find the most frequent decade (0s, 10s, 20s, 30s, or 40s) from the last 3 Saturdays.
+---
 
-The Reversion Rule: If the density has been "climbing" (e.g., moving toward 30s and 40s), prioritize numbers from the lower decades (10s and 20s) for the next draw.
+### 2. Momentum & Cluster Awareness (The W-Count)
 
-4. The Magnet Merge (The Selection Strike)
-This section merges the pools into a 6-number ticket based on the predicted momentum.
+Breadth Draw ($W \ge 4$); Depth Draw ($W \le 3$):
 
-Profile A: Predicted Depth Draw ($W = 2$ or $3$ hits)
-EH Pool: 0 or 1 number (Maximum 1).
-H Pool: 2 numbers (The primary anchors).
-W Pool: 2 or 3 numbers.
-C Pool: 1 (50% of tickets) or 0 (50% of tickets).
+**Trend-Following Rule:**
+If the current pattern has repeated for 3+ consecutive weeks, predict the trend to continue. Do not force an oscillation.
 
-Profile B: Predicted Breadth Draw ($W = 4$ or $5$ hits)
-EH/H Pool: 1 or 2 numbers total (EH cap still applies).
-W Pool: 4 or 5 numbers.
-C Pool: C Pool: 0 numbers (Primary). If the Collision Shield (5.1) cannot find a unique combination after 100 iterations, 1 Cold (C) number is permitted as an anchor.
+**Oscillation Rule:**
+If the pattern has repeated for 1–2 weeks, predict a flip (Depth $\rightarrow$ Breadth or vice versa).
 
-5. Final Constraints & Polish
-The Legacy Constraint: Maximum one number from the previous Saturday’s winning set (Others Main) may be included.
+---
 
-The EH-Saturation Cap: Never include more than one EH number in a Saturday ticket. Saturdays are "exhaustion days" for mid-week leaders.
+### 3. Gravity Shift (The Decade Filter)
 
-Mathematical Ratios:
-Odd / Even: 3:3 (Primary) or 2:4 / 4:2.
-High / Low: 3:3 (Primary) or 2:4 (High-Heavy preference for current cycle).
+**Historical Filter:**
+Analyze the most frequent decades from the last 3 Saturdays.
 
-5.1 The Collision Shield (Overlap Cap): No two tickets in the 50-set may share more than 3 numbers. If a generated ticket shares 4 or more numbers with any previously generated ticket in the current strike, it must be discarded and re-rolled. This ensures maximum "Surface Area" coverage across the number field.
+**Velocity Filter:**
+Check the mid-week trend (Tue–Fri). If a decade is heating up mid-week, it overrides the historical "Reversion" rule.
 
-6. The Pure Dual-Track Protocol (N=30/20)
+**Priority:**
+Prioritize numbers from decades that show high mid-week velocity but low Saturday saturation.
 
-The strategy now splits the 50-ticket budget into two distinct, non-overlapping strikes to ensure a win regardless of the Oscillation Flip.
+---
 
-6.1 Mirror Determination:
+### 4. The Unified Selection Formula (Slot Math)
 
-If Prev Sat = Breadth ($W \ge 4$):
-CORE (30 Tickets): Profile A (Depth)
-BACKUP (20 Tickets): Profile B (Breadth)
+To ensure no ticket ever contains 7 numbers, all 50 tickets must follow one of these three Mutually Exclusive structures:
 
-If Prev Sat = Depth ($W \le 3$):
-CORE (30 Tickets): Profile B (Breadth)
-BACKUP (20 Tickets): Profile A (Depth)
+| Ticket Type   | Anchor Slots (EH/H) | Body Slots (W) | Wildcard Slot   | Total |
+| ------------- | ------------------- | -------------- | --------------- | ----- |
+| Pure Strike   | 2                   | 4              | 0               | 6     |
+| Legacy Strike | 2                   | 3              | 1 Legacy Number | 6     |
+| Cold Strike   | 2                   | 3              | 1 Cold Number   | 6     |
 
-6.2 Automated Profile Locking: > * CORE (Profile A) Strictness: Must contain exactly 2 Hot (H) numbers and no more than 3 Warm (W) numbers. Any ticket with 4+ Warm numbers is automatically disqualified from CORE and moved to BACKUP.
+**Anchor Rules:**
 
-BACKUP (Profile B) Strictness: Must contain 0 Cold (C) numbers and 4–5 Warm (W) numbers.
+* Every ticket must contain exactly 2 Anchors.
+* At least one Anchor must come from the H-Pool (or Pseudo-H).
+* A ticket may contain maximum one EH number.
 
-Validation Step: Every ticket must pass a "Pool Census" check (EH count, H count, W count, C count) before being finalized.
+---
 
-7: The Master Verification Protocol (The "Audit" Step)
-7.1 The Three-Point Audit: After generating all 50 tickets, perform a final scan for:
+### 5. Final Constraints & Saturation
 
-The Saturation Check: Ensure no single number appears in more than 25% of the total tickets (preventing over-reliance on one "Hot" number).
+**Legacy Constraint:**
+Maximum one number from the previous Saturday’s winning set.
 
-The Ratio Audit: Verify that exactly 100% of the 50 tickets meet the 3:3, 2:4, or 4:2 Odd/Even and High/Low requirements.
+**EH-Saturation Cap:**
+Maximum one EH number per ticket.
 
-The Legacy Sweep: Cross-reference the final 50 against the Previous Saturday's Main 6. Ensure no ticket has >1 hit.
+**Mathematical Ratios:**
+
+* Odd / Even: 3:3 (Primary) or 2:4 / 4:2
+* High / Low: 3:3 (Primary) or 2:4
+
+**Collision Shield:**
+No two tickets may share more than 3 numbers. If a ticket shares 4+, it must be re-rolled with different Body (W) numbers.
+
+---
+
+### 6. The Strike Protocol (The 50-Ticket Allocation)
+
+To prevent "The 8 Factor" (Cold rebounds) or missing mid-week leaders, the 50-ticket budget is allocated as follows:
+
+* Pure Strikes (30 Tickets): 2 Anchors + 4 Body. (Focus on Breadth/Depth momentum).
+* Legacy Strikes (10 Tickets): 2 Anchors + 3 Body + 1 Legacy. (Focus on "Repeaters").
+* Cold Strikes (10 Tickets): 2 Anchors + 3 Body + 1 Cold. (Focus on "Rebounds").
+
+---
+
+### 7. The Master Verification Protocol (The Audit)
+
+Perform these three scans on the completed set of 50 before finalization:
+
+**Global Saturation Audit:**
+No single number can appear in more than 25% (12.5 tickets) of the total strike. This prevents over-reliance on a single failure point.
+
+**Ratio Balance:**
+100% of the set must meet the Odd/Even and High/Low requirements.
+
+**Legacy Sweep:**
+Cross-reference every ticket against the previous Saturday's Main 6. Any ticket with $>1$ hit is a Fatal Execution Error.
