@@ -1,6 +1,6 @@
-# The Master OGA Algorithm (v3.2 — "The Momentum Pivot")
+# The Master OGA Algorithm (v3.3.1 — "The Coupled Sniper")
 
-**STRICT MODE ACTIVE:** This is the definitive, data-validated version of the Unified Strike Model. It replaces v3.1 by shifting from an "Oscillation" bias to a "Momentum" bias, ensuring alignment with the 68.6% historical Breadth probability.
+**STRICT MODE ACTIVE:** This is the definitive, data-validated version of the Unified Strike Model. It replaces v3.2.1 by integrating the **78% Mirror Probability** and the **80% Decade Kill Rate** identified in the 271-week audit.
 
 ---
 
@@ -48,12 +48,15 @@ To capture the **52.7% of draws** that contain 3+ anchors, the set is split into
 **Anchor Rules:**
 * At least one Anchor must come from the **H-Pool**.
 * Maximum **one EH number** per ticket.
-
+* The Anchor Couple : In **70% of High-Density tickets**, at least two of the three anchors must be "Coupled" (linked by the Mirror Factor or Consecutive Factor). This forces the winning anchors to land on the same line rather than being scattered.
 ---
 
 ### 5. Final Constraints & Saturation
 * **EH-Saturation Cap:** Maximum one EH number per ticket.
 * **Legacy Constraint:** Maximum one number from the previous Saturday’s winning set.
+* **The Consecutive Factor (NEW):** To match the 65% historical frequency, at least **30 out of 50 tickets (60%)** must contain exactly one consecutive pair ($n, n+1$) using the Section 8 logic.
+* **The Mirror Factor (NEW):** At least **70% of tickets (35/50)** must contain exactly one "Mirror Pair"—two numbers sharing the same last digit (e.g., 8 and 18) using the Section 8 logic.
+* **The Decade Sacrifice (NEW):** At least **80% of tickets (40/50)** must explicitly exclude one decade (0s, 10s, 20s, 30s, or 40s) that was active mid-week using the Section 8 logic.
 * **Mathematical Ratios:** 100% of tickets must meet **3:3, 2:4, or 4:2** for both Odd/Even and High/Low.
 * **Collision Shield:** No two tickets may share more than 3 numbers.
 
@@ -73,3 +76,48 @@ Perform these three final scans before finalization:
 1.  **Global Saturation Audit:** No single number can appear in more than **25% (12.5 tickets)** of the total strike.
 2.  **Ratio Balance:** 100% compliance with O/E and H/L mathematical splits.
 3.  **Legacy Sweep:** Ensure every ticket has **exactly 1** (for Legacy Strikes) or **0** (for Pure/Cold) hits from last Saturday’s Main 6.
+
+---
+
+### **8. Consecutive Pair Selection Logic (The "Bridge" Method)**
+
+To satisfy the 65% historical pair frequency, use these four hierarchical steps to select pairs for your tickets:
+
+#### **Step 1: The Tier Bridge (Priority 1)**
+* **Logic:** Pair a "Hot" Anchor with a "Warm" neighbor.
+* **Action:** Scan your **H-Pool** ($n$) and check if $n-1$ or $n+1$ exists in the **W-Pool**.
+* **Why:** This bridges the high-probability anchor with the momentum of the body pool. If $18$ is an Anchor (H) and $19$ is a Body (W), the pair **[18, 19]** is your strongest candidate.
+
+#### **Step 2: The 40s Breadth-Maker (Priority 2)**
+* **Logic:** Force a pair in the $40–45$ range during Breadth predictions.
+* **Action:** If your prediction is **Breadth ($W \ge 4$)**, select two consecutive numbers from the $40–45$ range (e.g., **40-41** or **44-45**).
+* **Why:** This decade is the "Breadth engine." Covering 33% of it with a single pair maximizes your chance of hitting the decade required for a $W \ge 4$ result.
+
+#### **Step 3: The Mid-Week "Vibration" (Priority 3)**
+* **Logic:** Follow the immediate velocity of the current week.
+* **Action:** Review the SfL and "Others" draws from Sunday to Friday. If any consecutive pair appeared in a single draw mid-week, or if $21$ hit Tuesday and $22$ hit Wednesday, that pair is "vibrating."
+* **Why:** Lottery numbers often cluster in "zones" of activity. Mid-week clusters are the strongest indicators of Saturday clusters.
+
+#### **Step 4: The Legacy Hook (Priority 4)**
+* **Logic:** Use last Saturday’s result as a "magnet."
+* **Action:** Take one number from last Saturday’s Main 6 (Legacy) and pair it with its $n-1$ or $n+1$ neighbor from the **current** H or W pools.
+* **Why:** Since 55% of draws have a repeater, pairing that repeater with a fresh momentum number creates a "Legacy Bridge."
+
+* **Step 5: The Mirror Bridge (NEW Selection Logic):**
+    1.  Select a **Primary Anchor ($n$)** from the H-Pool.
+    2.  Identify **Mirrors ($m$)** in the W-Pool or Legacy set where $m \pmod{10} = n \pmod{10}$.
+    3.  If multiple mirrors exist, prioritize the one in a decade that had mid-week "Vibration" (Priority 3).
+    4.  If a ticket already contains an Anchor Mirror (e.g., 8 and 18), attempt to select at least one pair of Body Slots (W-Pool) that also mirror each other (e.g., 29 and 39). This reduces the mathematical field from 45 numbers to a set of concentrated "coupled pairs."
+
+* **Step 6: Decade Sacrifice Selection (NEW Selection Logic):**
+    To match the 80% historical "Kill Rate", apply these three actions across your 40 sacrifice tickets using the following distribution:
+    * **Action A: The Anemic Kill (30% / 12 Tickets):
+        * **Logic:** Exclude the decade with the lowest mid-week volume.
+        * **Historical Success:** 36.5%.
+    * **Action B: The Historical Leader Kill (20% / 8 Tickets):
+        * **Logic:** Exclude **Decade 4 (40s)** explicitly, regardless of mid-week activity.
+        * **Reasoning:** This is statistically the most frequent "killed" decade in Saturday history.
+    * **Action C: The Middle Reversion Sniper (50% / 20 Tickets):
+        * **Logic:** Exclude a decade with **moderate (middle) mid-week volume**.
+        * **Why:** This logic successfully caught the **20s kill** on April 18 and showed the highest performance in the "Coupled Sniper" backtest.
+    * **Rotation Logic:** Heavily weight the 50-ticket strike toward **Action C**, as middle-volume decades are the most statistically frequent sacrifice zones for high-hit Saturday winners.
