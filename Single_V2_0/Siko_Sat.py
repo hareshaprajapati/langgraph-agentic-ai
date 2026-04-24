@@ -158,13 +158,13 @@ def generate_ticket(struct, strike, kill_dec, has_ac, has_bm, has_cp, tiers, leg
             # Strict Mirror Audit
             digits = [x % 10 for x in final_t]
             mirror_count = len(digits) - len(set(digits))
-            if has_bm and mirror_count != 1: continue  # Must have EXACTLY 1
+            if has_bm and mirror_count < 1: continue  # Must have EXACTLY 1
             if not has_bm and mirror_count > 0: continue  # Must have ZERO
 
             # Strict Consecutive Audit
             diffs = sum(1 for i in range(5) if final_t[i + 1] - final_t[i] == 1)
-            if has_cp and diffs != 1: continue  # Must have EXACTLY 1
-            if not has_cp and diffs > 0: continue  # Must have ZERO
+            if has_cp and diffs < 1: continue
+            if not has_cp and diffs > 0: continue
 
             # Legacy Sweep Compliance
             l_hits = len(set(final_t) & set(legacy))
