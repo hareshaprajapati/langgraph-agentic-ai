@@ -304,7 +304,7 @@ def main():
         dec_vols = Counter([n // 10 for n in m_counts.keys()])
         sorted_decs = sorted(range(5), key=lambda x: dec_vols[x], reverse=True)
         # Action C (50%) + Action A (30%) + Action B (20%)
-        kills = ([sorted_decs[2]] * 40 + [sorted_decs[-1]] * 24 + [4] * 16 + [None] * 20)
+        kills = ([sorted_decs[2]] * int(N * 0.40) + [sorted_decs[-1]] * int(N * 0.24) + [4] * int(N * 0.16) + [None] * (N - int(N * 0.40) - int(N * 0.24) - int(N * 0.16)))
         random.shuffle(kills)
         legacy = parse_main_6(df[df['Date_dt'] == sats.iloc[-1]['Date_dt']].iloc[0]['Others (incl supp)'])
 
