@@ -33,6 +33,7 @@ def get_tiers(df_window):
     if len(H) < 4:  # H-Pool Promotion [cite: 4]
         pseudo_h = [n for n, c in counts.items() if c == 2]
         H = sorted(list(set(H) | set(pseudo_h)))
+        W = [n for n in W if n not in pseudo_h]  # STRICTLY REMOVES PROMOTED NUMBERS FROM W-POOL
     return EH, H, W, C, counts
 
 
@@ -148,71 +149,199 @@ def generate_ticket(struct, strike, kill_dec, has_ac, has_bm, has_cp, tiers, leg
             if not cand: break
             ticket.append(random.choice(cand))
 
-        final_t = sorted(ticket[:6])
-        l_hits = len(set(final_t) & set(legacy))
-        if strike == "Legacy" and l_hits != 1: continue
-        if strike != "Legacy" and l_hits != 0: continue
-        if len(final_t) == 6 and meets_ratios(final_t) and not check_collision(final_t, existing):
-            return final_t
-    return None
+            # Ensure we naturally generated exactly 6 numbers without chopping
+            if len(ticket) != 6:
+                continue
 
+            final_t = sorted(ticket)
+
+            # Strict Mirror Audit
+            digits = [x % 10 for x in final_t]
+            mirror_count = len(digits) - len(set(digits))
+            if has_bm and mirror_count != 1: continue  # Must have EXACTLY 1
+            if not has_bm and mirror_count > 0: continue  # Must have ZERO
+
+            # Strict Consecutive Audit
+            diffs = sum(1 for i in range(5) if final_t[i + 1] - final_t[i] == 1)
+            if has_cp and diffs != 1: continue  # Must have EXACTLY 1
+            if not has_cp and diffs > 0: continue  # Must have ZERO
+
+            # Legacy Sweep Compliance
+            l_hits = len(set(final_t) & set(legacy))
+            if strike == "Legacy" and l_hits != 1: continue
+            if strike != "Legacy" and l_hits != 0: continue
+
+            if meets_ratios(final_t) and not check_collision(final_t, existing):
+                return final_t
+        return None
+
+
+# def find_momentum_alignment_seed(df, target_date):
+#     """
+#     STRICT MODE: Finds the seed (1-250) that would have hit the most
+#     numbers on the PREVIOUS Saturday.
+#     """
+#     # 1. Identify previous Saturday and its result
+#     prev_sat_date = target_date - pd.Timedelta(days=7)
+#     sat_row = df[df['Date_dt'] == prev_sat_date]
+#     if sat_row.empty: return 109  # Fallback if history missing
+#
+#     winning_prev = parse_main_6(sat_row.iloc[0]['Others (incl supp)'])
+#
+#     # 2. Setup the "Tuning Environment" for that previous week
+#     # Calculate tiers/vibrations as they WERE on that Saturday
+#     prev_win = df[(df['Date_dt'] >= prev_sat_date - pd.Timedelta(days=7)) & (df['Date_dt'] < prev_sat_date)]
+#     prev_mid = df[(df['Date_dt'] >= prev_sat_date - pd.Timedelta(days=4)) & (df['Date_dt'] < prev_sat_date)]
+#
+#     pEH, pH, pW, pC, _ = get_tiers(prev_win)
+#     _, _, _, _, m_counts = get_tiers(prev_mid)
+#     p_vibrations = [n for n, c in m_counts.items() if c >= 2]
+#     p_dec_vols = Counter([n // 10 for n in m_counts.keys()])
+#     p_sorted_decs = sorted(range(5), key=lambda x: p_dec_vols.get(x, 0), reverse=True)
+#
+#     # Legacy for that week was the Sat BEFORE it
+#     p_sats_hist = df[(df['Date_dt'] < prev_sat_date) & (df['Date'].str.startswith('Sat'))].tail(1)
+#     p_legacy = parse_main_6(p_sats_hist.iloc[0]['Others (incl supp)']) if not p_sats_hist.empty else []
+#
+#     # Momentum for that week
+#     p_pred_breadth = True  # Default for alignment check
+#
+#     best_seed = 1
+#     max_hits = 0
+#
+#     print(f"--- SYNCING SEED: Tuning against {prev_sat_date.strftime('%Y-%m-%d')} result ---")
+#
+#     for s in range(1, 251):
+#         random.seed(s)
+#         # Test a 'Scout Strike' of 50 tickets
+#         test_tickets = []
+#         kills_pool = ([p_sorted_decs[2]] * 20 + [p_sorted_decs[-1]] * 15 + [4] * 10 + [None] * 5)
+#         random.shuffle(kills_pool)
+#
+#         for i in range(50):
+#             struct = "High" if i < 30 else "Standard"
+#             strike = "Legacy" if i < 25 else "Pure" if i < 45 else "Cold"
+#             t = generate_ticket(struct, strike, kills_pool[i], (i < 21), (i < 35), (i < 30),
+#                                 (pEH, pH, pW, pC), p_legacy, p_pred_breadth, p_vibrations, test_tickets)
+#             if t: test_tickets.append(t)
+#
+#         if not test_tickets: continue
+#
+#         # Check performance of this seed against what ACTUALLY happened
+#         current_max = max([len(set(t) & set(winning_prev)) for t in test_tickets])
+#
+#         if current_max > max_hits:
+#             max_hits = current_max
+#             best_seed = s
+#             # If we find a seed that hit the 6-hit jackpot last week, lock it!
+#             if max_hits >= 6:
+#                 print(f"FOUND JACKPOT SYNC: Seed {s} hit 6/6 last week!")
+#                 break
+#
+#     print(f"--- SYNC COMPLETE: Using Seed {best_seed} (caught {max_hits} hits last week) ---")
+#     return best_seed
+
+def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
+    """Finds the seed that generates the highest number of internal pairs."""
+    best_seed, max_score = 1, 0
+    for s in range(1, 151): # Scan 150 seeds
+        random.seed(s)
+        test_tickets = []
+        # Score the seed based on internal Mirror and Consecutive density
+        score = 0
+        for i in range(20): # Mini-strike
+            t = generate_ticket("High", "Pure", None, True, True, True, tiers, legacy, pred_breadth, vibrations, test_tickets)
+            if t:
+                has_m = any(t[a]%10 == t[b]%10 for a in range(6) for b in range(a+1,6))
+                has_c = any(abs(t[a]-t[b])==1 for a in range(6) for b in range(a+1,6))
+                if has_m and has_c: score += 50
+        if score > max_score:
+            max_score, best_seed = score, s
+    return best_seed
 
 def main():
-    random.seed(109)
-    N = 100
-    df = pd.read_csv('cross_lotto_data.csv')
-    df['Date_dt'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y')
-    df = df.sort_values('Date_dt')
 
-    target_date = pd.to_datetime('2026-04-18')
-    current_window = df[(df['Date_dt'] >= target_date - pd.Timedelta(days=7)) & (df['Date_dt'] < target_date)]
-    midweek_window = df[
-        (df['Date_dt'] >= target_date - pd.Timedelta(days=4)) & (df['Date_dt'] < target_date)]  # Tue-Fri
+    data = [
+        ('2026-04-18', [3, 8, 18, 39, 40, 41]),
+        ('2026-04-11', [8, 11, 15, 32, 33, 44]),
+        ('2026-04-04', [2, 4, 5, 13, 14, 37]),
+        ('2026-03-28', [1, 2, 3, 25, 29, 30]),
+        ('2026-03-21', [11, 16, 20, 27, 43, 45]),
+    ]
+    for date_str, real_res in data:
+        target_date = pd.to_datetime(date_str)
+        print("Processing:", target_date.date())
+        print("Result:", real_res)
 
-    EH, H, W, C, counts = get_tiers(current_window)
-    print(EH)
-    mEH, mH, mW, mC, m_counts = get_tiers(midweek_window)
-    vibrations = [n for n, c in m_counts.items() if c >= 2]  # Mid-week velocity [cite: 44]
+        N = 100
+        df = pd.read_csv('cross_lotto_data.csv')
+        df['Date_dt'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y')
+        df = df.sort_values('Date_dt')
 
-    # --- SECTION 2: MOMENTUM LOGIC [cite: 5-7] ---
-    sats = df[(df['Date_dt'] < target_date) & (df['Date'].str.startswith('Sat'))].tail(5).copy()
-    history = []
-    for _, r in sats.iterrows():
-        hist_win = df[(df['Date_dt'] >= r['Date_dt'] - pd.Timedelta(days=7)) & (df['Date_dt'] < r['Date_dt'])]
-        if not hist_win.empty:
-            history.append(classify_sat(parse_main_6(r['Others (incl supp)']), get_tiers(hist_win)))
+        current_window = df[(df['Date_dt'] >= target_date - pd.Timedelta(days=7)) & (df['Date_dt'] < target_date)]
+        midweek_window = df[
+            (df['Date_dt'] >= target_date - pd.Timedelta(days=4)) & (df['Date_dt'] < target_date)]  # Tue-Fri
 
-    exhaustion = (len(history) >= 3 and all(h == "Breadth" for h in history[-3:]))  # [cite: 6]
-    concentration = (len(set(n // 10 for n in (mEH + mH))) <= 2)  # [cite: 7]
-    pred_breadth = not (exhaustion or concentration)
+        EH, H, W, C, counts = get_tiers(current_window)
+        # print(EH)
 
-    # --- SECTION 8: DECADE ROTATION [cite: 54-59] ---
-    dec_vols = Counter([n // 10 for n in m_counts.keys()])
-    sorted_decs = sorted(range(5), key=lambda x: dec_vols[x], reverse=True)
-    # Action C (50%) + Action A (30%) + Action B (20%)
-    kills = ([sorted_decs[2]] * 40 + [sorted_decs[-1]] * 24 + [4] * 16 + [None] * 20)
-    random.shuffle(kills)
-    legacy = parse_main_6(df[df['Date_dt'] == sats.iloc[-1]['Date_dt']].iloc[0]['Others (incl supp)'])
+        mEH, mH, mW, mC, m_counts = get_tiers(midweek_window)
+        vibrations = [n for n, c in m_counts.items() if c >= 2]  # Mid-week velocity [cite: 44]
 
-    # --- SECTION 7: GLOBAL SATURATION AUDIT  ---
-    while True:
+        # --- SECTION 2: MOMENTUM LOGIC [cite: 5-7] ---
+        sats = df[(df['Date_dt'] < target_date) & (df['Date'].str.startswith('Sat'))].tail(5).copy()
+        history = []
+        for _, r in sats.iterrows():
+            hist_win = df[(df['Date_dt'] >= r['Date_dt'] - pd.Timedelta(days=7)) & (df['Date_dt'] < r['Date_dt'])]
+            if not hist_win.empty:
+                history.append(classify_sat(parse_main_6(r['Others (incl supp)']), get_tiers(hist_win)))
+
+        exhaustion = (len(history) >= 3 and all(h == "Breadth" for h in history[-3:]))  # [cite: 6]
+        concentration = (len(set(n // 10 for n in (mEH + mH))) <= 2)  # [cite: 7]
+        pred_breadth = not (exhaustion or concentration)
+
+        # --- SECTION 8: DECADE ROTATION [cite: 54-59] ---
+        dec_vols = Counter([n // 10 for n in m_counts.keys()])
+        sorted_decs = sorted(range(5), key=lambda x: dec_vols[x], reverse=True)
+        # Action C (50%) + Action A (30%) + Action B (20%)
+        kills = ([sorted_decs[2]] * 40 + [sorted_decs[-1]] * 24 + [4] * 16 + [None] * 20)
+        random.shuffle(kills)
+        legacy = parse_main_6(df[df['Date_dt'] == sats.iloc[-1]['Date_dt']].iloc[0]['Others (incl supp)'])
+
+        # Find the seed that creates the most internal clumping for today's tiers
+        # mcr_seed = find_mcr_seed((EH, H, W, C), legacy, sorted_decs, vibrations, pred_breadth)
+        # random.seed(mcr_seed)
+
+        # --- SECTION 7: GLOBAL SATURATION AUDIT  ---
+        # --- SECTION 7: GLOBAL SATURATION AUDIT  ---
         tickets = []
+        num_usage = Counter()
+
         for i in range(N):
             struct = "High" if i < int(N * 0.60) else "Standard"
             strike = "Legacy" if i < int(N * 0.50) else "Pure" if i < int(N * 0.90) else "Cold"
-            t = generate_ticket(struct, strike, kills[i], (i < 42), (i < 70), (i < 60), (EH, H, W, C), legacy,
-                                pred_breadth, vibrations, tickets)
-            if t: tickets.append(t)
-        all_nums = [n for t in tickets for n in t]
-        if all(c <= N * 0.25 for c in Counter(all_nums).values()): break
 
-    print(f"Global Saturation Audit: PASSED for N={N}.")
-    # [Evaluation: Result 3, 8, 18, 39, 40, 41]
-    real_res = [3, 8, 18, 39, 40, 41]
-    hit_counts = Counter([len(set(t) & set(real_res)) for t in tickets])
-    print(f"\n--- Strike Audit (April 18 Result: {real_res}) ---")
-    for h in sorted(hit_counts.keys(), reverse=True):
-        print(f"{h}-Hits: {hit_counts[h]} tickets")
+            ticket_attempts = 0
+            while ticket_attempts < 1000:
+                ticket_attempts += 1
+                t = generate_ticket(struct, strike, kills[i], (i < 42), (i < 70), (i < 60), (EH, H, W, C), legacy,
+                                    pred_breadth, vibrations, tickets)
+                if not t: continue
+
+                # Dynamic check: prevent any number from exceeding 25% saturation limit
+                if any(num_usage[x] >= (N * 0.25) for x in t):
+                    continue
+
+                tickets.append(t)
+                for x in t: num_usage[x] += 1
+                break
+
+        hit_counts = Counter([len(set(t) & set(real_res)) for t in tickets])
+
+        for h in sorted(hit_counts.keys(), reverse=True):
+            # Only print if the hit count is 3 or higher
+            if h >= 3:
+                print(f"{h}-Hits: {hit_counts[h]} tickets")
 
 
 if __name__ == "__main__":
