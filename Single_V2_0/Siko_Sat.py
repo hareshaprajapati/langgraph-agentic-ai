@@ -262,8 +262,8 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
-        ('2026-04-25', []),
-        ('2026-04-18', [3, 8, 18, 39, 40, 41]),
+        ('2026-04-25', [3, 11, 12, 14, 17, 45]),
+        # ('2026-04-18', [3, 8, 18, 39, 40, 41]),
         # ('2026-04-11', [8, 11, 15, 32, 33, 44]),
         # ('2026-04-04', [2, 4, 5, 13, 14, 37]),
         # ('2026-03-28', [1, 2, 3, 25, 29, 30]),
@@ -274,7 +274,7 @@ def main():
         print("Processing:", target_date.date())
         print("Result:", real_res)
 
-        N = 100
+        N = 50
         df = pd.read_csv('cross_lotto_data.csv')
         df['Date_dt'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y')
         df = df.sort_values('Date_dt')
@@ -339,7 +339,7 @@ def main():
                 tickets.append(t)
                 for x in t: num_usage[x] += 1
                 break
-        print(tickets)
+        # print(tickets)
         hit_counts = Counter([len(set(t) & set(real_res)) for t in tickets])
 
         for h in sorted(hit_counts.keys(), reverse=True):
