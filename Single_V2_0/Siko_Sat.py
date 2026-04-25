@@ -264,10 +264,10 @@ def main():
     data = [
         ('2026-04-25', []),
         ('2026-04-18', [3, 8, 18, 39, 40, 41]),
-        ('2026-04-11', [8, 11, 15, 32, 33, 44]),
-        ('2026-04-04', [2, 4, 5, 13, 14, 37]),
-        ('2026-03-28', [1, 2, 3, 25, 29, 30]),
-        ('2026-03-21', [11, 16, 20, 27, 43, 45]),
+        # ('2026-04-11', [8, 11, 15, 32, 33, 44]),
+        # ('2026-04-04', [2, 4, 5, 13, 14, 37]),
+        # ('2026-03-28', [1, 2, 3, 25, 29, 30]),
+        # ('2026-03-21', [11, 16, 20, 27, 43, 45]),
     ]
     for date_str, real_res in data:
         target_date = pd.to_datetime(date_str)
@@ -284,7 +284,10 @@ def main():
             (df['Date_dt'] >= target_date - pd.Timedelta(days=4)) & (df['Date_dt'] < target_date)]  # Tue-Fri
 
         EH, H, W, C, counts = get_tiers(current_window)
-        # print(EH)
+        print("EH", EH)
+        print("H", H)
+        print("W", W)
+        print("C", C)
 
         mEH, mH, mW, mC, m_counts = get_tiers(midweek_window)
         vibrations = [n for n, c in m_counts.items() if c >= 2]  # Mid-week velocity [cite: 44]
@@ -336,7 +339,7 @@ def main():
                 tickets.append(t)
                 for x in t: num_usage[x] += 1
                 break
-
+        print(tickets)
         hit_counts = Counter([len(set(t) & set(real_res)) for t in tickets])
 
         for h in sorted(hit_counts.keys(), reverse=True):

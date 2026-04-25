@@ -12,6 +12,7 @@
     * **H (Hot):** 3 occurrences
     * **W (Warm):** 1–2 occurrences
     * **C (Cold):** 0 occurrences
+(I am providing you the EH,H,W,C pools, please stop processing if I dont provide them, and wait for my input)
 * **The H-Pool Promotion:** If the H Pool contains fewer than 4 numbers, promote the top-performing W numbers (those with 2 occurrences) to "Pseudo-H" status.
 
 ---
@@ -54,8 +55,8 @@ To capture the **52.7% of draws** that contain 3+ anchors, the set is split into
 ### 5. Final Constraints & Saturation
 * **EH-Saturation Cap:** Maximum one EH number per ticket.
 * **Legacy Constraint:** Maximum one number from the previous Saturday’s winning set.
-* **The Consecutive Factor (NEW):** To match the 65% historical frequency, at least **30 out of 50 tickets (60%)** must contain exactly one consecutive pair ($n, n+1$) using the Section 8 logic.
-* **The Mirror Factor (NEW):** At least **70% of tickets (35/50)** must contain exactly one "Mirror Pair"—two numbers sharing the same last digit (e.g., 8 and 18) using the Section 8 logic.
+* **The Consecutive Factor (NEW):** To match the 65% historical frequency, at least **30 out of 50 tickets (60%)** must contain at-least one consecutive pair ($n, n+1$) using the Section 8 logic.
+* **The Mirror Factor (NEW):** At least **70% of tickets (35/50)** must contain at-least one "Mirror Pair"—two numbers sharing the same last digit (e.g., 8 and 18) using the Section 8 logic.
 * **The Decade Sacrifice (NEW):** At least **80% of tickets (40/50)** must explicitly exclude one decade (0s, 10s, 20s, 30s, or 40s) that was active mid-week using the Section 8 logic.
 * **Mathematical Ratios:** 100% of tickets must meet **3:3, 2:4, or 4:2** for both Odd/Even and High/Low.
 * **Collision Shield:** No two tickets may share more than 3 numbers.
