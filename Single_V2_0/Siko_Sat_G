@@ -2,6 +2,63 @@
 
 **STRICT MODE ACTIVE:** This is the definitive, data-validated version of the Unified Strike Model. It replaces v3.2.1 by integrating the **78% Mirror Probability** and the **80% Decade Kill Rate** identified in the 271-week audit.
 
+
+### **Section 0: The Architect-Auditor Execution Protocol**
+
+**Goal:** To eliminate logic drift and ensure 100% compliance with both line-level "gluing" and global strike constraints.
+
+#### **The 11-Step Strike Sequence**
+
+1.  **Context Reset:** The AI deletes all previous version history and data context to prevent "residue" from previous draws.
+2.  **Input Provision:** User provides the latest `Siko_Sat_G` file, the `cross_lotto_data_backup.csv`, and the current week's **EH, H, W, and C pools**.
+3.  **Draw Confirmation:** AI analyzes the mid-week data to confirm the Prediction Type: **Breadth ($W \ge 4$)** vs. **Depth ($W \le 3$)**.
+4.  **Manual Block Building:** AI manually constructs tickets in **blocks of 5** to ensure maximum focus on clumping and "Jackpot Glue".
+5.  **Line-Level Audit:** AI provides a detailed audit for every ticket, including Legacy hits, Anchor density, Decade kills, and specific Glue logic (Mirror/Tier bridges).
+6.  **User Verification:** The user verifies the 5-ticket block against the audit.
+7.  **Iterative Cycle:** Steps 4–6 repeat until all **50 tickets** are generated.
+8.  **Global Python Shield:** AI passes the final 50-ticket set to the Python Auditor to check for **Global Saturation** (Max 25%), **Collision Shield** (Max 3 shares), and **Allocation Splits** (30/20 High-Density/Standard).
+9.  **Result Representation:** AI presents the pass/fail result for the entire 50-ticket strike.
+10. **Precision Fixing:** Only the failed tickets are replaced manually, ensuring the "Jackpot Glue" of the passing tickets is preserved.
+11. **Final Certification:** Repeat Step 8–10 until the auditor issues a **100% Compliance Certificate**.
+
+The Detailed Audit Template (Per Ticket)
+
+For every ticket generated in Step 5, I will provide this specific breakdown to ensure you can verify the logic at a glance:
+
+[Ticket Label] (e.g., Pure Momentum - High Density)
+
+Line: [N1, N2, N3, N4, N5, N6]
+* Legacy Check: [Hit/None] from last Saturday’s Main 6.
+* Anchor Density: [X] EH / [Y] H / [Z] W.
+Decade Distribution ($W$): Decades represented: [0s, 10s, etc.].
+Total Width ($W$) = [X].
+* Decade Kill: [Decade] excluded.
+Ratio Audit:
+* Odd/Even: [X:X].
+* High/Low: [X:X].
+Glue Logic:
+* [Pair]: [Mirror/Consecutive/Tier Bridge] used to lock these numbers together.
+* [Constraint]: Rule B.1/C.1 compliance details.
+---
+
+### **The Detailed Audit Template (Per Ticket)**
+
+For every ticket generated in **Step 5**, I will provide this specific breakdown to ensure you can verify the logic at a glance:
+
+> **[Ticket Label] (e.g., Pure Momentum - High Density)**
+> * **Line:** `[N1, N2, N3, N4, N5, N6]`
+> * **Legacy Check:** `[Hit/None]` from last Saturday’s Main 6.
+> * **Anchor Density:** `[X] EH / [Y] H / [Z] W`.
+> * **Decade Distribution ($W$):** Decades represented: `[0s, 10s, etc.]`. Total Width ($W$) = `[X]`.
+> * **Decade Kill:** `[Decade]` excluded.
+> * **Ratio Audit:**
+>     * **Odd/Even:** `[X:X]`.
+>     * **High/Low:** `[X:X]`.
+> * **Glue Logic:**
+>     * **[Pair]:** [Mirror/Consecutive/Tier Bridge] used to lock these numbers together.
+>     * **[Constraint]:** Rule B.1/C.1 compliance details.
+
+
 ---
 
 ### 1. Data Windowing & Tiering
@@ -21,13 +78,24 @@
 * **Rule A: Breadth Default:** Because Breadth ($W \ge 4$) occurs in **68.6% of draws**, it is the default prediction. If the previous Saturday was Breadth, predict Breadth again.
 * **Rule B: The Depth Trigger:** Only predict a **Depth Draw ($W \le 3$)** if:
     1.  The Breadth pattern has repeated for **3+ consecutive weeks** (Exhaustion Trigger).
-    2.  **OR** The mid-week EH/H pool (Tue–Fri) is heavily concentrated in only 2 decades.
+    2.  **OR** The mid-week EH/H pool (Sun–Fri) is heavily concentrated in only 2 decades.
 * **Rule C: The 40s Breadth-Maker:** 75% of Breadth draws involve at least one number from the **40s (40–45)**. In a Breadth prediction, at least one "Body Slot" (W) or "Anchor Slot" must be forced into the 40s decade.
+* **Rule C.1: Breadth Distribution (The Diversification Rule):**
+    * **Trigger:** If **Rule C** is active (predicting $W \ge 4$), use this distribution logic.
+    * **Action:** After forcing at least one number into the **40s**, the remaining 5 slots must be distributed to occupy at least **3 other distinct decades** (0s, 10s, 20s, or 30s).
+    * **Constraint:** No single decade (outside of the 40s) can hold more than **2 numbers**.
+    * **Reason:** This forces the "Spread" required to meet the $W \ge 4$ definition. It prevents the algorithm from accidentally clumping numbers into a Depth pattern while trying to build for Breadth.
+* **Rule B.1: Depth Construction (The Concentration Rule):**
+        * **Trigger:** If **Rule B** is active (predicting $W \le 3$), this rule overrides **Rule C** (Breadth).
+        * **Action:** Force a **Concentrated Cluster** of at least **3 numbers** (any combination of Anchor and Body slots) into the single decade that showed the highest mid-week "Vibration" volume.
+        * **Vibration Volume Definition:** Volume is calculated as the **total sum of appearances** of all numbers within a specific decade across all mid-week draws (Sun–Fri). For example, if the 10s decade sees numbers 11, 14, and 17 each appear once, its volume is **3**. If the 30s decade sees only number 31 appear twice, its volume is **2**. The decade with the highest total sum is the target for the **Rule B.1 Concentrated Cluster**.
+        * **Standard Strike (4.B) Logic:** If building a 2-Anchor ticket, at least 2 of the 4 Body slots (W) must be forced into the target Vibration decade to capture the machine's "clumping" effect.
+        * **Reason:** Historical data shows that in 82.4% of $W \le 3$ draws, at least one decade contains 3+ numbers. Forcing this cluster prevents the "Breadth Scatter" that failed in yesterday's draw.
 
 ---
 
 ### 3. Gravity Shift (The Decade Filter)
-* **Velocity Override:** Mid-week momentum (Tue–Fri) always overrides the Saturday historical "Reversion" rule. If a decade is "Hot" mid-week, it must be represented in the current strike.
+* **Velocity Override:** Mid-week momentum (Sun–Fri) always overrides the Saturday historical "Reversion" rule. If a decade is "Hot" between Sunday and Friday, it must be represented in the current strike.
 
 ---
 
@@ -50,13 +118,23 @@ To capture the **52.7% of draws** that contain 3+ anchors, the set is split into
 * At least one Anchor must come from the **H-Pool**.
 * Maximum **one EH number** per ticket.
 * The Anchor Couple : In **70% of High-Density tickets**, at least two of the three anchors must be "Coupled" (linked by the Mirror Factor or Consecutive Factor). This forces the winning anchors to land on the same line rather than being scattered.
+* **The 3rd Anchor Rule (High-Density Strikes):** In a 3-Anchor ticket, the slots must be filled as follows:
+    * **Slot 1:** Exactly one EH number (Max).
+    * **Slot 2:** At least one H-Pool number (Min).
+    * **Slot 3:** A second H-Pool number **OR** the number from the W-Pool with the highest mid-week vibration that is not already classified as EH/H.
+    * This prevents "Anchor Dilution" by ensuring the third slot is always a high-probability performer.
+
 ---
 
 ### 5. Final Constraints & Saturation
 * **EH-Saturation Cap:** Maximum one EH number per ticket.
 * **Legacy Constraint:** Maximum one number from the previous Saturday’s winning set.
 * **The Consecutive Factor (NEW):** To match the 65% historical frequency, at least **30 out of 50 tickets (60%)** must contain at-least one consecutive pair ($n, n+1$) using the Section 8 logic.
-* **The Mirror Factor (NEW):** At least **70% of tickets (35/50)** must contain at-least one "Mirror Pair"—two numbers sharing the same last digit (e.g., 8 and 18) using the Section 8 logic.
+* **The Mirror Factor (Strict 70/30 Split):**
+    * **Mirror-Glued Block (70% / 35 Tickets):** These tickets **MUST** contain at least one "Mirror Pair"—two numbers sharing the same last digit (e.g., 8 and 18) using the Section 8 logic.
+    * **Symmetry-Breaker Block (30% / 15 Tickets):** These tickets **MUST** be audited to contain **ZERO** Mirror Pairs.
+    * **Reasoning:** This split ensures the strike captures the 76% majority of mirror draws while providing 15 tickets of absolute protection against the 24% "Symmetry-Breaker" outlier draws.
+
 * **The Decade Sacrifice (NEW):** At least **80% of tickets (40/50)** must explicitly exclude one decade (0s, 10s, 20s, 30s, or 40s) that was active mid-week using the Section 8 logic.
 * **Mathematical Ratios:** 100% of tickets must meet **3:3, 2:4, or 4:2** for both Odd/Even and High/Low.
 * **Collision Shield:** No two tickets may share more than 3 numbers.
