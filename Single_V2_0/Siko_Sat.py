@@ -262,6 +262,7 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
+        ('2026-05-02',[]),
         ('2026-04-25', [3, 11, 12, 14, 17, 45]),
         # ('2026-04-18', [3, 8, 18, 39, 40, 41]),
         # ('2026-04-11', [8, 11, 15, 32, 33, 44]),
