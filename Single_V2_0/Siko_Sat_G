@@ -11,14 +11,14 @@
 
 1.  **Context Reset:** The AI deletes all previous version history and data context to prevent "residue" from previous draws.
 2.  **Input Provision:** User provides the latest `Siko_Sat_G` file, the `cross_lotto_data_backup.csv`, and the current week's **EH, H, W, and C pools**.
-3.  **Draw Confirmation:** AI analyzes the mid-week data to confirm the Prediction Type: **Breadth ($W \ge 4$)** vs. **Depth ($W \le 3$)**.
-4.  **Manual Block Building:** AI manually constructs tickets in **blocks of 5** to ensure maximum focus on clumping and "Jackpot Glue".
-5.  **Line-Level Audit:** AI provides a detailed audit for every ticket, including Legacy hits, Anchor density, Decade kills, and specific Glue logic (Mirror/Tier bridges).
+3.  **Draw Confirmation:** AI analyzes the mid-week data to confirm the Prediction Type: **Breadth ($W \ge 4$)** vs. **Depth ($W \le 3$)**, then User will double confirm, once confirmed by user then only move to next step.
+4.  **Manual Block Building:** AI manually constructs tickets in **blocks of 5** to ensure maximum focus on clumping and "Jackpot Glue", AI must built each and every ticket by keeping jackpot hit in mind.
+5.  **Line-Level Audit:** AI provides a detailed audit for every ticket, including Legacy hits, Anchor density, Decade kills, and specific Glue logic (Mirror/Tier bridges), then user double confirm, if there is any failure on any ticket then Only the failed tickets are replaced manually(by replacing individual numbers that dont satisfy the algo), ensuring the "Jackpot Glue" of the passing tickets is preserved.
 6.  **User Verification:** The user verifies the 5-ticket block against the audit.
 7.  **Iterative Cycle:** Steps 4–6 repeat until all **50 tickets** are generated.
 8.  **Global Python Shield:** AI passes the final 50-ticket set to the Python Auditor to check for **Global Saturation** (Max 25%), **Collision Shield** (Max 3 shares), and **Allocation Splits** (30/20 High-Density/Standard).
 9.  **Result Representation:** AI presents the pass/fail result for the entire 50-ticket strike.
-10. **Precision Fixing:** Only the failed tickets are replaced manually, ensuring the "Jackpot Glue" of the passing tickets is preserved.
+10. **Precision Fixing:** Only the failed tickets are replaced manually(by replacing individual numbers that dont satisfy the algo), ensuring the "Jackpot Glue" of the passing tickets is preserved.
 11. **Final Certification:** Repeat Step 8–10 until the auditor issues a **100% Compliance Certificate**.
 
 The Detailed Audit Template (Per Ticket)
