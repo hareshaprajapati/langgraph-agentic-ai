@@ -1,0 +1,202 @@
+#### **Ticket 1: Legacy Sniper (High Density)**
+*   **Line:** `[1, 2, 11, 18, 31, 40]`
+#### **Ticket 2: Pure Momentum (High Density)**
+*   **Line:** `[1, 9, 12, 19, 38, 42]`
+#### **Ticket 3: Legacy Symmetry-Breaker (High Density — ZERO Mirrors)**
+*   **Line:** `[3, 15, 16, 19, 38, 43]`
+#### **Ticket 4: Pure Momentum (High Density)**
+*   **Line:** `[4, 5, 18, 34, 35, 44]`
+#### **Ticket 5: Legacy Sniper (High Density)**
+*   **Line:** `[1, 6, 11, 19, 30, 41]`
+#### **Ticket 6: Legacy Sniper (High Density)**
+*   **Line:** `[6, 13, 14, 33, 37, 44]`
+#### **Ticket 7: Pure Momentum (High Density)**
+*   **Line:** `[3, 4, 14, 30, 39, 43]`
+#### **Ticket 8: Pure Momentum (High Density — ZERO Mirrors)**
+*   **Line:** `[3, 4, 18, 30, 35, 40]`
+#### **Ticket 9: Pure Momentum (High Density)**
+*   **Line:** `[2, 12, 31, 35, 42, 43]`
+#### **Ticket 10: Legacy Sniper (High Density)**
+*   **Line:** `[7, 10, 17, 30, 37, 44]`
+#### **Ticket 11: Pure Momentum (High Density)**
+* **Line:** `[1, 8, 11, 35, 43, 44]`
+#### **Ticket 12: Legacy Sniper (High Density)**
+* **Line:** `[5, 15, 36, 37, 38, 43]`
+#### **Ticket 13: Pure Momentum (High Density)**
+* **Line:** `[1, 2, 19, 32, 40, 42]`
+#### **Ticket 14: Symmetry-Breaker (High Density — ZERO Mirrors)**
+* **Line:** `[5, 6, 12, 19, 37, 43]`
+#### **Ticket 15: Legacy Sniper (High Density)**
+* **Line:** `[2, 8, 17, 30, 42, 43]`
+#### **Ticket 16: Legacy Sniper (High Density)**
+* **Line:** `[7, 10, 11, 30, 35, 43]`
+#### **Ticket 17: Pure Momentum (High Density)**
+* **Line:** `[2, 12, 37, 39,40, 42]`
+#### **Ticket 18: Legacy Symmetry-Breaker (High Density — ZERO Mirrors)**
+* **Line:** `[3, 6, 15, 16, 37, 40]`
+#### **Ticket 19: Pure Momentum (High Density)**
+* **Line:** `[1, 11, 14, 38, 40, 43]`
+#### **Ticket 20: Pure Momentum (High Density)**
+* **Line:** `[3, 12, 19, 30, 43, 44]`
+#### **Ticket 21: Legacy Sniper (High Density)**
+* **Line:** `[1, 11, 23, 9, 20, 30]`
+#### **Ticket 22: Pure Momentum (High Density)**
+* **Line:** `[3, 10, 12, 22, 25, 38]`
+#### **Ticket 23: Legacy Sniper (High Density)**
+Line: [6, 17, 18, 27, 37, 38]
+#### **Ticket 24: Pure Momentum (High Density — ZERO Mirrors)**
+* **Line:** `[1, 7, 16, 23, 30, 35]`
+#### **Ticket 25: Pure Momentum (High Density)**
+* **Line:** `[1, 2, 14, 18, 27, 32]`
+Ticket 26: Pure Momentum (High Density)
+Line: [3, 6, 12, 26, 31, 35]
+Ticket 27: Legacy Sniper (High Density)
+Line: [2, 13, 16, 26, 28, 39]
+Ticket 28: Legacy Sniper (High Density)
+Line: [5, 8, 14, 21, 34, 37]
+Ticket 29: Pure Momentum (High Density — ZERO Mirrors)
+Line: [2, 10, 23, 25, 31, 36]
+Ticket 30: Legacy Sniper (High Density)
+Line: [2, 3, 17, 20, 27, 37]
+Ticket 31: Pure Momentum (Standard)
+Line: [2, 5, 12, 19, 23, 30]
+Ticket 32: Legacy Sniper (Standard)
+Line: [1, 6, 14, 23, 27, 31]
+Ticket 33: Pure Momentum (Standard — ZERO Mirrors)
+Line: [4, 8, 15, 20, 25, 37]
+Ticket 34: Legacy Sniper (Standard)
+Line: [1, 6, 11, 22, 28, 31]
+Ticket 35: Pure Momentum (Standard)
+Line: [3, 9, 16, 25, 27, 30]
+Ticket 36: Pure Momentum (Standard)
+Line: [2, 8, 11, 23, 31, 39]
+Ticket 37: Legacy Sniper (Standard)
+Line: [5, 14, 20, 25, 32, 34]
+Ticket 38: Pure Momentum (Standard — ZERO Mirrors)
+Line: [2, 3, 19, 21, 27, 38]
+Ticket 39: Pure Momentum (Standard)
+Line: [4, 7, 19, 25, 30, 37]
+Ticket 40: Legacy Sniper (Standard — ZERO Mirrors)
+Line: [1, 6, 8, 14, 25, 33]
+Ticket 41: Legacy Sniper (Standard)
+Line: [7, 11, 20, 31, 40, 41]
+Ticket 42: Pure Momentum (Standard)
+Line: [2, 5, 14, 16, 25, 42]
+Ticket 43: Pure Momentum (Standard — ZERO Mirrors)
+Line: [3, 7, 14, 28, 33, 40]
+Ticket 44: Pure Momentum (Standard — ZERO Mirrors)
+Line: [6, 15, 20, 24, 38, 43]
+Ticket 45: Legacy Sniper (Standard — ZERO Mirrors)
+Line: [7, 5, 14, 26, 32, 40]
+Ticket 46: Pure Momentum (Standard — ZERO Mirrors)
+Line: [2, 7, 10, 35, 36, 44]
+Ticket 47: Pure Momentum (Standard — ZERO Mirrors)
+Line: [4, 14, 20, 26, 39, 45]
+Ticket 48: Legacy Sniper (Standard — ZERO Mirrors)
+Line: [7, 12, 14, 25, 38, 43]
+Ticket 49: Pure Momentum (Standard — ZERO Mirrors)
+Line: [8, 16, 19, 23, 35, 44]
+Ticket 50: Legacy Sniper (Standard)
+Final Line: [6, 9, 18, 32, 40, 45]
+Action C: Decade 20s Kill (High Density — 3 Anchors)
+Ticket 51: [4, 7, 10, 13, 31, 40]
+
+Ticket 52: [3, 8, 12, 19, 30, 41]
+
+Ticket 53: [5, 10, 14, 17, 30, 42]
+
+Ticket 54: [1, 9, 16, 31, 40, 43]
+
+Ticket 55: [2, 8, 11, 13, 35, 41]
+
+Ticket 56: [1, 10, 11, 31, 40, 44]
+
+Ticket 57: [3, 8, 13, 33, 40, 44]
+
+Ticket 58: [4, 10, 18, 31, 35, 44]
+
+Ticket 59: [6, 11, 14, 31, 37, 41]
+
+Ticket 60: [2, 10, 12, 31, 42, 45]
+
+Ticket 61: [4, 13, 14, 30, 31, 41]
+
+Ticket 62: [3, 14, 16, 31, 40, 43]
+
+Ticket 63: [2, 12, 18, 31, 35, 43]
+
+Ticket 64: [1, 6, 11, 31, 40, 41]
+
+Ticket 65: [10, 5, 11, 31, 41, 45]
+
+Ticket 66: [2, 11, 13, 31, 40, 43]
+
+Ticket 67: [4, 10, 15, 31, 35, 41]
+
+Ticket 68: [2, 10, 17, 31, 40, 43]
+
+Ticket 69: [2, 12, 14, 10, 31, 43]
+
+Ticket 70: [8, 10, 11, 35, 39, 43]
+
+Action A/B: Decade 40s Kill (High Density — 3 Anchors)
+Ticket 71: [2, 11, 20, 23, 37, 39]
+
+Ticket 72: [3, 10, 25, 28, 31, 36]
+
+Ticket 73: [4, 15, 22, 23, 31, 37]
+
+Ticket 74: [1, 6, 19, 23, 29, 36]
+
+Ticket 75: [1, 2, 11, 22, 30, 37]
+
+Ticket 76: [4, 13, 25, 26, 31, 38]
+
+Ticket 77: [2, 11, 13, 20, 31, 37]
+
+Ticket 78: [3, 7, 16, 23, 28, 39]
+
+Ticket 79: [2, 12, 15, 23, 10, 37]
+
+Ticket 80: [6, 10, 19, 23, 33, 39]
+
+Action A/B (Tickets 81–90) & Insurance (91–100) (Standard — 2 Anchors)
+Ticket 81: [2, 12, 14, 22, 23, 35]
+
+Ticket 82: [2, 11, 14, 25, 31, 37]
+
+Ticket 83: [5, 14, 25, 26, 33, 39]
+
+Ticket 84: [7, 14, 16, 28, 29, 34]
+
+Ticket 85: [6, 18, 19, 25, 36, 31]
+
+Ticket 86: [3, 14, 20, 28, 33, 39]
+
+Ticket 87: [7, 10, 20, 27, 31, 37]
+
+Ticket 88: [2, 11, 22, 23, 31, 39]
+
+Ticket 89: [1, 5, 14, 25, 29, 36]
+
+Ticket 90: [2, 14, 24, 35, 39, 10]
+
+Ticket 91: [2, 11, 14, 25, 31, 42]
+
+Ticket 92: [4, 14, 29, 35, 43, 44]
+
+Ticket 93: [6, 16, 29, 7, 14, 37]
+
+Ticket 94: [8, 32, 5, 15, 23, 40]
+
+Ticket 95: [6, 19, 28, 36, 13, 40]
+
+Ticket 96: [11, 14, 27, 30, 37, 44]
+
+Ticket 97: [1, 12, 22, 29, 39, 44]
+
+Ticket 98: [17, 10, 20, 31, 40, 44]
+
+Ticket 99: [13, 24, 5, 22, 31, 44]
+
+Ticket 100: [6, 18, 27, 36, 39, 44]

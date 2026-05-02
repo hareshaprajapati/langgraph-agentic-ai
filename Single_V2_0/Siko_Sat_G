@@ -21,26 +21,6 @@
 10. **Precision Fixing:** Only the failed tickets are replaced manually(by replacing individual numbers that dont satisfy the algo), ensuring the "Jackpot Glue" of the passing tickets is preserved.
 11. **Final Certification:** Repeat Step 8–10 until the auditor issues a **100% Compliance Certificate**.
 
-The Detailed Audit Template (Per Ticket)
-
-For every ticket generated in Step 5, I will provide this specific breakdown to ensure you can verify the logic at a glance:
-
-[Ticket Label] (e.g., Pure Momentum - High Density)
-
-Line: [N1, N2, N3, N4, N5, N6]
-* Legacy Check: [Hit/None] from last Saturday’s Main 6.
-* Anchor Density: [X] EH / [Y] H / [Z] W.
-Decade Distribution ($W$): Decades represented: [0s, 10s, etc.].
-Total Width ($W$) = [X].
-* Decade Kill: [Decade] excluded.
-Ratio Audit:
-* Odd/Even: [X:X].
-* High/Low: [X:X].
-Glue Logic:
-* [Pair]: [Mirror/Consecutive/Tier Bridge] used to lock these numbers together.
-* [Constraint]: Rule B.1/C.1 compliance details.
----
-
 ### **The Detailed Audit Template (Per Ticket)**
 
 For every ticket generated in **Step 5**, I will provide this specific breakdown to ensure you can verify the logic at a glance:
@@ -57,6 +37,17 @@ For every ticket generated in **Step 5**, I will provide this specific breakdown
 > * **Glue Logic:**
 >     * **[Pair]:** [Mirror/Consecutive/Tier Bridge] used to lock these numbers together.
 >     * **[Constraint]:** Rule B.1/C.1 compliance details.
+
+
+At the end of all 5 tickets detailed audits, give me all 5 tickets final version like below with their numbers only with their final correction so I can copy paste easily.
+
+Ticket 1: Legacy Sniper (High Density)
+
+Line: [2, 11, 13, 40, 43, 44]
+
+Ticket 2: Pure Momentum (High Density)
+
+Line: [4, 10, 15, 31, 35, 37]
 
 
 ---
