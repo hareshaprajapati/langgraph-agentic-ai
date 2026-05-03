@@ -110,7 +110,7 @@ To capture the **52.7% of draws** that contain 3+ anchors, the set is split into
 * Maximum **one EH number** per ticket.
 * The Anchor Couple : In **70% of High-Density tickets**, at least two of the three anchors must be "Coupled" (linked by the Mirror Factor or Consecutive Factor). This forces the winning anchors to land on the same line rather than being scattered.
 * **The 3rd Anchor Rule (High-Density Strikes):** In a 3-Anchor ticket, the slots must be filled as follows:
-    * **Slot 1:** Exactly one EH number (Max).
+    * **Slot 1:** Max one EH number (0 or 1 allowed).
     * **Slot 2:** At least one H-Pool number (Min).
     * **Slot 3:** A second H-Pool number **OR** the number from the W-Pool with the highest mid-week vibration that is not already classified as EH/H.
     * This prevents "Anchor Dilution" by ensuring the third slot is always a high-probability performer.
