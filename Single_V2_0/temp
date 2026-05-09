@@ -1,194 +1,121 @@
-```python?code_reference&code_event_index=1
-import pandas as pd
-from collections import Counter
+# The Master OGA Algorithm (v3.5 — "The 273-Week Validated Strike")
 
-tickets = {
-    1: [1, 3, 11, 14, 31, 41],
-    2: [1, 9, 12, 19, 38, 42],
-    3: [3, 15, 16, 19, 38, 43],
-    4: [4, 5, 18, 34, 35, 44],
-    5: [1, 10, 11, 30, 37, 41],
-    6: [6, 13, 14, 33, 37, 44],
-    7: [3, 4, 10, 30, 39, 43],
-    8: [3, 4, 18, 30, 37, 42],
-    9: [2, 12, 31, 35, 42, 43],
-    10: [7, 10, 17, 30, 37, 44],
-    11: [1, 8, 11, 35, 43, 44],
-    12: [5, 15, 34, 36, 38, 43],
-    13: [1, 3, 14, 32, 40, 42],
-    14: [5, 10, 12, 18, 37, 43],
-    15: [2, 8, 17, 31, 42, 43],
-    16: [1, 10, 11, 31, 34, 41],
-    17: [2, 12, 32, 35, 42, 43],
-    18: [3, 6, 15, 16, 37, 40],
-    19: [1, 11, 14, 34, 44, 45],
-    20: [3, 12, 13, 33, 43, 44],
-    21: [1, 11, 23, 9, 20, 30],
-    22: [3, 10, 12, 22, 25, 38],
-    24: [1, 7, 16, 23, 30, 35],
-    25: [1, 2, 15, 18, 27, 32],
-    26: [3, 6, 12, 26, 31, 35],
-    27: [2, 13, 16, 26, 28, 39],
-    28: [5, 8, 14, 21, 34, 37],
-    29: [2, 10, 23, 25, 31, 36],
-    30: [2, 3, 17, 20, 27, 37],
-    31: [2, 5, 12, 19, 23, 32],
-    32: [1, 10, 14, 24, 27, 34],
-    33: [4, 8, 13, 20, 26, 37],
-    34: [1, 6, 11, 22, 28, 31],
-    35: [2, 5, 16, 18, 25, 30],
-    36: [2, 11, 12, 26, 31, 39],
-    37: [5, 14, 24, 25, 32, 34],
-    38: [2, 3, 10, 19, 21, 38],
-    39: [4, 7, 14, 24, 30, 37],
-    40: [1, 6, 8, 14, 25, 33],
-    41: [1, 11, 20, 31, 40, 41],
-    42: [2, 5, 10, 16, 25, 42],
-    43: [3, 7, 14, 28, 33, 40],
-    44: [6, 10, 19, 24, 38, 43],
-    45: [1, 5, 14, 26, 32, 40],
-    46: [2, 7, 10, 35, 36, 44],
-    47: [4, 13, 20, 26, 39, 45],
-    48: [1, 12, 14, 25, 38, 43],
-    49: [8, 10, 16, 23, 35, 44],
-    50: [4, 9, 18, 32, 42, 45]
-}
+**STRICT MODE ACTIVE:** This is the definitive, data-validated version of the Unified Strike Model. It replaces all previous versions by integrating the undeniable mathematical realities of the last 273 Saturday draws.
 
-legacy = {1, 13, 15, 17, 34, 45}
-eh = {4, 11, 12, 16, 17, 21, 24, 32, 33, 36}
-h = {1, 3, 10, 13, 18, 23, 26, 34, 37, 41, 42, 43}
-anchors = eh.union(h)
+### **Section 0: The Architect-Auditor Execution Protocol**
 
-def audit_ticket(tid, line):
-    fails = []
-    # Ratio Audit
-    evens = [n for n in line if n % 2 == 0]
-    highs = [n for n in line if n > 22]
-    if len(evens) not in [2, 3, 4]: fails.append(f"O/E Ratio: {6-len(evens)}:{len(evens)}")
-    if len(highs) not in [2, 3, 4]: fails.append(f"H/L Ratio: {6-len(highs)}:{len(highs)}")
-    
-    # Legacy Check
-    leg_hits = legacy.intersection(set(line))
-    if len(leg_hits) > 1: fails.append(f"Legacy Hits: {len(leg_hits)} {leg_hits}")
-    
-    # Anchor Density
-    t_anchors = anchors.intersection(set(line))
-    expected = 3 if tid <= 30 else 2
-    if len(t_anchors) != expected: fails.append(f"Anchor Count: {len(t_anchors)} (Exp: {expected})")
-    
-    # EH Saturation
-    t_eh = eh.intersection(set(line))
-    if len(t_eh) > 1: fails.append(f"EH Saturation: {len(t_eh)} {t_eh}")
-    
-    # Decade Sacrifice
-    decades = [n // 10 for n in line]
-    if tid <= 20 and 2 in decades: fails.append("Action C: 20s not killed")
-    elif 21 <= tid <= 40 and 4 in decades: fails.append("Action A/B: 40s not killed")
-    
-    # Breadth (W >= 4)
-    if len(set(decades)) < 4: fails.append(f"Breadth Fail: W={len(set(decades))}")
-    
-    return fails
+**Goal:** To eliminate logic drift and ensure 100% compliance with both line-level "gluing" and global strike constraints.
 
-all_fails = {}
-for tid, line in tickets.items():
-    f = audit_ticket(tid, line)
-    if f: all_fails[tid] = f
-
-# Global Audit
-counts = Counter([n for line in tickets.values() for n in line])
-sat_fails = {n: c for n, c in counts.items() if c > 12.5}
-
-collisions = []
-tids = sorted(tickets.keys())
-for i in range(len(tids)):
-    for j in range(i+1, len(tids)):
-        inter = set(tickets[tids[i]]).intersection(set(tickets[tids[j]]))
-        if len(inter) > 3:
-            collisions.append((tids[i], tids[j], inter))
-
-print(f"Saturation Fails: {sat_fails}")
-print(f"Collision Fails: {len(collisions)}")
-for tid, f in all_fails.items():
-    print(f"Ticket {tid}: {', '.join(f)}")
-
-```
-
-```text?code_stdout&code_event_index=1
-Saturation Fails: {1: 16, 10: 13, 2: 13}
-Collision Fails: 9
-Ticket 1: O/E Ratio: 5:1, Anchor Count: 4 (Exp: 3)
-Ticket 5: Anchor Count: 5 (Exp: 3)
-Ticket 7: Anchor Count: 4 (Exp: 3)
-Ticket 8: Anchor Count: 5 (Exp: 3)
-Ticket 12: Legacy Hits: 2 {34, 15}
-Ticket 13: Anchor Count: 4 (Exp: 3)
-Ticket 14: Anchor Count: 5 (Exp: 3)
-Ticket 16: Legacy Hits: 2 {1, 34}, Anchor Count: 5 (Exp: 3)
-Ticket 17: Anchor Count: 4 (Exp: 3), EH Saturation: 2 {32, 12}
-Ticket 19: Legacy Hits: 3 {1, 34, 45}
-Ticket 20: Anchor Count: 5 (Exp: 3), EH Saturation: 2 {33, 12}
-Ticket 25: Legacy Hits: 2 {1, 15}
-Ticket 31: Anchor Count: 3 (Exp: 2), EH Saturation: 2 {32, 12}
-Ticket 32: Legacy Hits: 2 {1, 34}, Anchor Count: 4 (Exp: 2)
-Ticket 33: Anchor Count: 4 (Exp: 2)
-Ticket 36: Anchor Count: 3 (Exp: 2), EH Saturation: 2 {11, 12}
-Ticket 37: Anchor Count: 3 (Exp: 2), EH Saturation: 2 {32, 24}
-Ticket 38: H/L Ratio: 5:1, Anchor Count: 3 (Exp: 2)
-Ticket 39: Anchor Count: 3 (Exp: 2), EH Saturation: 2 {24, 4}
-Ticket 41: Anchor Count: 3 (Exp: 2)
-Ticket 42: Anchor Count: 3 (Exp: 2)
-Ticket 44: Anchor Count: 3 (Exp: 2)
-Ticket 45: Anchor Count: 3 (Exp: 2)
-Ticket 47: Legacy Hits: 2 {45, 13}, Anchor Count: 3 (Exp: 2)
-Ticket 48: Anchor Count: 3 (Exp: 2)
-Ticket 49: Anchor Count: 3 (Exp: 2)
-Ticket 50: Anchor Count: 4 (Exp: 2), EH Saturation: 2 {32, 4}
-
-```
-
-The **Global Python Shield** has identified several critical logic breaches in the 50-ticket set provided[cite: 3]. As per your request, I am sharing the full diagnostic report **without performing any fixes** yet, so you can see where the "Jackpot Glue" was compromised[cite: 3].
-
-### **I. Global Strike Audit (Shield Failures)**
-
-The strike set failed the **Global Python Shield (Section 0, Step 8)** on three fronts:
-
-*   **Global Saturation (Limit: 12.5 Tickets per Number)**:
-    *   **Number 1**: 16 occurrences (Over-saturated by 3.5).
-    *   **Number 10**: 13 occurrences (Over-saturated by 0.5).
-    *   **Number 2**: 13 occurrences (Over-saturated by 0.5).
-*   **Collision Shield (Limit: Max 3 Shares)**:
-    *   **9 Logic Collisions** detected where two tickets share 4 or more numbers, creating a high-risk overlap.
-*   **Data Integrity Gap**:
-    *   **Ticket 23** is missing its line data from your provided file.
+#### **The 11-Step Strike Sequence**
+1.  **Context Reset:** The AI deletes all previous version history and data context to prevent "residue" from previous draws.
+2.  **Input Provision:** User provides the latest `Siko_Sat_G` file, the `cross_lotto_data.csv`, and the current week's **EH, H, W, and C pools**.
+3.  **Draw Confirmation:** AI analyzes the mid-week data to confirm the pools and distribution. User confirms before moving to the next step.
+4.  **Manual Block Building:** AI manually constructs tickets in **blocks of 5** to ensure maximum focus on clumping and "Jackpot Glue". The AI must build each ticket keeping the jackpot hit in mind.
+5.  **Line-Level Audit:** AI provides a detailed audit for every ticket, including Legacy hits, Anchor density, Decade kills, and specific Glue logic (Mirror/Tier bridges).
+6.  **User Verification:** The user verifies the 5-ticket block against the audit. If there is a failure, only the failed tickets are manually replaced.
+7.  **Iterative Cycle:** Steps 4–6 repeat until all **50 tickets** are generated.
+8.  **Global Python Shield:** AI passes the final 50-ticket set to the Python Auditor to check for **Global Saturation** (Max 25%), **Collision Shield** (Max 3 shares), and **Allocation Splits**.
+9.  **Result Representation:** AI presents the pass/fail result for the entire 50-ticket strike.
+10. **Precision Fixing:** Failed tickets are replaced manually (by replacing individual numbers that don't satisfy the algo), ensuring the "Jackpot Glue" of passing tickets is preserved.
+11. **Final Certification:** Repeat Step 8–10 until the auditor issues a **100% Compliance Certificate**.
 
 ---
 
-### **II. Line-Level Audit (Failures per Ticket)**
-
-These tickets require **Step 10: Precision Fixing** because they violate the core v3.3.1 constraints[cite: 3].
-
-| Ticket | Primary Failure | Data Detail |
-| :--- | :--- | :--- |
-| **T1** | **Ratio & Anchor Count** | O/E Ratio is 5:1 (Fail); 4 Anchors used (Exp: 3). |
-| **T5, T7, T8** | **Anchor Count** | 4 or 5 Anchors detected (Exp: 3 for High-Density). |
-| **T12, T25** | **Legacy Constraint** | 2 hits from last Saturday’s set (Limit: Max 1). |
-| **T16** | **Legacy & Anchors** | 2 Legacy hits {1, 34}; 5 Anchors detected. |
-| **T17, T20** | **EH Saturation** | Multiple EH numbers used (Limit: 1 per line). |
-| **T19** | **Legacy Breach** | **3 Legacy hits** detected {1, 34, 45}. |
-| **T31, T36, T37** | **EH Saturation** | Standard Strike (2-Anchor) failed Max 1 EH rule. |
-| **T32, T47** | **Legacy & Anchors** | Multiple Legacy hits; 3+ Anchors in Standard line. |
-| **T38** | **Ratio Balance** | H/L Ratio is 5:1 (Fail). |
-| **T50** | **EH & Anchors** | 2 EH numbers {32, 4}; 4 Anchors used (Exp: 2). |
+### **1. Data Windowing & Tiering**
+* **The Window:** Analyze all numbers (Main + Supplementary) from both **Set for Life** and **Others** for the 7-day period (Sun–Fri) leading up to the target Saturday.
+* **The Range Filter:** Discard any number $> 45$.
+* **Tiering Rule (Historical Baseline):**
+    * **EH (Extra Hot):** Top 10 frequency performers in the 7-day window.
+    * **H (Hot):** Next 12 frequency performers (Positions 11–22).
+    * **W (Warm):** Remaining numbers with at least 1 occurrence in the 7-day window.
+    * **C (Cold):** 0 occurrences in the 7-day window.
+*(Note: I will wait for your EH, H, W, C pools before processing).*
 
 ---
 
-### **III. Functional Status**
+### **2. Width Allocation & Cluster Awareness**
+* **Rule A: The 40s Breadth-Maker:** 75% of Breadth draws involve at least one number from the **40s (40–45)**. If a ticket predicts Breadth ($W \ge 4$), at least one slot must be forced into the 40s decade.
+* **Rule B: Historical Width Allocation (The 55/30/15 Split):**
+    To perfectly match the 273-week Saturday history, the 50-ticket set must be rigidly distributed as follows:
+    * **Standard Breadth ($W=4$): 55% (27 Tickets).** * *Action:* Exclude exactly one decade. Slots must be distributed across the 4 remaining distinct decades.
+    * **Standard Depth ($W=3$): 30% (15 Tickets).**
+        * *Action:* Exclude exactly two decades. Force a cluster of 3 numbers into the single decade with the highest mid-week volume to capture the depth clumping.
+    * **Full Breadth ($W=5$): 15% (8 Tickets).**
+        * *Action:* Must contain exactly one number in every decade (0s, 10s, 20s, 30s, 40s). One decade will randomly get a second number.
 
-*   **Action C (20s Kill)**: 100% compliance on the decade kill (Tickets 1–20).
-*   **Action A/B (40s Kill)**: 100% compliance on the decade kill (Tickets 21–40).
-*   **Breadth ($W \ge 4$)**: All tickets satisfy the Breadth distribution requirement.
+---
 
-> **Auditor's Note**: The most significant risk to the jackpot is the **Legacy Over-Saturation** in tickets like T16 and T19. By having 3 legacy numbers on one line, you are betting against the 55% probability of a repeater in a way that statistically "kills" the rest of the numbers if only 1 repeats.
+### **3. Gravity Shift (The Decade Filter)**
+* **Velocity Override:** Mid-week momentum (Sun–Fri) always overrides the Saturday historical "Reversion" rule. If a decade is "Hot" between Sunday and Friday, it must be strongly represented in the current strike.
 
-**I am standing by for the line data for Ticket 23.** Once you provide that, shall we begin **Step 10: Precision Fixing** to bring these lines into 100% compliance while preserving your manual glue?[cite: 3]
+---
+
+### **4. The Unified Selection Formula & Anchor Rules**
+To capture the historical Anchor reality, the set uses two mutually exclusive structures:
+
+**A. High-Density Strike (60% / 30 Tickets)** -> Max 3 Anchors (EH/H), 3 Body Slots (W/C).
+**B. Standard Strike (40% / 20 Tickets)** -> Max 2 Anchors (EH/H), 4 Body Slots (W/C).
+
+**The Master Anchor Rules:**
+* **Slot 1: Max one EH number (0 or 1 allowed).**
+    * *Reason:* 273-week history shows 0 EH hits occur in ~35% of Saturday draws. By using "Max 1", we protect the strike from being killed by an EH Blackout, while still capturing the trend when EH numbers do hit.
+* **Slot 2:** At least one H-Pool number (Min).
+* **Slot 3 (If High-Density):** A second H-Pool number **OR** the number from the W-Pool with the highest mid-week vibration.
+* **The Anchor Couple:** In **70% of High-Density tickets**, at least two of the anchors must be "Coupled" (linked by the Mirror Factor or Consecutive Factor).
+
+---
+
+### **5. Final Constraints & Saturation**
+* **EH-Saturation Cap:** Strict maximum of one EH number per ticket.
+* **Legacy Constraint:** Maximum one number from the previous Saturday’s winning Main 6.
+* **The Mirror Factor (75% Overall Frequency):** To match the historically proven digit-mirroring logic, the strike is distributed by trailing frequency:
+    * **Mid-Tier Stabilizers (40% / 20 Tickets):** Glue digits from the "Middle 4" frequency tier of the week.
+    * **Cold Rebounds (35% / 17 Tickets):** Glue digits from the "Bottom 3" frequency tier of the week.
+    * **Hot Momentum (25% / 13 Tickets):** Glue digits from the "Top 3" frequency tier of the week.
+* **The Consecutive Factor (53% Overall Frequency):** To match the 53% historical pair frequency, exactly **27 out of 50 tickets** must contain at least one consecutive pair ($n, n+1$) using the Section 8 logic.
+* **The Decade Sacrifice:** At least **85% of tickets (42/50)** must explicitly exclude one or two decades to satisfy the $W=4$ and $W=3$ constraints.
+* **Mathematical Ratios:** 100% of tickets must meet **3:3, 2:4, or 4:2** for both Odd/Even and High/Low.
+* **Collision Shield:** No two tickets may share more than 3 numbers.
+
+---
+
+### **6. The Strike Protocol (The 50-Ticket Allocation)**
+The budget is balanced to align with the **55.7% probability** of a repeater:
+* **Legacy Strikes (25 Tickets - 50%):** Must contain exactly 1 number from last Saturday's Main 6.
+* **Pure Strikes (20 Tickets - 40%):** Must contain 0 numbers from last Saturday's Main 6. Focus entirely on weekly momentum.
+* **Cold Strikes (5 Tickets - 10%):** Focus on "Rebounds" from the Cold pool.
+
+---
+
+### **7. The Master Verification Protocol (The Audit)**
+Perform these three final scans before finalization:
+1.  **Global Saturation Audit:** No single number can appear in more than **25% (12.5 tickets)** of the total strike.
+2.  **Ratio Balance:** 100% compliance with O/E and H/L mathematical splits.
+3.  **Width Audit:** Ensure exactly 27 tickets are $W=4$, 15 are $W=3$, and 8 are $W=5$.
+
+---
+
+### **8. Consecutive Pair Selection Logic (The "Bridge" Method)**
+To build the consecutive pairs for the 27 target tickets, use these exact historical physics:
+
+#### **Step 1: The Anchor Bridge (Priority 1)**
+* **Logic:** Pair an anchor (EH or H) with either another anchor or a Warm (W) neighbor (e.g., EH-H, H-W, or EH-W).
+* **Reason:** The 273-week audit proves that over 53% of all consecutive pairs are built by directly connecting an Anchor to an adjacent number.
+
+#### **Step 2: The End-Point Range (Priority 2)**
+* **Logic:** **70%** of all consecutive pairs generated must be physically located in the **Low Range (1–15)** or **High Range (31–45)**.
+* **Reason:** Historical data overwhelmingly shows the machine clumps at the extreme edges of the board rather than the mid-range (16–30).
+
+#### **Step 3: The Mid-Week "Vibration" (Priority 3)**
+* **Logic:** If any consecutive pair appeared in a single draw mid-week (Sun-Fri), that pair is "vibrating" and should be prioritized for Saturday.
+
+#### **Step 4: The Legacy Hook (Priority 4)**
+* **Logic:** Take one number from last Saturday’s Main 6 (Legacy) and pair it with its $n-1$ or $n+1$ neighbor from the **current** H or W pools.
+
+---
+
+### **9. Decade Sacrifice Selection (Action Kill Rotation)**
+To satisfy the $W=4$ and $W=3$ ticket requirements, rotate your decade kills across the strike using this distribution:
+* **Action C: The Middle Reversion Sniper (50% of Kills):** Exclude a decade with **moderate (middle) mid-week volume**.
+* **Action A: The Anemic Kill (30% of Kills):** Exclude the decade with the lowest mid-week volume.
+* **Action B: The Historical Leader Kill (20% of Kills):** Exclude **Decade 4 (40s)** explicitly, regardless of mid-week activity (Historically the most killed decade).
