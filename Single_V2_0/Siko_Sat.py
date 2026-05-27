@@ -262,7 +262,7 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
-        ('2026-03-14',[]),
+        ('2026-05-23',[]),
         # ('2026-05-02',[9, 18, 19, 29, 34, 45]),
         # ('2026-04-25', [3, 11, 12, 14, 17, 45]),
         # ('2026-04-18', [3, 8, 18, 39, 40, 41]),
@@ -273,13 +273,22 @@ def main():
     ]
     for date_str, real_res in data:
         target_date = pd.to_datetime(date_str)
-        print("Processing:", target_date.date())
-        print("Result:", real_res)
-
-        N = 50
         df = pd.read_csv('cross_lotto_data.csv')
         df['Date_dt'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y')
         df = df.sort_values('Date_dt')
+
+        target_rows = df[df['Date_dt'] == target_date]
+        if not real_res and not target_rows.empty:
+            real_res = parse_main_6(target_rows.iloc[0]['Others (incl supp)'])
+
+        prev_sats = df[(df['Date_dt'] < target_date) & (df['Date'].str.startswith('Sat'))].tail(1)
+        legacy = parse_main_6(prev_sats.iloc[0]['Others (incl supp)']) if not prev_sats.empty else []
+
+        print("Processing:", target_date.date())
+        print("Result:", real_res)
+        print("Legacy numbers:", legacy)
+
+        N = 50
 
         current_window = df[(df['Date_dt'] >= target_date - pd.Timedelta(days=7)) & (df['Date_dt'] < target_date)]
         midweek_window = df[
@@ -312,7 +321,6 @@ def main():
         # Action C (50%) + Action A (30%) + Action B (20%)
         kills = ([sorted_decs[2]] * int(N * 0.40) + [sorted_decs[-1]] * int(N * 0.24) + [4] * int(N * 0.16) + [None] * (N - int(N * 0.40) - int(N * 0.24) - int(N * 0.16)))
         random.shuffle(kills)
-        legacy = parse_main_6(df[df['Date_dt'] == sats.iloc[-1]['Date_dt']].iloc[0]['Others (incl supp)'])
 
         # Find the seed that creates the most internal clumping for today's tiers
         # mcr_seed = find_mcr_seed((EH, H, W, C), legacy, sorted_decs, vibrations, pred_breadth)
