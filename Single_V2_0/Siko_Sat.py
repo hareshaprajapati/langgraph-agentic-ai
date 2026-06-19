@@ -4,6 +4,25 @@ import random
 from collections import Counter
 
 
+SET_FOR_LIFE_COL = 'Set for Life (incl supp)'
+OTHERS_COL_CANDIDATES = (
+    'Others (incl supp)',
+    'Others(e.g. WeekdayWindfall(Monday and Wednesday) or OZLotto(Tuesday) or Powerball(Thursday) or SaturdayLotto(Saturday)) (incl supp)',
+)
+
+
+def resolve_column(df, candidates, label):
+    for col in candidates:
+        if col in df.columns:
+            return col
+    available = ', '.join(df.columns)
+    raise KeyError(f"Could not find {label} column. Tried: {candidates}. Available columns: {available}")
+
+
+def get_others_col(df):
+    return resolve_column(df, OTHERS_COL_CANDIDATES, "Others")
+
+
 # --- SECTION 1 & 4: CORE FUNCTIONS ---
 def parse_nums(s):
     if pd.isna(s) or s == "": return []
@@ -22,9 +41,10 @@ def parse_main_6(s):
 def get_tiers(df_window):
     """Calculates EH, H, W, C tiers for a 7-day window [cite: 3-4]."""
     pool = []
+    others_col = get_others_col(df_window)
     for _, row in df_window.iterrows():
-        pool.extend(parse_nums(row['Set for Life (incl supp)']))
-        pool.extend(parse_nums(row['Others (incl supp)']))
+        pool.extend(parse_nums(row[SET_FOR_LIFE_COL]))
+        pool.extend(parse_nums(row[others_col]))
     counts = Counter([n for n in pool if 1 <= n <= 45])
     EH = sorted([n for n, c in counts.items() if c >= 4])  # EH: 4+ [cite: 4]
     H = sorted([n for n, c in counts.items() if c == 3])  # H: 3 [cite: 4]
@@ -262,27 +282,33 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
-        ('2026-05-23',[]),
-        # ('2026-05-02',[9, 18, 19, 29, 34, 45]),
-        # ('2026-04-25', [3, 11, 12, 14, 17, 45]),
-        # ('2026-04-18', [3, 8, 18, 39, 40, 41]),
-        # ('2026-04-11', [8, 11, 15, 32, 33, 44]),
-        # ('2026-04-04', [2, 4, 5, 13, 14, 37]),
-        # ('2026-03-28', [1, 2, 3, 25, 29, 30]),
-        # ('2026-03-21', [11, 16, 20, 27, 43, 45]),
+        ('2026-06-13',[12, 16, 30, 31, 40, 43]),
+        ('2026-06-06',[10, 25, 30, 31, 43, 44]),
+        ('2026-05-30',[8, 10, 12, 19, 28, 36]),
+        ('2026-05-23',[11, 19, 20, 28, 31, 40]),
+        ('2026-05-16',[3, 10, 23, 32, 33, 39]),
+        ('2026-05-09', [2, 11, 12, 17, 33, 37]),
+        ('2026-05-02',[9, 18, 19, 29, 34, 45]),
+        ('2026-04-25', [3, 11, 12, 14, 17, 45]),
+        ('2026-04-18', [3, 8, 18, 39, 40, 41]),
+        ('2026-04-11', [8, 11, 15, 32, 33, 44]),
+        ('2026-04-04', [2, 4, 5, 13, 14, 37]),
+        ('2026-03-28', [1, 2, 3, 25, 29, 30]),
+        ('2026-03-21', [11, 16, 20, 27, 43, 45]),
     ]
     for date_str, real_res in data:
         target_date = pd.to_datetime(date_str)
         df = pd.read_csv('cross_lotto_data.csv')
+        others_col = get_others_col(df)
         df['Date_dt'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y')
         df = df.sort_values('Date_dt')
 
         target_rows = df[df['Date_dt'] == target_date]
         if not real_res and not target_rows.empty:
-            real_res = parse_main_6(target_rows.iloc[0]['Others (incl supp)'])
+            real_res = parse_main_6(target_rows.iloc[0][others_col])
 
         prev_sats = df[(df['Date_dt'] < target_date) & (df['Date'].str.startswith('Sat'))].tail(1)
-        legacy = parse_main_6(prev_sats.iloc[0]['Others (incl supp)']) if not prev_sats.empty else []
+        legacy = parse_main_6(prev_sats.iloc[0][others_col]) if not prev_sats.empty else []
 
         print("Processing:", target_date.date())
         print("Result:", real_res)
@@ -309,7 +335,7 @@ def main():
         for _, r in sats.iterrows():
             hist_win = df[(df['Date_dt'] >= r['Date_dt'] - pd.Timedelta(days=7)) & (df['Date_dt'] < r['Date_dt'])]
             if not hist_win.empty:
-                history.append(classify_sat(parse_main_6(r['Others (incl supp)']), get_tiers(hist_win)))
+                history.append(classify_sat(parse_main_6(r[others_col]), get_tiers(hist_win)))
 
         exhaustion = (len(history) >= 3 and all(h == "Breadth" for h in history[-3:]))  # [cite: 6]
         concentration = (len(set(n // 10 for n in (mEH + mH))) <= 2)  # [cite: 7]
