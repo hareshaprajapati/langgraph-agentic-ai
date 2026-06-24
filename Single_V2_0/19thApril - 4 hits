@@ -1,4 +1,4 @@
-are The Master OGA Algorithm (v2.3 — "The Dual-Track Magnet")
+The Master OGA Algorithm (v2.3 — "The Dual-Track Magnet")
 
 STRICT MODE ACTIVE: You must perform a multi-pass logical audit on every ticket against ALL sections of the algo before final output, treating any deviation from the pool counts, overlap caps, or ratio constraints as a fatal execution error.
 
@@ -15,15 +15,26 @@ C (Cold): Numbers with 0 occurrences in the window.
 
 I will provide you the EH,H,W,C pools, please stop processing if I don't provide them, and wait for my input.
 
-2. Oscillation Momentum (The W-Count)
-Definition: Breadth Draw ($W \ge 4$); Depth Draw ($W \le 3$).
+2. Oscillation Momentum — Replaced by W‑Pool Saturation Predictor
+Definitions:
 
-The Rule:
+Breadth Draw: The previous Saturday’s Main numbers contain 4 or more Warm numbers (W≥4).
 
-If the previous Saturday was a Breadth Draw $\rightarrow$ Predict a Depth Draw.
-If the previous Saturday was a Depth Draw $\rightarrow$ Predict a Breadth Draw.
+Depth Draw: The previous Saturday’s Main numbers contain 3 or fewer Warm numbers (W≤3).
 
-Special Case: If the pattern repeats twice (e.g., two Breadth draws in a row), the prediction for the flip becomes "High Certainty."
+The W‑Pool Saturation Rule:
+
+After completing Section 1 (Data Windowing & Tiering), count the total number of unique Warm numbers in the pools. This is the W‑Pool Size.
+
+Predict the next Saturday’s profile as follows:
+
+If W‑Pool Size ≥ 28 → Predict a Breadth Draw.
+
+If W‑Pool Size < 28 → Predict a Depth Draw.
+
+This prediction determines the Dual‑Track Core/Backup split in Section 6, but does not alter the pool counts or the profile rules themselves.
+
+The prediction is data‑driven and must be re‑calculated fresh for every target Saturday based on the current 7‑day window. There is no “High Certainty” special case.
 
 3. Gravity Shift (The Decade Filter)
 Identify Density: Find the most frequent decade (0s, 10s, 20s, 30s, or 40s) from the last 3 Saturdays.
@@ -34,20 +45,20 @@ The Reversion Rule: If the density has been "climbing" (e.g., moving toward 30s 
 This section merges the pools into a 6-number ticket based on the predicted momentum.
 
 Profile A: Predicted Depth Draw ($W = 2$ or $3$ hits)
-EH Pool: 0 or 1 number (Maximum 1).
-H Pool: 2 numbers (The primary anchors).
+EH Pool: 0 or 1 or 2 number (Maximum 2).
+H Pool: 1 or 2 number numbers (The primary anchors).
 W Pool: 2 or 3 numbers.
 C Pool: 1 (50% of tickets) or 0 (50% of tickets).
 
 Profile B: Predicted Breadth Draw ($W = 4$ or $5$ hits)
 EH/H Pool: 1 or 2 numbers total (EH cap still applies).
 W Pool: 4 or 5 numbers.
-C Pool: C Pool: 0 numbers (Primary). If the Collision Shield (5.1) cannot find a unique combination after 100 iterations, 1 Cold (C) number is permitted as an anchor.
+C Pool: C Pool: 0 or 1 number (Primary).
 
 5. Final Constraints & Polish
 The Legacy Constraint: Maximum one number from the previous Saturday’s winning set (Others Main) may be included.
 
-The EH-Saturation Cap: Never include more than one EH number in a Saturday ticket. Saturdays are "exhaustion days" for mid-week leaders.
+The EH-Saturation Cap: Never include more than two EH number in a Saturday ticket. Saturdays are "exhaustion days" for mid-week leaders.
 
 Mathematical Ratios:
 Odd / Even: 3:3 (Primary) or 2:4 / 4:2.
@@ -69,9 +80,11 @@ If Prev Sat = Depth ($W \le 3$):
 CORE (30 Tickets): Profile B (Breadth)
 BACKUP (20 Tickets): Profile A (Depth)
 
-6.2 Automated Profile Locking: > * CORE (Profile A) Strictness: Must contain exactly 2 Hot (H) numbers and no more than 3 Warm (W) numbers. Any ticket with 4+ Warm numbers is automatically disqualified from CORE and moved to BACKUP.
+6.2 Automated Profile Locking:
 
-BACKUP (Profile B) Strictness: Must contain 0 Cold (C) numbers and 4–5 Warm (W) numbers.
+CORE (Profile A) Strictness: Must contain 1–2 Hot (H) numbers, 2–3 Warm (W) numbers, 0–1 Cold (C) numbers, and EH ≤2.
+
+BACKUP (Profile B) Strictness: Must contain 0–1 Cold (C) numbers, 4–5 Warm (W) numbers, and EH+H total 1–2 (EH ≤2).
 
 Validation Step: Every ticket must pass a "Pool Census" check (EH count, H count, W count, C count) before being finalized.
 
