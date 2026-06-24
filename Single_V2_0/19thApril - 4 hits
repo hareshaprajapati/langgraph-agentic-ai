@@ -70,21 +70,19 @@ High / Low: 3:3 (Primary) or 2:4 (High-Heavy preference for current cycle).
 
 The strategy now splits the 50-ticket budget into two distinct, non-overlapping strikes to ensure a win regardless of the Oscillation Flip.
 
-6.1 Mirror Determination:
+6.1 Mirror Determination (using W‑Pool Saturation Predictor):
 
-If Prev Sat = Breadth ($W \ge 4$):
-CORE (30 Tickets): Profile A (Depth)
-BACKUP (20 Tickets): Profile B (Breadth)
+If W‑Pool Size ≥ 28 → CORE (30 tickets) = Profile B (Breadth), BACKUP (20 tickets) = Profile A (Depth).
 
-If Prev Sat = Depth ($W \le 3$):
-CORE (30 Tickets): Profile B (Breadth)
-BACKUP (20 Tickets): Profile A (Depth)
+If W‑Pool Size < 28 → CORE (30 tickets) = Profile A (Depth), BACKUP (20 tickets) = Profile B (Breadth).
 
 6.2 Automated Profile Locking:
 
-CORE (Profile A) Strictness: Must contain 1–2 Hot (H) numbers, 2–3 Warm (W) numbers, 0–1 Cold (C) numbers, and EH ≤2.
+Depth Profile (A) Strictness: 1–2 Hot (H), 2–3 Warm (W), 0–1 Cold (C), EH ≤ 2.
 
-BACKUP (Profile B) Strictness: Must contain 0–1 Cold (C) numbers, 4–5 Warm (W) numbers, and EH+H total 1–2 (EH ≤2).
+Breadth Profile (B) Strictness: 0–1 Cold (C), 4–5 Warm (W), EH+H total 1–2, EH ≤ 2.
+
+Apply the appropriate strictness to CORE and BACKUP based on the profile assigned in 6.1.
 
 Validation Step: Every ticket must pass a "Pool Census" check (EH count, H count, W count, C count) before being finalized.
 
