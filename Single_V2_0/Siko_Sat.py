@@ -195,72 +195,6 @@ def generate_ticket(struct, strike, kill_dec, has_ac, has_bm, has_cp, tiers, leg
                 return final_t
         return None
 
-
-# def find_momentum_alignment_seed(df, target_date):
-#     """
-#     STRICT MODE: Finds the seed (1-250) that would have hit the most
-#     numbers on the PREVIOUS Saturday.
-#     """
-#     # 1. Identify previous Saturday and its result
-#     prev_sat_date = target_date - pd.Timedelta(days=7)
-#     sat_row = df[df['Date_dt'] == prev_sat_date]
-#     if sat_row.empty: return 109  # Fallback if history missing
-#
-#     winning_prev = parse_main_6(sat_row.iloc[0]['Others (incl supp)'])
-#
-#     # 2. Setup the "Tuning Environment" for that previous week
-#     # Calculate tiers/vibrations as they WERE on that Saturday
-#     prev_win = df[(df['Date_dt'] >= prev_sat_date - pd.Timedelta(days=7)) & (df['Date_dt'] < prev_sat_date)]
-#     prev_mid = df[(df['Date_dt'] >= prev_sat_date - pd.Timedelta(days=4)) & (df['Date_dt'] < prev_sat_date)]
-#
-#     pEH, pH, pW, pC, _ = get_tiers(prev_win)
-#     _, _, _, _, m_counts = get_tiers(prev_mid)
-#     p_vibrations = [n for n, c in m_counts.items() if c >= 2]
-#     p_dec_vols = Counter([n // 10 for n in m_counts.keys()])
-#     p_sorted_decs = sorted(range(5), key=lambda x: p_dec_vols.get(x, 0), reverse=True)
-#
-#     # Legacy for that week was the Sat BEFORE it
-#     p_sats_hist = df[(df['Date_dt'] < prev_sat_date) & (df['Date'].str.startswith('Sat'))].tail(1)
-#     p_legacy = parse_main_6(p_sats_hist.iloc[0]['Others (incl supp)']) if not p_sats_hist.empty else []
-#
-#     # Momentum for that week
-#     p_pred_breadth = True  # Default for alignment check
-#
-#     best_seed = 1
-#     max_hits = 0
-#
-#     print(f"--- SYNCING SEED: Tuning against {prev_sat_date.strftime('%Y-%m-%d')} result ---")
-#
-#     for s in range(1, 251):
-#         random.seed(s)
-#         # Test a 'Scout Strike' of 50 tickets
-#         test_tickets = []
-#         kills_pool = ([p_sorted_decs[2]] * 20 + [p_sorted_decs[-1]] * 15 + [4] * 10 + [None] * 5)
-#         random.shuffle(kills_pool)
-#
-#         for i in range(50):
-#             struct = "High" if i < 30 else "Standard"
-#             strike = "Legacy" if i < 25 else "Pure" if i < 45 else "Cold"
-#             t = generate_ticket(struct, strike, kills_pool[i], (i < 21), (i < 35), (i < 30),
-#                                 (pEH, pH, pW, pC), p_legacy, p_pred_breadth, p_vibrations, test_tickets)
-#             if t: test_tickets.append(t)
-#
-#         if not test_tickets: continue
-#
-#         # Check performance of this seed against what ACTUALLY happened
-#         current_max = max([len(set(t) & set(winning_prev)) for t in test_tickets])
-#
-#         if current_max > max_hits:
-#             max_hits = current_max
-#             best_seed = s
-#             # If we find a seed that hit the 6-hit jackpot last week, lock it!
-#             if max_hits >= 6:
-#                 print(f"FOUND JACKPOT SYNC: Seed {s} hit 6/6 last week!")
-#                 break
-#
-#     print(f"--- SYNC COMPLETE: Using Seed {best_seed} (caught {max_hits} hits last week) ---")
-#     return best_seed
-
 def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
     """Finds the seed that generates the highest number of internal pairs."""
     best_seed, max_score = 1, 0
@@ -282,8 +216,8 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
-        ('2026-06-20',[3, 6, 9, 14, 21, 22]),
-        # ('2026-06-13',[12, 16, 30, 31, 40, 43]),
+        # ('2026-06-20',[3, 6, 9, 14, 21, 22]),
+        ('2026-06-13',[12, 16, 30, 31, 40, 43]),
         # ('2026-06-06',[10, 25, 30, 31, 43, 44]),
         # ('2026-05-30',[8, 10, 12, 19, 28, 36]),
         # ('2026-05-23',[11, 19, 20, 28, 31, 40]),
@@ -322,12 +256,25 @@ def main():
             (df['Date_dt'] >= target_date - pd.Timedelta(days=4)) & (df['Date_dt'] < target_date)]  # Tue-Fri
 
         EH, H, W, C, counts = get_tiers(current_window)
+        EH = [13, 21, 25, 31, 43]
+        H = [11, 12, 35, 40, 44]
+        W = [1, 6, 8, 10, 16, 17, 23, 30, 32, 34, 37, 39, 45]
+        C = [3, 42]
         print("EH", EH)
         print("H", H)
         print("W", W)
         print("C", C)
 
         mEH, mH, mW, mC, m_counts = get_tiers(midweek_window)
+
+        mEH = [43]
+        mH = [13]
+        mW = [1, 6, 8, 11, 12, 16, 17, 21, 23, 25, 30, 31, 32, 34, 35, 37, 39, 40, 44, 45]
+        mC = [3, 10, 42]
+        print("mEH", mEH)
+        print("mH", mH)
+        print("mW", mW)
+        print("mC", mC)
         vibrations = [n for n, c in m_counts.items() if c >= 2]  # Mid-week velocity [cite: 44]
 
         # --- SECTION 2: MOMENTUM LOGIC [cite: 5-7] ---
