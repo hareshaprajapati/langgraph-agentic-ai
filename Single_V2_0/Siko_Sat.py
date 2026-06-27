@@ -216,8 +216,9 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
+        ('2026-06-27',[]),
         # ('2026-06-20',[3, 6, 9, 14, 21, 22]),
-        ('2026-06-13',[12, 16, 30, 31, 40, 43]),
+        # ('2026-06-13',[12, 16, 30, 31, 40, 43]),
         # ('2026-06-06',[10, 25, 30, 31, 43, 44]),
         # ('2026-05-30',[8, 10, 12, 19, 28, 36]),
         # ('2026-05-23',[11, 19, 20, 28, 31, 40]),
@@ -256,10 +257,6 @@ def main():
             (df['Date_dt'] >= target_date - pd.Timedelta(days=4)) & (df['Date_dt'] < target_date)]  # Tue-Fri
 
         EH, H, W, C, counts = get_tiers(current_window)
-        EH = [13, 21, 25, 31, 43]
-        H = [11, 12, 35, 40, 44]
-        W = [1, 6, 8, 10, 16, 17, 23, 30, 32, 34, 37, 39, 45]
-        C = [3, 42]
         print("EH", EH)
         print("H", H)
         print("W", W)
@@ -267,14 +264,6 @@ def main():
 
         mEH, mH, mW, mC, m_counts = get_tiers(midweek_window)
 
-        mEH = [43]
-        mH = [13]
-        mW = [1, 6, 8, 11, 12, 16, 17, 21, 23, 25, 30, 31, 32, 34, 35, 37, 39, 40, 44, 45]
-        mC = [3, 10, 42]
-        print("mEH", mEH)
-        print("mH", mH)
-        print("mW", mW)
-        print("mC", mC)
         vibrations = [n for n, c in m_counts.items() if c >= 2]  # Mid-week velocity [cite: 44]
 
         # --- SECTION 2: MOMENTUM LOGIC [cite: 5-7] ---

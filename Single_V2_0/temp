@@ -1,38 +1,6 @@
-[2, 3, 8, 9, 10, 11, 12, 13, 14, 17, 19, 20, 21, 25, 27, 28, 29, 30, 31, 33, 34, 35, 36, 37,
- 40, 41, 42, 43, 44, 45]
-legacy : [10, 25, 30, 31, 43, 44]
-EH [2, 13, 14, 15, 18, 21, 22, 25, 29, 31, 38, 43]
-H [11, 12, 26, 28, 33, 35, 40, 44]
-W [1, 4, 5, 6, 8, 9, 10, 16, 17, 19, 20, 23, 24, 30, 32, 34, 36, 37, 39, 41, 45]
-C [3, 7, 27, 42]
-
-A. Legacy Strikes (25 Tickets - 50%)
-Purpose: Capture repeaters from last Saturday's result.
-Structure: 3 Anchors (EH/H) + 2 Body (W) + 1 Legacy.
-4,15,31,37,41
-1,7,15,19,33,41,
-6,12,16,23,33,44
-5,8,18,30,37,45,
-9,11,12,22,24,45,
-
-
-
-Constraint: You must include exactly 1 number from the previous Saturday’s winning set.
-
-EH-Saturation: Max 1 EH number. If you choose an EH anchor, the other 2 anchors must be H-pool numbers.
-
-B. Pure Strikes (20 Tickets - 40%)
-Purpose: Capture momentum clusters.
-
-Structure: 3 Anchors (EH/H) + 3 Body (W).
-
-Glue Requirement: Every ticket must contain at least one "Bridge" (Consecutive pair or Mirror pair).
-
-Examples for your current pool: Consecutive [13,14], [21,22]; Mirror [12,22], [15,25].
-
-C. Cold Strikes (5 Tickets - 10%)
-Purpose: Insurance against "Rebound" draws.
-
-Structure: 2 Anchors (EH/H) + 3 Body (W) + 1 Cold (C).
-
-Constraint: These tickets allow you to use your Cold Pool ([3, 4, 7, 10, 27, 42]) to catch numbers that have been "sacrificed" by the general population.
+Fri 26-Jun-2026,"[14, 18, 24, 28, 35, 40, 42], [9, 44]","[16, 19, 26, 29, 36, 41], [13, 28]"
+Thu 25-Jun-2026,"[9, 26, 27, 28, 29, 33, 40], [6, 8]","[7, 17, 18, 23, 25, 26, 29], [16]"
+Wed 24-Jun-2026,"[6, 8, 10, 28, 32, 36, 37], [26, 44]","[11, 16, 17, 28, 33, 40], [10, 12]"
+Tue 23-Jun-2026,"[5, 10, 22, 31, 35, 36, 44], [12, 38]","[4, 13, 21, 26, 27, 31, 43], [11, 19, 38]"
+Mon 22-Jun-2026,"[21, 29, 30, 33, 34, 39, 44], [25, 26]","[2, 11, 13, 22, 25, 41], [6, 33]"
+Sun 21-Jun-2026,"[8, 10, 15, 21, 24, 33, 37], [9, 34]",
