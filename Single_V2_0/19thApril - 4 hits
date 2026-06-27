@@ -79,6 +79,9 @@ If a legacy number is used, it must be drawn from the current week’s EH, H, or
 
 The EH-Saturation Cap: Never include more than two EH number in a Saturday ticket. Saturdays are "exhaustion days" for mid-week leaders.
 
+The Decade Concentration Cap:
+No ticket may contain more than 3 numbers from any single decade (0s, 10s, 20s, 30s, or 40s).
+
 The Consecutive Pair Mandate:
 At least 80% of the 50 tickets (40 tickets) must contain at least one consecutive pair (n, n+1).
 
