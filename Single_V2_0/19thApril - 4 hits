@@ -63,15 +63,17 @@ No ticket may contain a number from its excluded decade. This constraint is appl
 This section merges the pools into a 6-number ticket based on the predicted momentum.
 
 Profile A: Predicted Depth Draw ($W = 2$ or $3$ hits)
-EH Pool: 0 or 1 or 2 number (Maximum 2).
-H Pool: 1 or 2 number numbers (The primary anchors).
-W Pool: 2 or 3 numbers.
+EH Pool: 0-2 number (Maximum 2).
+H Pool: 0-3 number numbers (The primary anchors).
+W Pool: 2-3 numbers.
 C Pool: 1 (50% of tickets) or 0 (50% of tickets).
 
 Profile B: Predicted Breadth Draw ($W = 4$ or $5$ hits)
-EH/H Pool: 1 or 2 numbers total (EH cap still applies).
+EH Pool: 0-1 number (Maximum 1).
+H Pool: 0-2 number numbers (The primary anchors).
+EH+H: 1-2 numbers in total.
 W Pool: 4 or 5 numbers.
-C Pool: C Pool: 0 or 1 number (Primary).
+C Pool: 0 number.
 
 5. Final Constraints & Polish
 The Legacy Constraint: Maximum one number from the previous Saturday’s winning set (Others Main) may be included in a ticket.
