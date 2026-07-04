@@ -141,7 +141,8 @@ for spec in kill_order:
             all_in = all(in_ideal(n, temp_freq) for n in t)
             dist = distance_from_ideal(temp_freq)
             sc = score(t)
-            key = (0 if all_in else 1, dist, -sc)
+            max_dec_cnt = max(Counter(dec(n) for n in t).values())
+            key = (0 if all_in else 1, dist, -sc, max_dec_cnt)
             if best_key is None or key < best_key:
                 best_key = key
                 best_t = t
@@ -153,7 +154,8 @@ for spec in kill_order:
                 temp_freq = freq.copy()
                 for n in t: temp_freq[n] += 1
                 dist = distance_from_ideal(temp_freq)
-                key = (1, dist, -score(t))
+                max_dec_cnt = max(Counter(dec(n) for n in t).values())
+                key = (1, dist, -score(t), max_dec_cnt)
                 if best_key is None or key < best_key:
                     best_key = key
                     best_t = t
@@ -165,7 +167,8 @@ for spec in kill_order:
                 temp_freq = freq.copy()
                 for n in t: temp_freq[n] += 1
                 dist = distance_from_ideal(temp_freq)
-                key = (2, dist, -score(t))
+                max_dec_cnt = max(Counter(dec(n) for n in t).values())
+                key = (2, dist, -score(t), max_dec_cnt)
                 if best_key is None or key < best_key:
                     best_key = key
                     best_t = t
