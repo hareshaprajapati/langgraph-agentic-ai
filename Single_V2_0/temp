@@ -1,37 +1,24 @@
-"D:\Work\projects\AI Agentics\langgraph-agents\.venv\Scripts\python.exe" "D:\Work\projects\AI Agentics\langgraph-agents\Single_V2_0\19thApril4HitsPattern.py"
-Last 30 Saturday Lotto draws analysis:
+Cold Pool ≥ 3 → 16 of 20 C=1 draws (80 %)
+EH - 1 : 25 tickets -2: 25 tickets
+H: 2: 35 tickets, 3: 15 tickets
+W: 2: 35 tickets, 3: 15 tickets
+C: 0: 35 tickets, 1: 15 tickets
 
-Date                 Profile    EH   H    W    C    W-Pool Size  Legacy Hits
-------------------------------------------------------------------------------------------
-Sat 29-Nov-2025      Depth      2    0    3    1    18           None
-Sat 06-Dec-2025      Depth      1    2    2    1    25           [5, 10, 17]
-Sat 13-Dec-2025      Breadth    0    0    6    0    24           [17]
-Sat 20-Dec-2025      Depth      2    3    1    0    20           [32]
-Sat 27-Dec-2025      Depth      2    2    2    0    20           None
-Sat 03-Jan-2026      Breadth    1    1    4    0    21           None
-Sat 10-Jan-2026      Depth      1    2    2    1    23           None
-Sat 17-Jan-2026      Depth      0    3    2    1    20           [8]
-Sat 24-Jan-2026      Depth      3    0    3    0    20           [8]
-Sat 31-Jan-2026      Breadth    1    0    4    1    24           [33]
-Sat 07-Feb-2026      Depth      2    2    2    0    24           [9, 33]
-Sat 14-Feb-2026      Breadth    1    1    4    0    16           [3]
-Sat 21-Feb-2026      Depth      3    0    3    0    19           None
-Sat 28-Feb-2026      Breadth    0    2    4    0    22           None
-Sat 07-Mar-2026      Breadth    0    2    4    0    20           [35]
-Sat 14-Mar-2026      Breadth    1    1    4    0    22           [36]
-Sat 21-Mar-2026      Breadth    1    1    4    0    16           [27]
-Sat 28-Mar-2026      Breadth    0    1    5    0    23           None
-Sat 04-Apr-2026      Depth      1    3    2    0    21           [2]
-Sat 11-Apr-2026      Depth      1    1    3    1    18           None
-Sat 18-Apr-2026      Depth      0    3    3    0    16           [8]
-Sat 25-Apr-2026      Breadth    1    0    5    0    24           [3]
-Sat 02-May-2026      Depth      0    2    3    1    22           [45]
-Sat 09-May-2026      Breadth    0    1    4    1    22           None
-Sat 16-May-2026      Depth      2    1    2    1    17           [33]
-Sat 23-May-2026      Depth      2    2    2    0    22           None
-Sat 30-May-2026      Depth      1    2    2    1    21           [19, 28]
-Sat 06-Jun-2026      Depth      2    1    2    1    20           [10]
-Sat 13-Jun-2026      Depth      2    2    2    0    21           [30, 31, 43]
-Sat 20-Jun-2026      Breadth    0    2    4    0    24           None
+(2,1,3,0) : 30
+(2,2,2,0) : 12
+(2,1,2,1) : 8
 
-Process finished with exit code 0
+
+
+Legacy numbers: [15, 17, 24, 28, 36, 37]
+EH [1, 2, 10, 12, 14, 15, 17, 18, 19, 24, 26, 31, 36, 39] EH-Pool-Size: 14
+H [13, 22, 25, 30, 37, 41, 44] H-Pool-Size: 7
+W [3, 4, 5, 6, 7, 8, 9, 16, 23, 27, 28, 29, 32, 33, 34, 35, 38, 42, 43] W-Pool-Size: 19
+C [11, 20, 21, 40, 45] C-Pool-Size: 5
+
+Fri 03-Jul-2026,"[15, 25, 29, 35, 36, 39, 41], [2, 14]","[2, 10, 12, 17, 19, 42], [31, 44]"
+Thu 02-Jul-2026,"[2, 5, 8, 15, 23, 39, 44], [1, 9]","[6, 12, 17, 22, 24, 30, 32], [2]"
+Wed 01-Jul-2026,"[2, 14, 18, 25, 27, 30, 39], [19, 24]","[12, 14, 19, 26, 30, 34], [10, 31]"
+Tue 30-Jun-2026,"[1, 5, 18, 19, 22, 26, 38], [10, 31]","[2, 8, 17, 19, 24, 41, 43], [7, 12, 26]"
+Mon 29-Jun-2026,"[1, 10, 13, 16, 25, 37, 42], [36, 39]","[1, 17, 26, 33, 35, 41], [31, 32]"
+Sun 28-Jun-2026,"[7, 13, 17, 24, 26, 36, 44], [4, 37]",

@@ -216,7 +216,8 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
-        ('2026-06-27',[]),
+        ('2026-07-04',[]),
+        # ('2026-06-27',[15, 17, 24, 28, 36, 37]),
         # ('2026-06-20',[3, 6, 9, 14, 21, 22]),
         # ('2026-06-13',[12, 16, 30, 31, 40, 43]),
         # ('2026-06-06',[10, 25, 30, 31, 43, 44]),
@@ -257,10 +258,10 @@ def main():
             (df['Date_dt'] >= target_date - pd.Timedelta(days=4)) & (df['Date_dt'] < target_date)]  # Tue-Fri
 
         EH, H, W, C, counts = get_tiers(current_window)
-        print("EH", EH)
-        print("H", H)
-        print("W", W)
-        print("C", C)
+        print("EH", EH, f"EH-Pool-Size: {len(EH)}")
+        print("H", H, f"H-Pool-Size: {len(H)}")
+        print("W", W, f"W-Pool-Size: {len(W)}")
+        print("C", C, f"C-Pool-Size: {len(C)}")
 
         mEH, mH, mW, mC, m_counts = get_tiers(midweek_window)
 

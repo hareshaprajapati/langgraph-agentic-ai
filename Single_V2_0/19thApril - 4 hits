@@ -83,6 +83,7 @@ The EH-Saturation Cap: Never include more than two EH number in a Saturday ticke
 
 The Decade Concentration Cap:
 No ticket may contain more than 3 numbers from any single decade (0s, 10s, 20s, 30s, or 40s).
+No ticket may contain more than 2 numbers from the 40s decade.
 
 The Consecutive Pair Mandate:
 At least 80% of the 50 tickets (40 tickets) must contain at least one consecutive pair (n, n+1).

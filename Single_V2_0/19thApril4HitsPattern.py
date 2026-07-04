@@ -72,9 +72,11 @@ for i in range(1, len(saturdays)):
     w  = {n for n, cnt in counter.items() if 1 <= cnt <= 2}
     c  = {n for n in range(1,46) if counter[n] == 0}
 
+    eh_pool_size = len(eh)
+    h_pool_size = len(h)
     w_pool_size = len(w)
-    pool_eh_h_count = len(eh) + len(h)   # ← add this line
     c_pool_size = len(c)
+    eh_h_pool_size = eh_pool_size + h_pool_size
 
     counts = {'EH':0, 'H':0, 'W':0, 'C':0}
     for n in target_main:
@@ -89,14 +91,22 @@ for i in range(1, len(saturdays)):
     # Legacy numbers (previous Saturday main numbers that appear in this draw)
     legacy_hits = [n for n in target_main if n in prev_main]
 
-    results.append((target_date_str, profile, counts, w_pool_size, legacy_hits, pool_eh_h_count, c_pool_size))
+    results.append((target_date_str, profile, counts,
+                    eh_pool_size, h_pool_size, w_pool_size, c_pool_size,
+                    eh_h_pool_size, legacy_hits))
 
 # Print
 n = min(OUTPUT_LAST_N, len(results))
 print(f"Last {n} Saturday Lotto draws analysis:\n")
-print(f"{'Date':<20} {'Profile':<10} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} {'W-Pool Size':<12} {'Pool EH+H':<10} {'Cold Pool':<10} {'Legacy Hits'}")
+print(f"{'Date':<20} {'Profile':<10} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
+      f"{'EH-Pool':<8} {'H-Pool':<8} {'W-Pool':<8} {'C-Pool':<8} "
+      f"{'EH+H-Pool':<10} {'Legacy Hits'}")
 print("-" * 90)
-for date_str, profile, counts, w_pool, legacy, pool_eh_h, c_pool in results[-n:]:
+for (date_str, profile, counts,
+     eh_pool, h_pool, w_pool, c_pool,
+     eh_h_pool, legacy) in results[-n:]:
     legacy_str = str(legacy) if legacy else "None"
-    print(
-        f"{date_str:<20} {profile:<10} {counts['EH']:<4} {counts['H']:<4} {counts['W']:<4} {counts['C']:<4} {w_pool:<12} {pool_eh_h:<10} {c_pool:<10} {legacy_str}")
+    print(f"{date_str:<20} {profile:<10} {counts['EH']:<4} {counts['H']:<4} "
+          f"{counts['W']:<4} {counts['C']:<4} "
+          f"{eh_pool:<8} {h_pool:<8} {w_pool:<8} {c_pool:<8} "
+          f"{eh_h_pool:<10} {legacy_str}")
