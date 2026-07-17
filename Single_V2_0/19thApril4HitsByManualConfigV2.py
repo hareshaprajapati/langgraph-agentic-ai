@@ -90,6 +90,24 @@ def distance_from_ideal(freq):
             total += (freq[n] - target) ** 2
     return total
 
+def has_tier_bridge(t):
+    s = sorted(t)
+    for i in range(len(s)-1):
+        a, b = s[i], s[i+1]
+        if b - a == 1:
+            if ((a in EH or a in H) and b in W) or ((b in EH or b in H) and a in W):
+                return True
+    return False
+
+def has_anchor_mirror(t):
+    for a in t:
+        if a in EH or a in H:
+            for b in t:
+                if b != a and b % 10 == a % 10:
+                    if b in W or b in LEGACY:
+                        return True
+    return False
+
 # ---------- GENERATE CANDIDATES (pair‑filtered) ----------
 print("Generating candidates...")
 all_cand = {}
