@@ -8,24 +8,37 @@ W  = [3, 4, 5, 6, 7, 8, 9, 16, 23, 27, 28, 29, 32, 33, 34, 35, 38, 42, 43]
 C  = [11, 20, 21, 40, 45]
 LEGACY = [15, 17, 24, 28, 36, 37]   # from 27-Jun result
 REAL = set()
-WIN  = tuple(sorted(REAL)) if REAL else ()
-# ---------- PROFILES (your locked distribution) ----------
-PROFILES = [
-    ((2, 1, 3, 0), 30),
-    ((2, 2, 2, 0), 12),
-    ((2, 1, 2, 1), 8)
+WIN = tuple(sorted(REAL)) if REAL else ()
+# ---------- DECADE KILLS & TOTAL ----------
+TOTAL = 50
+kill_list = ['40s']*15 + ['0s']*12 + ['20s']*12 + ['30s']*11
+
+# ---------- SAFE DEPTH RANGES & IDEAL BANDS ----------
+SAFE_DEPTH_RANGES = [
+    (0, 2),   # EH
+    (0, 3),   # H
+    (2, 3),   # W
+    (0, 1)    # C
 ]
 
-# ---------- DECADE KILLS (04-Jul) ----------
-# 15×40s, 12×0s, 12×20s, 11×30s
-kill_list = ['40s']*15 + ['0s']*12 + ['20s']*12 + ['30s']*11
-TOTAL = 50
+# Estimated average picks per pool using the safe ranges
+avg_EH = sum(range(SAFE_DEPTH_RANGES[0][0], SAFE_DEPTH_RANGES[0][1] + 1)) / (
+    SAFE_DEPTH_RANGES[0][1] - SAFE_DEPTH_RANGES[0][0] + 1
+)
+avg_H = sum(range(SAFE_DEPTH_RANGES[1][0], SAFE_DEPTH_RANGES[1][1] + 1)) / (
+    SAFE_DEPTH_RANGES[1][1] - SAFE_DEPTH_RANGES[1][0] + 1
+)
+avg_W = sum(range(SAFE_DEPTH_RANGES[2][0], SAFE_DEPTH_RANGES[2][1] + 1)) / (
+    SAFE_DEPTH_RANGES[2][1] - SAFE_DEPTH_RANGES[2][0] + 1
+)
+avg_C = sum(range(SAFE_DEPTH_RANGES[3][0], SAFE_DEPTH_RANGES[3][1] + 1)) / (
+    SAFE_DEPTH_RANGES[3][1] - SAFE_DEPTH_RANGES[3][0] + 1
+)
 
-# ---------- DYNAMIC IDEAL BANDS ----------
-total_picks_EH = sum(eh * cnt for (eh, h, w, c), cnt in PROFILES)
-total_picks_H  = sum(h  * cnt for (eh, h, w, c), cnt in PROFILES)
-total_picks_W  = sum(w  * cnt for (eh, h, w, c), cnt in PROFILES)
-total_picks_C  = sum(c  * cnt for (eh, h, w, c), cnt in PROFILES)
+total_picks_EH = int(TOTAL * avg_EH)
+total_picks_H  = int(TOTAL * avg_H)
+total_picks_W  = int(TOTAL * avg_W)
+total_picks_C  = int(TOTAL * avg_C)
 
 def ideal_band(total_picks, pool_size):
     if pool_size == 0:
@@ -90,49 +103,35 @@ def distance_from_ideal(freq):
             total += (freq[n] - target) ** 2
     return total
 
-def has_tier_bridge(t):
-    s = sorted(t)
-    for i in range(len(s)-1):
-        a, b = s[i], s[i+1]
-        if b - a == 1:
-            if ((a in EH or a in H) and b in W) or ((b in EH or b in H) and a in W):
-                return True
-    return False
-
-def has_anchor_mirror(t):
-    for a in t:
-        if a in EH or a in H:
-            for b in t:
-                if b != a and b % 10 == a % 10:
-                    if b in W or b in LEGACY:
-                        return True
-    return False
-
-# ---------- GENERATE CANDIDATES (pair‑filtered) ----------
+# ---------- GENERATE CANDIDATES (safe‑range, pair‑filtered) ----------
 print("Generating candidates...")
 all_cand = {}
-for prof_idx, ((eh_c, h_c, w_c, c_c), count) in enumerate(PROFILES):
-    combos = []
-    for eh in itertools.combinations(EH, eh_c):
-        for h in itertools.combinations(H, h_c):
-            for w in itertools.combinations(W, w_c):
-                for c in itertools.combinations(C, c_c):
-                    t = tuple(sorted(eh+h+w+c))
-                    if len(set(t))<6: continue
-                    combos.append(t)
-    for kill in set(kill_list):
-        valid_tix = [t for t in combos if valid(t, kill)]
-        valid_tix = [t for t in valid_tix if consecutive(t) and mirror(t)]
-        all_cand[(prof_idx, kill)] = valid_tix
-        print(f"  Prof {prof_idx}, Kill {kill}: {len(valid_tix)} candidates")
+combos = []
+for eh_c in range(SAFE_DEPTH_RANGES[0][0], SAFE_DEPTH_RANGES[0][1] + 1):
+    for h_c in range(SAFE_DEPTH_RANGES[1][0], SAFE_DEPTH_RANGES[1][1] + 1):
+        for w_c in range(SAFE_DEPTH_RANGES[2][0], SAFE_DEPTH_RANGES[2][1] + 1):
+            for c_c in range(SAFE_DEPTH_RANGES[3][0], SAFE_DEPTH_RANGES[3][1] + 1):
+                if eh_c + h_c + w_c + c_c != 6:
+                    continue
+                for eh in itertools.combinations(EH, eh_c):
+                    for h in itertools.combinations(H, h_c):
+                        for w in itertools.combinations(W, w_c):
+                            for c in itertools.combinations(C, c_c):
+                                t = tuple(sorted(eh + h + w + c))
+                                if len(set(t)) < 6:
+                                    continue
+                                combos.append(t)
 
-# Build required counts per spec
+for kill in set(kill_list):
+    valid_tix = [t for t in combos if valid(t, kill)]
+    valid_tix = [t for t in valid_tix if consecutive(t) and mirror(t)]
+    all_cand[(0, kill)] = valid_tix
+    print(f"  Kill {kill}: {len(valid_tix)} candidates")
+
+# All tickets belong to the same virtual profile (0)
 req = defaultdict(int)
-kill_idx = 0
-for prof_idx, (_, count) in enumerate(PROFILES):
-    for _ in range(count):
-        req[(prof_idx, kill_list[kill_idx])] += 1
-        kill_idx += 1
+for k in kill_list:
+    req[(0, k)] += 1
 
 # ---------- FAIRNESS‑FIRST SELECTION ----------
 selected = []
