@@ -1,17 +1,19 @@
 import itertools
 from collections import Counter, defaultdict
 
-# ---------- POOLS (18-Jul-2026) ----------
-EH = [3, 4, 6, 13, 16, 17, 22, 27, 30, 34, 35, 38, 39]
-H  = [5, 10, 14, 15, 20, 21, 23, 25, 28, 29]
-W  = [1, 7, 9, 11, 12, 18, 19, 26, 32, 33, 36, 37, 41, 42, 43, 44, 45]
-C  = [2, 8, 24, 31, 40]
-LEGACY = [13, 14, 16, 21, 29, 41]   # from 27-Jun result
-REAL = set()
+# ---------- POOLS (27-Jun-2026) ----------
+EH = [6, 9, 10, 11, 16, 21, 26, 28, 29, 33, 44]
+H  = [8, 12, 13, 19, 22, 24, 25, 36, 38, 40]
+W  = [1, 2, 3, 4, 5, 7, 14, 15, 17, 18, 20, 23, 27, 30, 31, 32, 34, 35, 37, 39, 41, 42, 43]
+C  = [45]
+LEGACY = [3, 6, 9, 14, 21, 22]   # from 27-Jun result
+REAL = {15, 17, 24, 28, 36, 37}
+# REAL = set()
 WIN = tuple(sorted(REAL)) if REAL else ()
 # ---------- DECADE KILLS & TOTAL ----------
 TOTAL = 50
-kill_list = ['40s']*15 + ['0s']*12 + ['10s']*12 + ['30s']*11
+kill_list = ['0s+40s'] * 50
+# kill_list = ['40s+30s'] * 25 + ['40s+10s'] * 25
 
 # ---------- SAFE DEPTH RANGES & IDEAL BANDS ----------
 SAFE_DEPTH_RANGES = [
@@ -20,6 +22,10 @@ SAFE_DEPTH_RANGES = [
     (2, 3),   # W
     (0, 1)    # C
 ]
+
+def parse_kill(kill_str):
+    """ '40s' -> {'40s'}   '40s+30s' -> {'40s','30s'} """
+    return set(kill_str.split('+'))
 
 # Estimated average picks per pool using the safe ranges
 avg_EH = sum(range(SAFE_DEPTH_RANGES[0][0], SAFE_DEPTH_RANGES[0][1] + 1)) / (
@@ -64,7 +70,9 @@ def dec(n):
     return '40s'
 
 def valid(t, kill):
-    if any(dec(x) == kill for x in t): return False
+    killed_set = parse_kill(kill)
+    if any(dec(x) in killed_set for x in t):
+        return False
     if sum(1 for x in t if x in LEGACY) > 1: return False
     o = sum(1 for x in t if x % 2)
     if (o, 6-o) not in [(3,3),(2,4),(4,2)]: return False
@@ -103,128 +111,144 @@ def distance_from_ideal(freq):
             total += (freq[n] - target) ** 2
     return total
 
-# ---------- GENERATE CANDIDATES (safe‑range, pair‑filtered) ----------
+# ---------- PRE‑FILTER POOLS FOR THE KILLED DECADES ----------
+# All tickets use the same kill in this test; we take the first kill string.
+kill_str = kill_list[0]
+killed_set = parse_kill(kill_str)
+print(f"Killed decades: {killed_set}")
+
+EH_use = [n for n in EH if dec(n) not in killed_set]
+H_use  = [n for n in H  if dec(n) not in killed_set]
+W_use  = [n for n in W  if dec(n) not in killed_set]
+C_use  = [n for n in C  if dec(n) not in killed_set]
+
+# Recalculate ideal bands based on the reduced pools
+EH_IDEAL = ideal_band(total_picks_EH, len(EH_use))
+H_IDEAL  = ideal_band(total_picks_H,  len(H_use))
+W_IDEAL  = ideal_band(total_picks_W,  len(W_use))
+C_IDEAL  = ideal_band(total_picks_C,  len(C_use))
+print(f"Reduced pools → EH:{len(EH_use)}  H:{len(H_use)}  W:{len(W_use)}  C:{len(C_use)}")
+print(f"Updated ideal bands → EH:{EH_IDEAL}  H:{H_IDEAL}  W:{W_IDEAL}  C:{C_IDEAL}")
+
+# ---------- GENERATE CANDIDATES (single pass) ----------
 print("Generating candidates...")
-all_cand = {}
 combos = []
 for eh_c in range(SAFE_DEPTH_RANGES[0][0], SAFE_DEPTH_RANGES[0][1] + 1):
+    if eh_c > len(EH_use): continue
     for h_c in range(SAFE_DEPTH_RANGES[1][0], SAFE_DEPTH_RANGES[1][1] + 1):
+        if h_c > len(H_use): continue
         for w_c in range(SAFE_DEPTH_RANGES[2][0], SAFE_DEPTH_RANGES[2][1] + 1):
+            if w_c > len(W_use): continue
             for c_c in range(SAFE_DEPTH_RANGES[3][0], SAFE_DEPTH_RANGES[3][1] + 1):
+                if c_c > len(C_use): continue
                 if eh_c + h_c + w_c + c_c != 6:
                     continue
-                for eh in itertools.combinations(EH, eh_c):
-                    for h in itertools.combinations(H, h_c):
-                        for w in itertools.combinations(W, w_c):
-                            for c in itertools.combinations(C, c_c):
+                for eh in itertools.combinations(EH_use, eh_c):
+                    for h in itertools.combinations(H_use, h_c):
+                        for w in itertools.combinations(W_use, w_c):
+                            for c in itertools.combinations(C_use, c_c):
                                 t = tuple(sorted(eh + h + w + c))
                                 if len(set(t)) < 6:
                                     continue
+                                # All constraints except pair filter
+                                if sum(1 for x in t if x in LEGACY) > 1: continue
+                                o = sum(1 for x in t if x % 2)
+                                if (o,6-o) not in [(3,3),(2,4),(4,2)]: continue
+                                lo = sum(1 for x in t if x <= 22)
+                                if (lo,6-lo) not in [(3,3),(2,4),(4,2)]: continue
+                                if max(Counter(dec(x) for x in t).values()) > 3: continue
+                                if sum(1 for x in t if 40 <= x <= 45) > 2: continue
+                                # Pair filter
+                                if not (consecutive(t) or mirror(t)):
+                                    continue
                                 combos.append(t)
 
-for kill in set(kill_list):
-    valid_tix = [t for t in combos if valid(t, kill)]
-    valid_tix = [t for t in valid_tix if consecutive(t) or mirror(t)]
-    all_cand[(0, kill)] = valid_tix
-    print(f"  Kill {kill}: {len(valid_tix)} candidates")
+print(f"Total valid candidates: {len(combos)}")
 
-# All tickets belong to the same virtual profile (0)
-req = defaultdict(int)
-for k in kill_list:
-    req[(0, k)] += 1
-
-# ---------- FAIRNESS‑FIRST SELECTION ----------
+# ---------- FAIRNESS‑FIRST SELECTION (single pool) ----------
 selected = []
 sel_set = set()
 freq = Counter()
-ticket_specs = []
 
-kill_order = sorted(req.keys(), key=str)
-
-for spec in kill_order:
-    need = req[spec]
-    pool = all_cand[spec]
-    avail = [t for t in pool if t not in sel_set]
-    for _ in range(need):
-        best_t = None
-        best_key = None
+for _ in range(TOTAL):
+    best_t = None
+    best_key = None
+    avail = [t for t in combos if t not in sel_set]
+    if not avail:
+        raise RuntimeError("Ran out of candidates!")
+    for t in avail:
+        if any(overlap(t, s) > 3 for s in selected): continue
+        if any(freq[n] >= 12 for n in t): continue
+        temp_freq = freq.copy()
+        for n in t: temp_freq[n] += 1
+        all_in = all(in_ideal(n, temp_freq) for n in t)
+        dist = distance_from_ideal(temp_freq)
+        sc = score(t)
+        max_dec_cnt = max(Counter(dec(n) for n in t).values())
+        key = (0 if all_in else 1, dist, -sc, max_dec_cnt)
+        if best_key is None or key < best_key:
+            best_key = key
+            best_t = t
+    # Fallback 1 (same as before)
+    if best_t is None:
         for t in avail:
-            if any(overlap(t, s) > 3 for s in selected):
-                continue
-            if any(freq[n] >= 12 for n in t):
-                continue
+            if any(overlap(t, s) > 3 for s in selected): continue
+            if any(freq[n] >= 12 for n in t): continue
             temp_freq = freq.copy()
             for n in t: temp_freq[n] += 1
-            all_in = all(in_ideal(n, temp_freq) for n in t)
             dist = distance_from_ideal(temp_freq)
-            sc = score(t)
             max_dec_cnt = max(Counter(dec(n) for n in t).values())
-            key = (0 if all_in else 1, dist, -sc, max_dec_cnt)
+            key = (1, dist, -score(t), max_dec_cnt)
             if best_key is None or key < best_key:
                 best_key = key
                 best_t = t
-        # Fallback 1
-        if best_t is None:
-            for t in avail:
-                if any(overlap(t, s) > 3 for s in selected): continue
-                if any(freq[n] >= 12 for n in t): continue
-                temp_freq = freq.copy()
-                for n in t: temp_freq[n] += 1
-                dist = distance_from_ideal(temp_freq)
-                max_dec_cnt = max(Counter(dec(n) for n in t).values())
-                key = (1, dist, -score(t), max_dec_cnt)
-                if best_key is None or key < best_key:
-                    best_key = key
-                    best_t = t
-        # Fallback 2 (saturation up to 15)
-        if best_t is None:
-            for t in avail:
-                if any(overlap(t, s) > 3 for s in selected): continue
-                if any(freq[n] >= 15 for n in t): continue
-                temp_freq = freq.copy()
-                for n in t: temp_freq[n] += 1
-                dist = distance_from_ideal(temp_freq)
-                max_dec_cnt = max(Counter(dec(n) for n in t).values())
-                key = (2, dist, -score(t), max_dec_cnt)
-                if best_key is None or key < best_key:
-                    best_key = key
-                    best_t = t
-        if best_t is None:
-            raise RuntimeError(f"No ticket for {spec}")
-        selected.append(best_t)
-        sel_set.add(best_t)
-        for n in best_t: freq[n] += 1
-        ticket_specs.append((best_t, spec))
-        avail.remove(best_t)
+    # Fallback 2 (saturation up to 15)
+    if best_t is None:
+        for t in avail:
+            if any(overlap(t, s) > 3 for s in selected): continue
+            if any(freq[n] >= 15 for n in t): continue
+            temp_freq = freq.copy()
+            for n in t: temp_freq[n] += 1
+            dist = distance_from_ideal(temp_freq)
+            max_dec_cnt = max(Counter(dec(n) for n in t).values())
+            key = (2, dist, -score(t), max_dec_cnt)
+            if best_key is None or key < best_key:
+                best_key = key
+                best_t = t
+    if best_t is None:
+        raise RuntimeError("No ticket could be selected – relax constraints.")
+    selected.append(best_t)
+    sel_set.add(best_t)
+    for n in best_t: freq[n] += 1
 
 # ---------- POST‑BALANCE ----------
 print("Balancing towards ideal frequencies...")
 for _ in range(500):
     out_of_ideal = []
-    for n in EH:
+    for n in EH_use:
         if freq[n] < EH_IDEAL[0]: out_of_ideal.append((n, 'low'))
         elif freq[n] > EH_IDEAL[1]: out_of_ideal.append((n, 'high'))
-    for n in H:
+    for n in H_use:
         if freq[n] < H_IDEAL[0]: out_of_ideal.append((n, 'low'))
         elif freq[n] > H_IDEAL[1]: out_of_ideal.append((n, 'high'))
-    for n in W:
+    for n in W_use:
         if freq[n] < W_IDEAL[0]: out_of_ideal.append((n, 'low'))
         elif freq[n] > W_IDEAL[1]: out_of_ideal.append((n, 'high'))
-    for n in C:
+    for n in C_use:
         if freq[n] < C_IDEAL[0]: out_of_ideal.append((n, 'low'))
         elif freq[n] > C_IDEAL[1]: out_of_ideal.append((n, 'high'))
     if not out_of_ideal: break
 
     num, direction = min(out_of_ideal, key=lambda x: freq[x[0]] if x[1]=='low' else -freq[x[0]])
     improved = False
-    for idx, (t, spec) in enumerate(ticket_specs):
+    for idx, t in enumerate(selected):
         if direction == 'low' and num in t: continue
         if direction == 'high' and num not in t: continue
         candidates = []
         if direction == 'low':
-            candidates = [x for x in all_cand[spec] if x not in sel_set and num in x]
+            candidates = [x for x in combos if x not in sel_set and num in x]
         else:
-            candidates = [x for x in all_cand[spec] if x not in sel_set and num not in x]
+            candidates = [x for x in combos if x not in sel_set and num not in x]
         if not candidates: continue
         for cand in candidates:
             if any(overlap(cand, selected[j]) > 3 for j in range(TOTAL) if j != idx): continue
@@ -240,7 +264,6 @@ for _ in range(500):
                 for n in t: freq[n] -= 1
                 for n in cand: freq[n] += 1
                 selected[idx] = cand
-                ticket_specs[idx] = (cand, spec)
                 improved = True
                 break
         if improved: break
