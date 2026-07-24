@@ -6,22 +6,26 @@ from collections import Counter
 
 SET_FOR_LIFE_COL = 'Set for Life (incl supp)'
 OTHERS_COL_CANDIDATES = (
-    'Others (incl supp)',
-    'Others(e.g. WeekdayWindfall(Monday and Wednesday) or OZLotto(Tuesday) or Powerball(Thursday) or SaturdayLotto(Saturday)) (incl supp)',
+    'Others(e.g. Weekday windfall,  OZ Lotto,  Powerball,  Saturday Lotto) (incl supp)',
 )
 
-
 def resolve_column(df, candidates, label):
-    for col in candidates:
-        if col in df.columns:
-            return col
-    available = ', '.join(df.columns)
-    raise KeyError(f"Could not find {label} column. Tried: {candidates}. Available columns: {available}")
-
+    available = df.columns
+    for cand in candidates:
+        cand_clean = ''.join(cand.split())          # remove ALL whitespace
+        for col in available:
+            col_clean = ''.join(col.split())        # remove ALL whitespace
+            if col_clean == cand_clean:
+                return col
+    raise KeyError(f"Could not find {label} column. Tried: {candidates}. Available columns: {', '.join(available)}")
 
 def get_others_col(df):
-    return resolve_column(df, OTHERS_COL_CANDIDATES, "Others")
-
+    # Look for a column containing "Others" and at least one of the known game names
+    for col in df.columns:
+        if 'Others' in col and ('Weekday windfall' in col or 'OZ Lotto' in col or 'Powerball' in col or 'Saturday Lotto' in col):
+            return col
+    # Fallback: try the exact resolver (should not be needed)
+    return resolve_column(df, OTHERS_COL_CANDIDATES, "Others column")
 
 # --- SECTION 1 & 4: CORE FUNCTIONS ---
 def parse_nums(s):
@@ -216,7 +220,7 @@ def find_mcr_seed(tiers, legacy, sorted_decs, vibrations, pred_breadth):
 def main():
 
     data = [
-        ('2026-07-04',[]),
+        ('2026-07-18',[]),
         # ('2026-06-27',[15, 17, 24, 28, 36, 37]),
         # ('2026-06-20',[3, 6, 9, 14, 21, 22]),
         # ('2026-06-13',[12, 16, 30, 31, 40, 43]),
@@ -235,7 +239,7 @@ def main():
     ]
     for date_str, real_res in data:
         target_date = pd.to_datetime(date_str)
-        df = pd.read_csv('cross_lotto_data.csv')
+        df = pd.read_csv('cross_lotto_data_backup.csv')
         others_col = get_others_col(df)
         df['Date_dt'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y')
         df = df.sort_values('Date_dt')

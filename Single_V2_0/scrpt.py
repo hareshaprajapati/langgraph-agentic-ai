@@ -1,112 +1,106 @@
 import csv
-from collections import Counter, defaultdict
-from datetime import datetime
+import ast
+from collections import defaultdict
+from pathlib import Path
 
-CSV_FILE = "cross_lotto_data_backup.csv"
+# ----- Configuration -----
+CSV_FILE = "cross_lotto_data_backup.csv"  # <-- point to your CSV
+OUTPUT_FILE = "backtest_consec_mirror.csv"
 
-def parse_date(s):
-    return datetime.strptime(s[4:], '%d-%b-%Y')
 
-def extract_numbers(cell):
-    nums = []
-    for part in cell.split(']'):
-        part = part.replace('[', '').strip()
-        if part:
-            for token in part.split(','):
-                token = token.strip()
-                if token:
-                    n = int(token)
-                    if 1 <= n <= 45:
-                        nums.append(n)
-    return nums
+def has_consecutive(nums):
+    s = sorted(nums)
+    return any(s[i + 1] - s[i] == 1 for i in range(len(s) - 1))
 
-def extract_main6(others_cell):
-    main_part = others_cell.split(']')[0].replace('[', '').strip()
-    return [int(x.strip()) for x in main_part.split(',') if x.strip()]
 
-# ---------- Read the whole CSV ----------
-all_rows = []
-with open(CSV_FILE, 'r', encoding='utf-8') as f:
-    reader = csv.reader(f)
-    next(reader)   # skip header
-    for row in reader:
-        if len(row) < 3:
-            continue
-        date_str = row[0].strip()
-        try:
-            dt = parse_date(date_str)
-        except:
-            continue
-        sfl_nums = extract_numbers(row[1])
-        others_nums = extract_numbers(row[2])
-        all_nums = sfl_nums + others_nums
-        is_sat = date_str.startswith('Sat ')
-        all_rows.append((date_str, dt, is_sat, all_nums, row[2] if is_sat else None))
+def has_mirror(nums):
+    return len({n % 10 for n in nums}) < 6
 
-all_rows.sort(key=lambda x: x[1])
 
-# ---------- Extract Saturdays ----------
-saturdays = []
-for date_str, dt, is_sat, _, others_cell in all_rows:
-    if is_sat:
-        main6 = extract_main6(others_cell)
-        saturdays.append((date_str, dt, main6))
+def parse_others(others_str):
+    """
+    The 'Others' field looks like:
+    "[1, 2, 3, 4, 5, 6], [10, 20]"
+    We extract the first list (main numbers) and return as a list of ints.
+    """
+    # Split on '],' to separate the two lists
+    parts = others_str.split('],')
+    if not parts:
+        return []
+    main_part = parts[0].strip()
+    # Remove leading '[' if present and trailing whitespace
+    if main_part.startswith('['):
+        main_part = main_part[1:]
+    # Now it's something like "1, 2, 3, 4, 5, 6" or "1, 2, 3, 4, 5, 6]"
+    main_part = main_part.replace(']', '').strip()
+    if not main_part:
+        return []
+    return [int(x.strip()) for x in main_part.split(',')]
 
-# ---------- Analyse each Saturday (starting from the second one) ----------
-count_both = 0       # Tier Bridge AND Anchor Mirror
-count_either = 0     # Tier Bridge OR  Anchor Mirror
-count_neither = 0
-total_analysed = 0
 
-for i in range(1, len(saturdays)):
-    target_date_str, target_dt, target_main = saturdays[i]
-    prev_sat_date_str, prev_sat_dt, _ = saturdays[i-1]
+# ----- Main -----
+def main():
+    saturdays = []
+    with open(CSV_FILE, newline='', encoding='utf-8-sig') as f:   # utf-8-sig handles BOM
+        reader = csv.DictReader(f)
+        # find the column that contains 'Others'
+        others_col = None
+        for col in reader.fieldnames:
+            if 'Others' in col:
+                others_col = col
+                break
+        if others_col is None:
+            raise KeyError("Could not find a column with 'Others' in its name. Columns: " + str(reader.fieldnames))
 
-    # 7‑day window (Sat–Fri before target)
-    window_nums = []
-    for date_str, dt, is_sat, nums, _ in all_rows:
-        if prev_sat_dt <= dt < target_dt:
-            window_nums.extend(nums)
+        for row in reader:
+            date = row['Date'].strip()
+            if date.startswith('Sat'):
+                others_str = row[others_col]
+                main_nums = parse_others(others_str)
+                if len(main_nums) == 6:
+                    saturdays.append((date, main_nums))
+    # … rest is unchanged
 
-    # Tiering
-    counter = Counter(window_nums)
-    EH = {n for n, cnt in counter.items() if cnt >= 4}
-    H  = {n for n, cnt in counter.items() if cnt == 3}
-    W  = {n for n, cnt in counter.items() if 1 <= cnt <= 2}
+    total = len(saturdays)
+    if total == 0:
+        print("No Saturday draws found. Check CSV content and column name.")
+        return
 
-    # Glue checks
-    def has_tier_bridge(t):
-        s = sorted(t)
-        for j in range(len(s)-1):
-            a, b = s[j], s[j+1]
-            if b - a == 1:
-                if ((a in EH or a in H) and b in W) or ((b in EH or b in H) and a in W):
-                    return True
-        return False
+    counts = {
+        'both': 0,
+        'only_consec': 0,
+        'only_mirror': 0,
+        'neither': 0
+    }
+    results = []
+    for date, nums in saturdays:
+        c = has_consecutive(nums)
+        m = has_mirror(nums)
+        if c and m:
+            counts['both'] += 1
+            cat = 'both'
+        elif c and not m:
+            counts['only_consec'] += 1
+            cat = 'consec_only'
+        elif m and not c:
+            counts['only_mirror'] += 1
+            cat = 'mirror_only'
+        else:
+            counts['neither'] += 1
+            cat = 'neither'
+        results.append((date, nums, cat))
 
-    def has_anchor_mirror(t):
-        for a in t:
-            if a in EH or a in H:
-                for b in t:
-                    if b != a and b % 10 == a % 10:
-                        if b in W:
-                            return True
-        return False
+    print(f"Total Saturday draws analyzed: {total}\n")
+    for k, v in counts.items():
+        print(f"{k:15s}: {v:3d}  ({v/total*100:.1f}%)")
 
-    tb = has_tier_bridge(target_main)
-    am = has_anchor_mirror(target_main)
+    # Write detailed CSV
+    with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Date', 'Main_Numbers', 'Consecutive', 'Mirror', 'Category'])
+        for date, nums, cat in results:
+            writer.writerow([date, str(nums), has_consecutive(nums), has_mirror(nums), cat])
+    print(f"\nDetailed results written to {OUTPUT_FILE}")
 
-    if tb and am:
-        count_both += 1
-    if tb or am:
-        count_either += 1
-    else:
-        count_neither += 1
-
-    total_analysed += 1
-
-# ---------- Results ----------
-print(f"Total Saturday draws analysed: {total_analysed}")
-print(f"Has Tier Bridge AND Anchor Mirror : {count_both} ({count_both/total_analysed*100:.1f}%)")
-print(f"Has Tier Bridge OR  Anchor Mirror : {count_either} ({count_either/total_analysed*100:.1f}%)")
-print(f"Has neither                       : {count_neither} ({count_neither/total_analysed*100:.1f}%)")
+if __name__ == '__main__':
+    main()

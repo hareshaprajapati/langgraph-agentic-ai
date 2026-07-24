@@ -264,7 +264,7 @@ def main():
     end = datetime.now()
     default_start = end - timedelta(days=DAYS_BACK)
 
-    main_path = os.path.join(".", "cross_lotto_data.csv")
+    # main_path = os.path.join(".", "cross_lotto_data.csv")
     backup_path = os.path.join(".", "cross_lotto_data_backup.csv")
     sfl_path = os.path.join(".", "cross_lotto_data_set_for_life.csv")
     others_path = os.path.join(".", "cross_lotto_data_others.csv")
@@ -273,22 +273,22 @@ def main():
     sfl_header_default = "Date,Set for Life (incl supp)"
     others_header_default = "Date,Others (incl supp)"
 
-    main_header, main_existing, main_latest = read_existing_csv(main_path)
+    # main_header, main_existing, main_latest = read_existing_csv(main_path)
     backup_header, backup_existing, backup_latest = read_existing_csv(backup_path)
     sfl_header, sfl_existing, sfl_latest = read_existing_csv(sfl_path)
     others_header, others_existing, others_latest = read_existing_csv(others_path)
 
-    main_header = main_header or main_header_default
-    backup_header = backup_header or main_header
+    # main_header = main_header or main_header_default
+    backup_header = backup_header
     sfl_header = sfl_header or sfl_header_default
     others_header = others_header or others_header_default
 
-    main_start = (main_latest + timedelta(days=1)) if main_latest else default_start
+    # main_start = (main_latest + timedelta(days=1)) if main_latest else default_start
     backup_start = (backup_latest + timedelta(days=1)) if backup_latest else default_start
     sfl_start = (sfl_latest + timedelta(days=1)) if sfl_latest else default_start
     others_start = (others_latest + timedelta(days=1)) if others_latest else default_start
 
-    global_start = min(main_start, backup_start, sfl_start, others_start)
+    global_start = min(  backup_start, sfl_start, others_start)
 
     if global_start.date() > end.date():
         print("No new dates to fetch.")
@@ -404,12 +404,12 @@ def main():
 
         return lines
 
-    main_new = _build_new_lines(main_start, include_sfl=True, include_others=True)
+    # main_new = _build_new_lines(main_start, include_sfl=True, include_others=True)
     backup_new = _build_new_lines(backup_start, include_sfl=True, include_others=True)
-    sfl_new = _build_new_lines_only(sfl_start, "sfl")
-    others_new = _build_new_lines_only(others_start, "others")
+    # sfl_new = _build_new_lines_only(sfl_start, "sfl")
+    # others_new = _build_new_lines_only(others_start, "others")
 
-    write_csv(main_path, main_header, main_new, main_existing)
+    # write_csv(main_path, main_header, main_new, main_existing)
     write_csv(backup_path, backup_header, backup_new, backup_existing)
     # write_csv(sfl_path, sfl_header, sfl_new, sfl_existing)
     # write_csv(others_path, others_header, others_new, others_existing)

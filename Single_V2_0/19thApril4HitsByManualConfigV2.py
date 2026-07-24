@@ -1,17 +1,17 @@
 import itertools
 from collections import Counter, defaultdict
 
-# ---------- POOLS (04-Jul-2026) ----------
-EH = [1, 2, 10, 12, 14, 15, 17, 18, 19, 24, 26, 31, 36, 39]
-H  = [13, 22, 25, 30, 37, 41, 44]
-W  = [3, 4, 5, 6, 7, 8, 9, 16, 23, 27, 28, 29, 32, 33, 34, 35, 38, 42, 43]
-C  = [11, 20, 21, 40, 45]
-LEGACY = [15, 17, 24, 28, 36, 37]   # from 27-Jun result
+# ---------- POOLS (18-Jul-2026) ----------
+EH = [3, 4, 6, 13, 16, 17, 22, 27, 30, 34, 35, 38, 39]
+H  = [5, 10, 14, 15, 20, 21, 23, 25, 28, 29]
+W  = [1, 7, 9, 11, 12, 18, 19, 26, 32, 33, 36, 37, 41, 42, 43, 44, 45]
+C  = [2, 8, 24, 31, 40]
+LEGACY = [13, 14, 16, 21, 29, 41]   # from 27-Jun result
 REAL = set()
 WIN = tuple(sorted(REAL)) if REAL else ()
 # ---------- DECADE KILLS & TOTAL ----------
 TOTAL = 50
-kill_list = ['40s']*15 + ['0s']*12 + ['20s']*12 + ['30s']*11
+kill_list = ['40s']*15 + ['0s']*12 + ['10s']*12 + ['30s']*11
 
 # ---------- SAFE DEPTH RANGES & IDEAL BANDS ----------
 SAFE_DEPTH_RANGES = [
@@ -124,7 +124,7 @@ for eh_c in range(SAFE_DEPTH_RANGES[0][0], SAFE_DEPTH_RANGES[0][1] + 1):
 
 for kill in set(kill_list):
     valid_tix = [t for t in combos if valid(t, kill)]
-    valid_tix = [t for t in valid_tix if consecutive(t) and mirror(t)]
+    valid_tix = [t for t in valid_tix if consecutive(t) or mirror(t)]
     all_cand[(0, kill)] = valid_tix
     print(f"  Kill {kill}: {len(valid_tix)} candidates")
 
