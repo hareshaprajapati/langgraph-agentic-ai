@@ -15,18 +15,6 @@ def parse_numbers(cell):
                 if n <= 45: nums.append(n)
     return nums
 
-def decade_counts(numbers):
-    cnt = Counter()
-    for n in numbers:
-        if 1 <= n <= 9: cnt['0s'] += 1
-        elif 10 <= n <= 19: cnt['10s'] += 1
-        elif 20 <= n <= 29: cnt['20s'] += 1
-        elif 30 <= n <= 39: cnt['30s'] += 1
-        elif 40 <= n <= 45: cnt['40s'] += 1
-    for d in ['0s','10s','20s','30s','40s']:
-        if d not in cnt: cnt[d] = 0
-    return cnt
-
 def missing_decades(main):
     present = set()
     for n in main:
@@ -83,31 +71,30 @@ def main():
                             break
 
     total = 0
-    hits_40_plus_rank3 = 0
-    hits_40_lowestMid_rank3 = 0
+    pairs = [('0s', '40s'), ('10s', '40s'), ('20s', '40s'), ('30s', '40s')]
+    hits = {pair: 0 for pair in pairs}
+    # also track 40s-only for comparison
+    only_40s_hits = 0
 
     for dt, wnums, main in sat_info:
         if main is None: continue
         total += 1
-        vols = decade_counts(wnums)
-        sorted_dec = sorted(vols.items(), key=lambda x: x[1])
-        middle = ['0s','10s','20s','30s']
-        lowest_mid = min(middle, key=lambda d: vols[d])
-        rank3_dec = sorted_dec[2][0]
         missing = missing_decades(main)
 
-        killed_40_rank3 = {'40s', rank3_dec}
-        if killed_40_rank3 & missing:
-            hits_40_plus_rank3 += 1
+        if '40s' in missing:
+            only_40s_hits += 1
 
-        killed_all = {'40s', lowest_mid, rank3_dec}
-        if killed_all & missing:
-            hits_40_lowestMid_rank3 += 1
+        for d1, d2 in pairs:
+            if d1 in missing and d2 in missing:
+                hits[(d1, d2)] += 1
 
-    print(f"Total draws: {total}\n")
-    print(f"40s + rank-3 only:                 {hits_40_plus_rank3} hittable ({hits_40_plus_rank3/total*100:.1f}%)")
-    print(f"40s + lowest middle + rank-3:      {hits_40_lowestMid_rank3} hittable ({hits_40_lowestMid_rank3/total*100:.1f}%)")
-    print(f"Incremental value of lowest middle: +{hits_40_lowestMid_rank3 - hits_40_plus_rank3} draws")
+    print(f"Total Saturday draws: {total}\n")
+    print(f"{'Killed pair':<15} {'Both missing':>12} {'Rate':>8}")
+    print("-" * 38)
+    print(f"{'40s only':<15} {only_40s_hits:>12} {only_40s_hits/total*100:>7.1f}%")
+    for pair in pairs:
+        h = hits[pair]
+        print(f"{pair[0]}+{pair[1]:<10} {h:>12} {h/total*100:>7.1f}%")
 
 if __name__ == '__main__':
     main()

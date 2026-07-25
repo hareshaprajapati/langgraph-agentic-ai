@@ -2,17 +2,18 @@ import itertools
 from collections import Counter, defaultdict
 
 # ---------- POOLS (27-Jun-2026) ----------
-EH = [6, 9, 10, 11, 16, 21, 26, 28, 29, 33, 44]
-H  = [8, 12, 13, 19, 22, 24, 25, 36, 38, 40]
-W  = [1, 2, 3, 4, 5, 7, 14, 15, 17, 18, 20, 23, 27, 30, 31, 32, 34, 35, 37, 39, 41, 42, 43]
-C  = [45]
-LEGACY = [3, 6, 9, 14, 21, 22]   # from 27-Jun result
-REAL = {15, 17, 24, 28, 36, 37}
-# REAL = set()
+EH = [1, 3, 6, 7, 13, 21, 24, 27, 30, 33, 41]
+H  = [5, 8, 11, 16, 20, 25, 31, 37, 39]
+W  = [2, 4, 9, 10, 12, 14, 15, 17, 18, 19, 22, 23, 28, 32, 34, 36, 43, 44, 45]
+C = []
+# C  = [29, 35, 40, 42]
+LEGACY = [5, 7, 13, 24, 30, 41]
+# REAL = {15, 17, 24, 28, 36, 37}
+REAL = set()
 WIN = tuple(sorted(REAL)) if REAL else ()
 # ---------- DECADE KILLS & TOTAL ----------
 TOTAL = 50
-kill_list = ['0s+40s'] * 50
+kill_list = ['40s'] * 50
 # kill_list = ['40s+30s'] * 25 + ['40s+10s'] * 25
 
 # ---------- SAFE DEPTH RANGES & IDEAL BANDS ----------

@@ -1,106 +1,97 @@
 import csv
-import ast
-from collections import defaultdict
-from pathlib import Path
+from datetime import datetime
+from collections import Counter
 
-# ----- Configuration -----
-CSV_FILE = "cross_lotto_data_backup.csv"  # <-- point to your CSV
-OUTPUT_FILE = "backtest_consec_mirror.csv"
+CSV_FILE = "cross_lotto_data_backup.csv"
 
-
-def has_consecutive(nums):
-    s = sorted(nums)
-    return any(s[i + 1] - s[i] == 1 for i in range(len(s) - 1))
-
-
-def has_mirror(nums):
-    return len({n % 10 for n in nums}) < 6
-
-
-def parse_others(others_str):
-    """
-    The 'Others' field looks like:
-    "[1, 2, 3, 4, 5, 6], [10, 20]"
-    We extract the first list (main numbers) and return as a list of ints.
-    """
-    # Split on '],' to separate the two lists
-    parts = others_str.split('],')
-    if not parts:
-        return []
-    main_part = parts[0].strip()
-    # Remove leading '[' if present and trailing whitespace
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+def parse_others_main(others_str):
+    """Extract the 6 main numbers from the Others column."""
+    main_part = others_str.split('],')[0].strip()
     if main_part.startswith('['):
         main_part = main_part[1:]
-    # Now it's something like "1, 2, 3, 4, 5, 6" or "1, 2, 3, 4, 5, 6]"
     main_part = main_part.replace(']', '').strip()
     if not main_part:
         return []
-    return [int(x.strip()) for x in main_part.split(',')]
+    return [int(x.strip()) for x in main_part.split(',') if x.strip().isdigit()]
 
+def band_of(count):
+    """20‑week frequency band label."""
+    if count >= 5: return '5x+'
+    if count == 4: return '4x'
+    if count == 3: return '3x'
+    if count == 2: return '2x'
+    if count == 1: return '1x'
+    return '0x'
 
-# ----- Main -----
-def main():
-    saturdays = []
-    with open(CSV_FILE, newline='', encoding='utf-8-sig') as f:   # utf-8-sig handles BOM
-        reader = csv.DictReader(f)
-        # find the column that contains 'Others'
-        others_col = None
-        for col in reader.fieldnames:
-            if 'Others' in col:
-                others_col = col
-                break
-        if others_col is None:
-            raise KeyError("Could not find a column with 'Others' in its name. Columns: " + str(reader.fieldnames))
+# ----------------------------------------------------------------------
+# Load all Saturdays in chronological order
+# ----------------------------------------------------------------------
+saturdays = []
+with open(CSV_FILE, newline='', encoding='utf-8-sig') as f:
+    reader = csv.DictReader(f)
+    others_col = None
+    for col in reader.fieldnames:
+        if 'Others' in col:
+            others_col = col
+            break
+    for row in reader:
+        if not row['Date'].strip().startswith('Sat'):
+            continue
+        dt_str = row['Date'].strip()
+        try:
+            dt = datetime.strptime(dt_str, '%a %d-%b-%Y')
+        except:
+            continue
+        main = parse_others_main(row[others_col])
+        if len(main) == 6:
+            saturdays.append(main)   # list of 6‑element lists, oldest first
 
-        for row in reader:
-            date = row['Date'].strip()
-            if date.startswith('Sat'):
-                others_str = row[others_col]
-                main_nums = parse_others(others_str)
-                if len(main_nums) == 6:
-                    saturdays.append((date, main_nums))
-    # … rest is unchanged
+# ----------------------------------------------------------------------
+# Analyse draws from the 21st onward (need 20 draws of history)
+# ----------------------------------------------------------------------
+violations_max_band = 0
+violations_hot_combo = 0
+total = 0
+band_max_counts = []  # for stats
 
-    total = len(saturdays)
-    if total == 0:
-        print("No Saturday draws found. Check CSV content and column name.")
-        return
+for i in range(20, len(saturdays)):
+    # previous 20 draws
+    prev_flat = []
+    for j in range(i-20, i):
+        prev_flat.extend(saturdays[j])
+    freq = Counter(prev_flat)
 
-    counts = {
-        'both': 0,
-        'only_consec': 0,
-        'only_mirror': 0,
-        'neither': 0
-    }
-    results = []
-    for date, nums in saturdays:
-        c = has_consecutive(nums)
-        m = has_mirror(nums)
-        if c and m:
-            counts['both'] += 1
-            cat = 'both'
-        elif c and not m:
-            counts['only_consec'] += 1
-            cat = 'consec_only'
-        elif m and not c:
-            counts['only_mirror'] += 1
-            cat = 'mirror_only'
-        else:
-            counts['neither'] += 1
-            cat = 'neither'
-        results.append((date, nums, cat))
+    curr = saturdays[i]
+    bands_in_draw = [band_of(freq.get(n, 0)) for n in curr]
+    band_counts = Counter(bands_in_draw)
 
-    print(f"Total Saturday draws analyzed: {total}\n")
-    for k, v in counts.items():
-        print(f"{k:15s}: {v:3d}  ({v/total*100:.1f}%)")
+    total += 1
+    max_band_cnt = max(band_counts.values())
+    band_max_counts.append(max_band_cnt)
 
-    # Write detailed CSV
-    with open(OUTPUT_FILE, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(['Date', 'Main_Numbers', 'Consecutive', 'Mirror', 'Category'])
-        for date, nums, cat in results:
-            writer.writerow([date, str(nums), has_consecutive(nums), has_mirror(nums), cat])
-    print(f"\nDetailed results written to {OUTPUT_FILE}")
+    # Rule 1: max numbers from any single band ≤ 3
+    if max_band_cnt > 3:
+        violations_max_band += 1
+        print(f"⚠️  Draw {i} violates ≤3 per band: {curr}, bands={dict(band_counts)}")
 
-if __name__ == '__main__':
-    main()
+    # Rule 2: max numbers from combined 5x+ and 4x ≤ 2
+    hot_count = band_counts.get('5x+', 0) + band_counts.get('4x', 0)
+    if hot_count > 2:
+        violations_hot_combo += 1
+        print(f"🔥 Draw {i} violates ≤2 hot (5x+4x): {curr}, hot={hot_count}")
+
+# ----------------------------------------------------------------------
+# Summary
+# ----------------------------------------------------------------------
+print(f"\nAnalysed {total} draws (from the 21st onward)")
+print(f"Violations of '≤3 per band': {violations_max_band} ({violations_max_band/total*100:.2f}%)")
+print(f"Violations of '≤2 hot (5x+4x)': {violations_hot_combo} ({violations_hot_combo/total*100:.2f}%)")
+
+# Additional stats on max per band
+print(f"\nMax per band statistics: min={min(band_max_counts)}, max={max(band_max_counts)}")
+dist = Counter(band_max_counts)
+for k in sorted(dist):
+    print(f"  {k} numbers from a single band in a draw: {dist[k]} draws")
