@@ -1,12 +1,13 @@
+import csv
+from datetime import datetime as dt
 import itertools
 from collections import Counter, defaultdict
 
-# ---------- POOLS (27-Jun-2026) ----------
+# ---------- POOLS  ----------
 EH = [1, 3, 6, 7, 13, 21, 24, 27, 30, 33, 41]
 H  = [5, 8, 11, 16, 20, 25, 31, 37, 39]
 W  = [2, 4, 9, 10, 12, 14, 15, 17, 18, 19, 22, 23, 28, 32, 34, 36, 43, 44, 45]
 C = []
-# C  = [29, 35, 40, 42]
 LEGACY = [5, 7, 13, 24, 30, 41]
 # REAL = {15, 17, 24, 28, 36, 37}
 REAL = set()
@@ -15,6 +16,73 @@ WIN = tuple(sorted(REAL)) if REAL else ()
 TOTAL = 50
 kill_list = ['40s'] * 50
 # kill_list = ['40s+30s'] * 25 + ['40s+10s'] * 25
+# ---------- TARGET DATE & 20‑WEEK HISTORY ----------
+TARGET_DATE = "2026-07-25"
+
+# Band caps (stricter, 95.5% safe)
+BAND_CAPS = {
+    '0x': 3,
+    '1x': 3,
+    '2x': 4,
+    '3x': 4,
+    '4x': 3,
+    '5x+': 3
+}
+
+def band_label(count):
+    if count >= 5: return '5x+'
+    if count == 4: return '4x'
+    if count == 3: return '3x'
+    if count == 2: return '2x'
+    if count == 1: return '1x'
+    return '0x'
+
+# Parse all Saturday main draws from the CSV
+all_sat_draws = []   # list of (date_str, main_numbers)
+with open("cross_lotto_data_backup.csv", newline='', encoding='utf-8-sig') as f:
+    reader = csv.DictReader(f)
+    others_col = None
+    for col in reader.fieldnames:
+        if 'Others' in col:
+            others_col = col
+            break
+    if not others_col:
+        raise KeyError("Could not find 'Others' column")
+    for row in reader:
+        if not row['Date'].strip().startswith('Sat'):
+            continue
+        date_str = row['Date'].strip()
+        try:
+            d = dt.strptime(date_str, '%a %d-%b-%Y')
+        except:
+            continue
+        if d >= dt.strptime(TARGET_DATE, '%Y-%m-%d'):
+            continue
+        main_part = row[others_col].split('],')[0].strip()
+        if main_part.startswith('['):
+            main_part = main_part[1:]
+        main_part = main_part.replace(']', '').strip()
+        if main_part:
+            nums = [int(x.strip()) for x in main_part.split(',') if x.strip().isdigit()]
+            if len(nums) == 6:
+                all_sat_draws.append((d, nums))
+
+# Sort by date and take the LAST 20 draws
+all_sat_draws.sort(key=lambda x: x[0])
+last_20_draws = all_sat_draws[-20:] if len(all_sat_draws) >= 20 else all_sat_draws
+
+# 20‑week frequency counter
+freq_20w = Counter()
+for _, nums in last_20_draws:
+    for n in nums:
+        freq_20w[n] += 1
+
+# Pre‑compute band for every number 1‑45
+band_for_num = {n: band_label(freq_20w.get(n, 0)) for n in range(1, 46)}
+
+print(f"20‑week window: {len(last_20_draws)} draws available")
+print(f"Deep‑cold numbers (0x): {sorted(n for n, b in band_for_num.items() if b == '0x')}")
+
 
 # ---------- SAFE DEPTH RANGES & IDEAL BANDS ----------
 SAFE_DEPTH_RANGES = [
@@ -26,6 +94,8 @@ SAFE_DEPTH_RANGES = [
 
 def parse_kill(kill_str):
     """ '40s' -> {'40s'}   '40s+30s' -> {'40s','30s'} """
+    if kill_str == 'none':
+        return set()
     return set(kill_str.split('+'))
 
 # Estimated average picks per pool using the safe ranges
@@ -161,6 +231,10 @@ for eh_c in range(SAFE_DEPTH_RANGES[0][0], SAFE_DEPTH_RANGES[0][1] + 1):
                                 if sum(1 for x in t if 40 <= x <= 45) > 2: continue
                                 # Pair filter
                                 if not (consecutive(t) or mirror(t)):
+                                    continue
+                                # 20‑week band caps
+                                band_cnt = Counter(band_for_num[x] for x in t)
+                                if any(band_cnt[b] > BAND_CAPS[b] for b in band_cnt):
                                     continue
                                 combos.append(t)
 
