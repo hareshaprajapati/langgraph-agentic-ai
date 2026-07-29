@@ -9,12 +9,12 @@ H  = [5, 8, 11, 16, 20, 25, 31, 37, 39]
 W  = [2, 4, 9, 10, 12, 14, 15, 17, 18, 19, 22, 23, 28, 32, 34, 36, 43, 44, 45]
 C = []
 LEGACY = [5, 7, 13, 24, 30, 41]
-# REAL = {15, 17, 24, 28, 36, 37}
-REAL = set()
+REAL = {2, 6, 8, 12, 22, 43}
+# REAL = set()
 WIN = tuple(sorted(REAL)) if REAL else ()
 # ---------- DECADE KILLS & TOTAL ----------
 TOTAL = 50
-kill_list = ['40s'] * 50
+kill_list = ['30s'] * 50
 # kill_list = ['40s+30s'] * 25 + ['40s+10s'] * 25
 # ---------- TARGET DATE & 20‑WEEK HISTORY ----------
 TARGET_DATE = "2026-07-25"
@@ -121,8 +121,8 @@ def ideal_band(total_picks, pool_size):
     if pool_size == 0:
         return (0, 0)
     avg = total_picks / pool_size
-    lo = max(1, int(avg) - 1)
-    hi = int(avg) + 1
+    lo = max(0, int(avg) - 2)     # was max(1, int(avg)-1)
+    hi = int(avg) + 2             # was int(avg)+1
     return (lo, hi)
 
 EH_IDEAL = ideal_band(total_picks_EH, len(EH))
@@ -253,7 +253,7 @@ for _ in range(TOTAL):
         raise RuntimeError("Ran out of candidates!")
     for t in avail:
         if any(overlap(t, s) > 3 for s in selected): continue
-        if any(freq[n] >= 12 for n in t): continue
+        if any(freq[n] >= 18 for n in t): continue
         temp_freq = freq.copy()
         for n in t: temp_freq[n] += 1
         all_in = all(in_ideal(n, temp_freq) for n in t)
@@ -268,7 +268,7 @@ for _ in range(TOTAL):
     if best_t is None:
         for t in avail:
             if any(overlap(t, s) > 3 for s in selected): continue
-            if any(freq[n] >= 12 for n in t): continue
+            if any(freq[n] >= 18 for n in t): continue
             temp_freq = freq.copy()
             for n in t: temp_freq[n] += 1
             dist = distance_from_ideal(temp_freq)
@@ -281,7 +281,7 @@ for _ in range(TOTAL):
     if best_t is None:
         for t in avail:
             if any(overlap(t, s) > 3 for s in selected): continue
-            if any(freq[n] >= 15 for n in t): continue
+            if any(freq[n] >= 22 for n in t): continue
             temp_freq = freq.copy()
             for n in t: temp_freq[n] += 1
             dist = distance_from_ideal(temp_freq)
@@ -330,7 +330,7 @@ for _ in range(500):
             temp_freq = freq.copy()
             for n in t: temp_freq[n] -= 1
             for n in cand: temp_freq[n] += 1
-            if max(temp_freq.values()) > 12: continue
+            if max(temp_freq.values()) > 18: continue
             old_dist = distance_from_ideal(freq)
             new_dist = distance_from_ideal(temp_freq)
             if new_dist < old_dist:
