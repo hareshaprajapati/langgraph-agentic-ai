@@ -4,7 +4,6 @@ import itertools
 from collections import Counter, defaultdict
 
 # ---------- POOLS  ----------
-# [2, 6, 8, 12, 22, 43]
 EH = [13,30,   3, 4]
 H  = [5,    10, 14, 15,21]
 W  = [7,41,    9, 11, 26, 32]
@@ -15,7 +14,7 @@ REAL = {5, 7, 13, 24, 30, 41}
 WIN = tuple(sorted(REAL)) if REAL else ()
 # ---------- DECADE KILLS & TOTAL ----------
 TOTAL = 50
-kill_list = "none"
+kill_list = ["none"]
 # kill_list = ['30s'] * 50
 # kill_list = ['40s+30s'] * 25 + ['40s+10s'] * 25
 # ---------- TARGET DATE & 20‑WEEK HISTORY ----------
@@ -318,33 +317,38 @@ selected = []
 sel_set = set()
 freq = Counter()
 
-def pick_tickets(combos, needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL_CUR):
-    """Select 'needed' tickets from 'combos' using the given ideal bands."""
+def pick_as_many_as_possible(combos, max_needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL_CUR):
+    """
+    Select up to `max_needed` tickets from `combos`.
+    Stops when no more candidates can satisfy the collision shield.
+    Returns the list of picked tickets.
+    """
     picked = []
-    for _ in range(needed):
+    for _ in range(max_needed):
         best_t = None
         best_key = None
         avail = [t for t in combos if t not in sel_set]
         if not avail:
-            raise RuntimeError("Ran out of candidates!")
+            break
         for t in avail:
-            if any(overlap(t, s) > 3 for s in selected + picked): continue
-            if any(freq[n] >= 18 for n in t): continue   # cap raised to 18 (as previously adjusted)
+            if any(overlap(t, s) > 3 for s in selected + picked):
+                continue
+            if any(freq[n] >= 18 for n in t):
+                continue
             temp_freq = freq.copy()
             for n in t: temp_freq[n] += 1
-            # all_in with custom bands
             all_in = True
             for n in t:
                 if n in EH_use:
                     if not (EH_IDEAL_CUR[0] <= temp_freq[n] <= EH_IDEAL_CUR[1]): all_in = False; break
                 elif n in H_use:
-                    if not (H_IDEAL_CUR[0]  <= temp_freq[n] <= H_IDEAL_CUR[1]):  all_in = False; break
+                    if not (H_IDEAL_CUR[0] <= temp_freq[n] <= H_IDEAL_CUR[1]): all_in = False; break
                 elif n in W_use:
-                    if not (W_IDEAL_CUR[0]  <= temp_freq[n] <= W_IDEAL_CUR[1]):  all_in = False; break
+                    if not (W_IDEAL_CUR[0] <= temp_freq[n] <= W_IDEAL_CUR[1]): all_in = False; break
                 elif n in C_use:
-                    if not (C_IDEAL_CUR[0]  <= temp_freq[n] <= C_IDEAL_CUR[1]):  all_in = False; break
-            if not all_in: all_in = False  # already set
-            # distance
+                    if not (C_IDEAL_CUR[0] <= temp_freq[n] <= C_IDEAL_CUR[1]): all_in = False; break
+            if not all_in:
+                continue
             dist = 0
             for pool, ideal in [(EH_use, EH_IDEAL_CUR), (H_use, H_IDEAL_CUR),
                                 (W_use, W_IDEAL_CUR), (C_use, C_IDEAL_CUR)]:
@@ -353,11 +357,11 @@ def pick_tickets(combos, needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL
                     dist += (temp_freq[n] - target) ** 2
             sc = score(t)
             max_dec_cnt = max(Counter(dec(n) for n in t).values())
-            key = (0 if all_in else 1, dist, -sc, max_dec_cnt)
+            key = (0, dist, -sc, max_dec_cnt)
             if best_key is None or key < best_key:
                 best_key = key
                 best_t = t
-        # Fallback 1 (wider search, same bands but ignore all_in)
+        # Fallback 1 – ignore all_in
         if best_t is None:
             for t in avail:
                 if any(overlap(t, s) > 3 for s in selected + picked): continue
@@ -375,7 +379,7 @@ def pick_tickets(combos, needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL
                 if best_key is None or key < best_key:
                     best_key = key
                     best_t = t
-        # Fallback 2 (relax saturation)
+        # Fallback 2 – relax saturation cap to 22
         if best_t is None:
             for t in avail:
                 if any(overlap(t, s) > 3 for s in selected + picked): continue
@@ -394,7 +398,7 @@ def pick_tickets(combos, needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL
                     best_key = key
                     best_t = t
         if best_t is None:
-            raise RuntimeError("No ticket could be selected – relax constraints.")
+            break   # cannot pick any more
         picked.append(best_t)
         sel_set.add(best_t)
         for n in best_t: freq[n] += 1
@@ -402,13 +406,17 @@ def pick_tickets(combos, needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL
 
 # Select Depth tickets
 if TOTAL_DEPTH > 0:
-    depth_tickets = pick_tickets(combos_depth, 30, EH_IDEAL_D, H_IDEAL_D, W_IDEAL_D, C_IDEAL_D)
+    depth_tickets = pick_as_many_as_possible(combos_depth, 50, EH_IDEAL_D, H_IDEAL_D, W_IDEAL_D, C_IDEAL_D)
     selected.extend(depth_tickets)
+    TOTAL = len(selected)
 
 # Select Breadth tickets (collision shield against Depth already included)
 if TOTAL_BREADTH > 0:
-    breadth_tickets = pick_tickets(combos_breadth, 20, EH_IDEAL_B, H_IDEAL_B, W_IDEAL_B, C_IDEAL_B)
+    breadth_tickets = pick_as_many_as_possible(combos_breadth, 20, EH_IDEAL_B, H_IDEAL_B, W_IDEAL_B, C_IDEAL_B)
     selected.extend(breadth_tickets)
+    TOTAL = len(selected)
+
+print(f"Generated {TOTAL} Depth tickets (maximum possible from this pool).")
 
 # Combine candidate pools for post‑balance
 combos_combined = combos_depth + combos_breadth
