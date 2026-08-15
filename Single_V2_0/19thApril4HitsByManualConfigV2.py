@@ -3,22 +3,27 @@ from datetime import datetime as dt
 import itertools
 from collections import Counter, defaultdict
 
+TARGET_DATE = "2026-07-25"
 # ---------- POOLS  ----------
-EH = [13,30,   3, 4]
-H  = [5,    10, 14, 15,21]
-W  = [7,41,    9, 11, 26, 32]
-C = []
-LEGACY = [13, 14, 16, 21, 29, 41]
-REAL = {5, 7, 13, 24, 30, 41}
-# REAL = set()
+EH = [3, 7, 33]
+# 10
+H  = [2, 9, 26]
+# 7
+W  = [10, 21, 28, 31, 38, 39, 41, 44]
+# 25
+C = [4]
+# 3
+LEGACY = [6, 22, 26, 28, 33, 36]
+# REAL = {2, 6, 8, 12, 22, 43}
+REAL = set()
 WIN = tuple(sorted(REAL)) if REAL else ()
 # ---------- DECADE KILLS & TOTAL ----------
 TOTAL = 50
-kill_list = ["none"]
+kill_list = ["40s"]
+# kill_list = ["none"]
 # kill_list = ['30s'] * 50
 # kill_list = ['40s+30s'] * 25 + ['40s+10s'] * 25
 # ---------- TARGET DATE & 20‑WEEK HISTORY ----------
-TARGET_DATE = "2026-07-18"
 
 # ---------- SAFE RANGES ----------
 SAFE_DEPTH_RANGES = [

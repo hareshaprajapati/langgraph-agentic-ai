@@ -1,0 +1,416 @@
+# 🧬 FINAL JACKPOT CANDIDATE-GENERATION ALGORITHM
+### Version 3.0 — Complete, Deterministic, No Missing Rules
+
+---
+
+## 0. Inputs
+
+- `tickets`: list of 50 tickets, each ticket = list/set of 6 unique numbers from `1..45`
+- `K`: number of final tickets to output.
+  - `K = 1` → single prediction
+  - `K = 7` → portfolio of 7 candidates
+- `previous_winning_numbers`: optional list of 6 numbers from the immediately previous draw.
+  If unknown, set to empty list.
+
+---
+
+## 1. Build Frequency Table
+
+For every number `n` from 1 to 45:
+
+```
+freq[n] = count of tickets containing n
+```
+
+Create sorted list:
+
+```
+numbers_sorted_by_freq = all 45 numbers sorted by:
+    freq descending
+    then number ascending
+```
+
+---
+
+## 2. Remove Forbidden Numbers
+
+### Step 2.1 — Remove top 5 most frequent numbers
+
+Find the frequency of the 5th number in `numbers_sorted_by_freq`:
+
+```
+cutoff_top5_freq = freq[ numbers_sorted_by_freq[5] ]
+```
+
+Exclude **all numbers** whose frequency is `>= cutoff_top5_freq`:
+
+```
+forbidden_top5 = { n | freq[n] >= cutoff_top5_freq }
+```
+
+### Step 2.2 — Remove very cold numbers
+
+Exclude all numbers with frequency `<= 3`:
+
+```
+forbidden_cold = { n | freq[n] <= 3 }
+```
+
+### Step 2.3 — Build eligible set
+
+```
+eligible = {1..45} - forbidden_top5 - forbidden_cold
+```
+
+All future steps use only numbers in `eligible`.
+
+---
+
+## 3. Build Co-Occurrence Matrix
+
+For every pair `(a,b)` where `a < b` and both are in `eligible`:
+
+```
+cooc[a][b] = number of tickets that contain both a and b
+```
+
+This is the hidden link strength.
+
+---
+
+## 4. Find Seed Pair
+
+### Step 4.1 — Find highest eligible frequency
+
+```
+Fmax = max( freq[n] for n in eligible )
+```
+
+In the two known draws, `Fmax = 9`.
+
+### Step 4.2 — Define seed-pair tiers in priority order
+
+Try these tiers in order until a seed pair is found:
+
+| Priority | First number frequency | Second number frequency |
+|:---:|:---:|:---:|
+| 1 | `Fmax` | `Fmax - 1` |
+| 2 | `Fmax` | `Fmax` |
+| 3 | `Fmax` | `Fmax - 2` |
+| 4 | `Fmax - 1` | `Fmax - 1` |
+| 5 | `Fmax - 1` | `Fmax - 2` |
+
+### Step 4.3 — For the current tier, collect candidate pairs
+
+A valid candidate pair `(a,b)` must:
+
+1. `a` and `b` are in `eligible`
+2. One number has the tier's first frequency, the other has the second frequency
+3. `cooc[a][b] >= 2`
+
+If no pair has `cooc >= 2`, then use **all** pairs satisfying frequencies 1 and 2, and keep the highest co-occurrence one.
+
+### Step 4.4 — Rank candidate pairs
+
+Sort candidates by:
+
+1. `cooc[a][b]` — descending
+2. `a + b` — ascending
+3. `min(a,b)` — ascending
+4. `max(a,b)` — ascending
+
+Select the **top `K` candidate pairs**, or top 3 if `K > 3`.
+
+These are the seed pairs.
+
+Example from known draws:
+
+- Draw 1 seed pair: `(9,12)` — freq 9,8; co-occurrence 3
+- Draw 2 seed pair: `(5,25)` — freq 9,8; co-occurrence 4
+
+---
+
+## 5. Build Neighbourhood Pool
+
+For each selected seed pair `(a,b)`:
+
+### Step 5.1 — Find seed-pair ticket indices
+
+```
+seed_indices = [i for i in 1..50 if a in ticket[i] AND b in ticket[i]]
+```
+
+### Step 5.2 — Include immediate neighbours
+
+For each `i` in `seed_indices`:
+
+```
+neighbour_indices = neighbour_indices ∪ { i-1, i, i+1 }
+```
+
+Clip all indices to `1..50`.
+Do **not** wrap around.
+
+### Step 5.3 — Collect pool numbers
+
+```
+pool = set()
+for i in neighbour_indices:
+    pool = pool ∪ ticket[i]
+```
+
+### Step 5.4 — Clean pool
+
+Remove from `pool`:
+
+- `a`
+- `b`
+- all numbers in `forbidden_top5`
+- all numbers in `forbidden_cold`
+
+The remaining `pool` contains the only candidates for the other 4 numbers.
+
+---
+
+## 6. Range Balance and Target Distribution
+
+### Step 6.1 — Define ranges
+
+- Low `L`: 1–15
+- Mid `M`: 16–30
+- High `H`: 31–45
+
+### Step 6.2 — Count seed pair range positions
+
+```
+seed_L = count of seed pair numbers in Low
+seed_M = count of seed pair numbers in Mid
+seed_H = count of seed pair numbers in High
+```
+
+### Step 6.3 — Generate allowed target distributions
+
+A valid target distribution `(target_L, target_M, target_H)` must satisfy:
+
+1. `target_L + target_M + target_H = 6`
+2. `target_L >= seed_L`
+3. `target_M >= seed_M`
+4. `target_H >= seed_H`
+5. Each target count is at least 1
+6. No target count is greater than 3
+
+Allowed templates from the two known draws:
+
+- `2-2-2`
+- `2-3-1`
+- `3-2-1`
+- `1-3-2`
+- `2-1-3`
+- `1-2-3`
+
+Filter these templates by rules 2–6 above.
+
+### Step 6.4 — Calculate needed slots
+
+For each valid target distribution:
+
+```
+needed_L = target_L - seed_L
+needed_M = target_M - seed_M
+needed_H = target_H - seed_H
+```
+
+Exactly 4 slots remain.
+
+---
+
+## 7. Generate Candidate Completions
+
+For each valid target distribution:
+
+### Step 7.1 — Build range candidate lists
+
+```
+pool_L = numbers in pool that are in Low
+pool_M = numbers in pool that are in Mid
+pool_H = numbers in pool that are in High
+```
+
+### Step 7.2 — Generate all combinations
+
+Generate all combinations:
+
+- `choose needed_L` numbers from `pool_L`
+- `choose needed_M` numbers from `pool_M`
+- `choose needed_H` numbers from `pool_H`
+
+Combine them into a 4-number set.
+
+---
+
+## 8. Filter Completions
+
+Each 4-number completion must pass all of the following.
+
+### Filter 1 — Frequency staircase
+
+Take the full ticket frequencies:
+
+```
+full_freq_list = sorted(
+    [freq[a], freq[b], freq[c1], freq[c2], freq[c3], freq[c4]],
+    descending
+)
+```
+
+Compute consecutive differences:
+
+```
+diffs = [ full_freq_list[i] - full_freq_list[i+1] for i in 0..4 ]
+```
+
+Requirement:
+
+```
+max(diffs) <= 2
+```
+
+This permits at most one missing frequency level between adjacent selections.
+
+### Filter 2 — Cold number inclusion
+
+At least one of the remaining 4 numbers must have:
+
+```
+freq[number] <= 5
+```
+
+### Filter 3 — No duplicates
+
+The completed ticket must contain exactly 6 unique numbers.
+
+---
+
+## 9. Build Full Tickets
+
+For each valid completion:
+
+```
+ticket = { a, b, c1, c2, c3, c4 }
+```
+
+Add to candidate list.
+
+---
+
+## 10. Cross-Draw Bonus (Optional but Recommended)
+
+If `previous_winning_numbers` is provided:
+
+For each generated ticket, compute:
+
+```
+prev_winner_cold_count = count of numbers in ticket that:
+    1. are in previous_winning_numbers
+    2. have current frequency <= 5
+```
+
+This bonus is used in ranking only.
+
+---
+
+## 11. Ranking and Scoring
+
+For each generated ticket, compute:
+
+```
+seed_cooc = cooc[a][b]
+
+pool_count_sum = sum over selected 4 numbers of:
+    count of neighbourhood pool tickets containing that number
+
+cold_count = number of ticket numbers with freq <= 5
+
+staircase_bonus =
+    +15 if max(diffs) <= 1
+    +5  if max(diffs) == 2
+    +0  otherwise
+
+ticket_sum = sum of all 6 numbers
+```
+
+Final score:
+
+```
+score = seed_cooc * 100
+      + prev_winner_cold_count * 20
+      + cold_count * 10
+      + staircase_bonus
+      - pool_count_sum * 3
+      - ticket_sum * 0.1
+```
+
+Sort tickets by:
+
+1. `score` — descending
+2. `ticket_sum` — ascending
+3. Lexicographic order of sorted ticket numbers — ascending
+
+---
+
+## 12. Output
+
+If `K = 1`:
+
+- Output the single highest-scoring ticket.
+
+If `K > 1`:
+
+- Output the top `K` tickets, removing duplicates.
+
+---
+
+## 13. Fallback Rules
+
+If after Step 8 no valid completions exist for any target distribution:
+
+### Fallback 1
+Relax Filter 1:
+
+```
+max(diffs) <= 3
+```
+
+Try again.
+
+### Fallback 2
+If still no valid completions:
+
+- Remove Filter 2, but still prefer tickets with at least one cold number during ranking.
+
+### Fallback 3
+If no tickets generated at all:
+
+- Allow seed-pair frequencies outside the priority list.
+- Re-run from Step 4 with all eligible pairs having `cooc >= 2`.
+
+---
+
+## ✅ Final Execution Summary
+
+```
+1. Count frequencies
+2. Exclude top-5 and freq <= 3
+3. Build co-occurrence matrix
+4. Select seed pair(s)
+5. Build neighbourhood pool
+6. Build range-compatible templates
+7. Generate 4-number completions from pool
+8. Filter by staircase and cold rules
+9. Build full tickets
+10. Apply previous-draw bonus
+11. Rank and score
+12. Output top K tickets
+```
+
+This algorithm includes every valid rule we extracted from the two historical draws, with no missing step, no ambiguous tie-breaker, and no cheating.
