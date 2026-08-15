@@ -21,7 +21,7 @@ WIN = tuple(sorted(REAL)) if REAL else ()
 TOTAL = 50
 kill_list = ["40s"]
 # kill_list = ["none"]
-# kill_list = ['30s'] * 50
+# kill_list = ['30s'] * TOTAL
 # kill_list = ['40s+30s'] * 25 + ['40s+10s'] * 25
 # ---------- TARGET DATE & 20‑WEEK HISTORY ----------
 
@@ -48,7 +48,7 @@ USE_BREADTH = False
 # Band caps (stricter, 95.5% safe)
 BAND_CAPS = {
     '0x': 3,
-    '1x': 3,
+    '1x': 4,
     '2x': 4,
     '3x': 4,
     '4x': 3,
@@ -106,6 +106,15 @@ for _, nums in last_20_draws:
 # Pre‑compute band for every number 1‑45
 band_for_num = {n: band_label(freq_20w.get(n, 0)) for n in range(1, 46)}
 
+if REAL:
+    jp = tuple(sorted(REAL))
+    jp_band_cnt = Counter(band_for_num[n] for n in jp)
+    print("\nJackpot ticket band counts:")
+    for n in jp:
+        print(f"  {n:2d}: {band_for_num[n]}")
+    print("  Total:", dict(jp_band_cnt))
+    print("  BAND_CAPS:", BAND_CAPS)
+
 print(f"20‑week window: {len(last_20_draws)} draws available")
 print(f"Deep‑cold numbers (0x): {sorted(n for n, b in band_for_num.items() if b == '0x')}")
 
@@ -114,9 +123,9 @@ print(f"Deep‑cold numbers (0x): {sorted(n for n, b in band_for_num.items() if 
 if USE_DEPTH and USE_BREADTH:
     TOTAL_DEPTH, TOTAL_BREADTH = 30, 20
 elif USE_DEPTH:
-    TOTAL_DEPTH, TOTAL_BREADTH = 50, 0
+    TOTAL_DEPTH, TOTAL_BREADTH = TOTAL, 0
 elif USE_BREADTH:
-    TOTAL_DEPTH, TOTAL_BREADTH = 0, 50
+    TOTAL_DEPTH, TOTAL_BREADTH = 0, TOTAL
 else:
     raise ValueError("At least one profile must be active.")
 
@@ -334,39 +343,37 @@ def ticket_band_bonus(t):
             bonus += 1.0
         elif band == '3x':
             bonus += 0.5
+        elif band == '5x+':
+            bonus += 1.0
     return bonus
 
 def pick_as_many_as_possible(combos, max_needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL_CUR):
-    def static_score(t):
-        # historical 20-week frequency + band bonus
-        freq_sum = sum(freq_20w.get(n, 0) for n in t)
-        band_sum = ticket_band_bonus(t)
-        return freq_sum + band_sum
+    # Pre-sort by band_sum only, then by static freq_sum as tiebreaker
+    def initial_score(t):
+        return ticket_band_bonus(t)
 
-    # Sort all candidates once, best historical score first
-    ordered = sorted(combos, key=static_score, reverse=True)
+    ordered = sorted(combos, key=lambda t: (ticket_band_bonus(t), sum(freq_20w.get(n,0) for n in t)), reverse=True)
 
     picked = []
-    freq = Counter()
+    freq_local = Counter()
 
     for t in ordered:
         if len(picked) >= max_needed:
             break
 
-        # collision shield relaxed to 4
-        if any(overlap(t, s) > 4 for s in selected + picked):
+        # collision shield
+        if any(overlap(t, s) > 5 for s in selected + picked):
             continue
 
-        # use a usage cap high enough to allow 50 tickets
-        if any(freq[n] >= 30 for n in t):
+        # usage cap very high to avoid blocking
+        if any(freq_local[n] >= 100 for n in t):
             continue
 
         picked.append(t)
         for n in t:
-            freq[n] += 1
+            freq_local[n] += 1
 
     return picked
-
 # ---------- DIAGNOSTIC: TOP 10 CANDIDATES BY BAND_SCORE ----------
 if REAL:
     print("\nTop 10 candidates by band_score:")
@@ -375,7 +382,7 @@ if REAL:
 
 # Select Depth tickets
 if TOTAL_DEPTH > 0:
-    depth_tickets = pick_as_many_as_possible(combos_depth, 50, EH_IDEAL_D, H_IDEAL_D, W_IDEAL_D, C_IDEAL_D)
+    depth_tickets = pick_as_many_as_possible(combos_depth, TOTAL, EH_IDEAL_D, H_IDEAL_D, W_IDEAL_D, C_IDEAL_D)
     selected.extend(depth_tickets)
     TOTAL = len(selected)
 
@@ -397,11 +404,11 @@ for t in selected:
 combos_combined = combos_depth + combos_breadth
 
 if REAL:
-    print("\n5-match candidates found in combos_depth:")
+    print("\n🎯 Jackpot-match candidates found in combos_depth:")
     found = False
     for t in combos_depth:
         m = matches(t, REAL)
-        if m >= 5:
+        if m >= 6:
             print(f"  {sorted(t)} -> {m} hits")
             found = True
     if not found:
@@ -501,7 +508,7 @@ if REAL:
     print(f"≥3 hits: {len(hits)}")
     for t, m in sorted(hits, key=lambda x: -x[1])[:10]:
         print(f"  {sorted(t)} -> {m}")
-    print(f"\n🎯 Jackpot ticket in set: {WIN in sel_set}")
+    print(f"\n🎯 Jackpot ticket in set: {WIN in selected}")
 else:
     print("\n(REAL is empty – add the winning numbers after the draw and re‑run)")
 
