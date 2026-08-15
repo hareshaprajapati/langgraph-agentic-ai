@@ -3,18 +3,18 @@ from datetime import datetime as dt
 import itertools
 from collections import Counter, defaultdict
 
-TARGET_DATE = "2026-08-15"
+TARGET_DATE = "2026-05-16"
 # ---------- POOLS  ----------
-EH = [3, 7, 33]
+EH = [13, 11, 3, 33]
 # 10
-H  = [2, 9, 25]
+H  = [9, 32, 5, 16]
 # 7
-W  = [17,21, 28, 31, 38, 39]
+W  = [10, 14, 7, 12, 18, 19]
 # 25
-C = [13]
+C = [6, 23]
 # 3
-LEGACY = [6, 22, 26, 28, 33, 36]
-REAL = {2, 13, 17,25,31,33}
+LEGACY = [2, 11, 12, 17, 33, 37]
+REAL = {3, 10, 23, 32, 33, 39}
 # REAL = set()
 WIN = tuple(sorted(REAL)) if REAL else ()
 # ---------- DECADE KILLS & TOTAL ----------
@@ -322,92 +322,56 @@ selected = []
 sel_set = set()
 freq = Counter()
 
+def ticket_band_bonus(t):
+    bonus = 0
+    for n in t:
+        band = band_for_num.get(n, '0x')
+        if band == '0x':
+            bonus += 1.5
+        elif band == '1x':
+            bonus += 2.0
+        elif band == '2x':
+            bonus += 1.0
+        elif band == '3x':
+            bonus += 0.5
+    return bonus
+
 def pick_as_many_as_possible(combos, max_needed, EH_IDEAL_CUR, H_IDEAL_CUR, W_IDEAL_CUR, C_IDEAL_CUR):
-    """
-    Select up to `max_needed` tickets from `combos`.
-    Stops when no more candidates can satisfy the collision shield.
-    Returns the list of picked tickets.
-    """
+    def static_score(t):
+        # historical 20-week frequency + band bonus
+        freq_sum = sum(freq_20w.get(n, 0) for n in t)
+        band_sum = ticket_band_bonus(t)
+        return freq_sum + band_sum
+
+    # Sort all candidates once, best historical score first
+    ordered = sorted(combos, key=static_score, reverse=True)
+
     picked = []
-    for _ in range(max_needed):
-        best_t = None
-        best_key = None
-        avail = [t for t in combos if t not in sel_set]
-        if not avail:
+    freq = Counter()
+
+    for t in ordered:
+        if len(picked) >= max_needed:
             break
-        for t in avail:
-            if any(overlap(t, s) > 4 for s in selected + picked):
-                continue
-            if any(freq[n] >= 25 for n in t):
-                continue
-            temp_freq = freq.copy()
-            for n in t: temp_freq[n] += 1
-            all_in = True
-            for n in t:
-                if n in EH_use:
-                    if not (EH_IDEAL_CUR[0] <= temp_freq[n] <= EH_IDEAL_CUR[1]): all_in = False; break
-                elif n in H_use:
-                    if not (H_IDEAL_CUR[0] <= temp_freq[n] <= H_IDEAL_CUR[1]): all_in = False; break
-                elif n in W_use:
-                    if not (W_IDEAL_CUR[0] <= temp_freq[n] <= W_IDEAL_CUR[1]): all_in = False; break
-                elif n in C_use:
-                    if not (C_IDEAL_CUR[0] <= temp_freq[n] <= C_IDEAL_CUR[1]): all_in = False; break
-            if not all_in:
-                continue
-            dist = 0
-            for pool, ideal in [(EH_use, EH_IDEAL_CUR), (H_use, H_IDEAL_CUR),
-                                (W_use, W_IDEAL_CUR), (C_use, C_IDEAL_CUR)]:
-                target = (ideal[0] + ideal[1]) / 2
-                for n in pool:
-                    dist += (temp_freq[n] - target) ** 2
-            sc = score(t)
-            max_dec_cnt = max(Counter(dec(n) for n in t).values())
-            key = (0, dist, -sc, max_dec_cnt)
-            if best_key is None or key < best_key:
-                best_key = key
-                best_t = t
-        # Fallback 1 – ignore all_in
-        if best_t is None:
-            for t in avail:
-                if any(overlap(t, s) > 4 for s in selected + picked): continue
-                if any(freq[n] >= 25 for n in t): continue
-                temp_freq = freq.copy()
-                for n in t: temp_freq[n] += 1
-                dist = 0
-                for pool, ideal in [(EH_use, EH_IDEAL_CUR), (H_use, H_IDEAL_CUR),
-                                    (W_use, W_IDEAL_CUR), (C_use, C_IDEAL_CUR)]:
-                    target = (ideal[0] + ideal[1]) / 2
-                    for n in pool:
-                        dist += (temp_freq[n] - target) ** 2
-                max_dec_cnt = max(Counter(dec(n) for n in t).values())
-                key = (1, dist, -score(t), max_dec_cnt)
-                if best_key is None or key < best_key:
-                    best_key = key
-                    best_t = t
-        # Fallback 2 – relax saturation cap to 22
-        if best_t is None:
-            for t in avail:
-                if any(overlap(t, s) > 4 for s in selected + picked): continue
-                if any(freq[n] >= 25 for n in t): continue
-                temp_freq = freq.copy()
-                for n in t: temp_freq[n] += 1
-                dist = 0
-                for pool, ideal in [(EH_use, EH_IDEAL_CUR), (H_use, H_IDEAL_CUR),
-                                    (W_use, W_IDEAL_CUR), (C_use, C_IDEAL_CUR)]:
-                    target = (ideal[0] + ideal[1]) / 2
-                    for n in pool:
-                        dist += (temp_freq[n] - target) ** 2
-                max_dec_cnt = max(Counter(dec(n) for n in t).values())
-                key = (2, dist, -score(t), max_dec_cnt)
-                if best_key is None or key < best_key:
-                    best_key = key
-                    best_t = t
-        if best_t is None:
-            break   # cannot pick any more
-        picked.append(best_t)
-        sel_set.add(best_t)
-        for n in best_t: freq[n] += 1
+
+        # collision shield relaxed to 4
+        if any(overlap(t, s) > 4 for s in selected + picked):
+            continue
+
+        # use a usage cap high enough to allow 50 tickets
+        if any(freq[n] >= 30 for n in t):
+            continue
+
+        picked.append(t)
+        for n in t:
+            freq[n] += 1
+
     return picked
+
+# ---------- DIAGNOSTIC: TOP 10 CANDIDATES BY BAND_SCORE ----------
+if REAL:
+    print("\nTop 10 candidates by band_score:")
+    for t in sorted(combos_depth, key=ticket_band_bonus, reverse=True)[:10]:
+        print(f"  {sorted(t)}  band_score={ticket_band_bonus(t):.1f}  hits={matches(t, REAL)}")
 
 # Select Depth tickets
 if TOTAL_DEPTH > 0:
@@ -423,8 +387,25 @@ if TOTAL_BREADTH > 0:
 
 print(f"Generated {TOTAL} Depth tickets (maximum possible from this pool).")
 
+# ---------- Recompute global frequency counter for audit ----------
+freq = Counter()
+for t in selected:
+    for n in t:
+        freq[n] += 1
+
 # Combine candidate pools for post‑balance
 combos_combined = combos_depth + combos_breadth
+
+if REAL:
+    print("\n5-match candidates found in combos_depth:")
+    found = False
+    for t in combos_depth:
+        m = matches(t, REAL)
+        if m >= 5:
+            print(f"  {sorted(t)} -> {m} hits")
+            found = True
+    if not found:
+        print("  None")
 
 # ---------- POST‑BALANCE (blended ideal bands) ----------
 print("Balancing towards ideal frequencies...")
@@ -440,7 +421,7 @@ H_IDEAL_BL  = ideal_band(blended_H_picks,  len(H_use))
 W_IDEAL_BL  = ideal_band(blended_W_picks,  len(W_use))
 C_IDEAL_BL  = ideal_band(blended_C_picks,  len(C_use))
 
-for _ in range(500):
+for _ in range(0):
     out_of_ideal = []
     for n in EH_use:
         if freq[n] < EH_IDEAL_BL[0]: out_of_ideal.append((n, 'low'))
