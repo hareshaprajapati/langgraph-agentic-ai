@@ -12,9 +12,9 @@ from sklearn.pipeline import make_pipeline
 CSV_FILE = "cross_lotto_data_backup.csv"
 
 # ================= CONFIGURATION =================
-RUN_BACKTEST = True          # True = backtest last 10 draws, False = future prediction
+RUN_BACKTEST = False          # True = backtest last 10 draws, False = future prediction
 
-TARGET_DATE = "2026-08-22"   # Used only if RUN_BACKTEST = False
+TARGET_DATE = "2026-08-15"   # Used only if RUN_BACKTEST = False
 
 # Option A: provide EH/H/W/C pools directly
 EH = []
@@ -23,7 +23,7 @@ W  = []
 C  = []
 
 # Option B: provide one 15-number pool
-POOL = [2, 13, 17, 25, 31, 33, 1, 4, 6, 7, 8, 11, 12, 15, 30]
+POOL = [1, 2, 7, 12, 13, 17, 20, 23, 25, 26, 27, 30, 31, 33, 34]
 
 TOTAL = 50
 kill_list = ["40s"]
@@ -244,7 +244,7 @@ def build_forced_pool_and_combos(target_date, real_nums, window7, prior_sat, all
     REAL = set(real_nums)
 
     if window7.empty:
-        return None, None
+        return None, None, None
 
     ctx = compute_feature_context(window7, prior_sat, all_prior_sat)
 
@@ -296,7 +296,10 @@ def build_forced_pool_and_combos(target_date, real_nums, window7, prior_sat, all
     combos = generate_combos(eh_use, h_use, w_use, c_use, ctx)
     features = [make_features(t, ctx) for t in combos]
 
-    return combos, features
+    # Build final 15-number pool list
+    full_pool = sorted(set(eh_use) | set(h_use) | set(w_use) | set(c_use))
+
+    return combos, features, full_pool
 
 # ================= FUTURE POOL COMBOS =================
 def build_future_pool_combos(window7, prior_sat, all_prior_sat, eh_list, h_list, w_list, c_list):
@@ -336,7 +339,7 @@ def build_training_set(limit_date):
         hist_prior_sat = sat_draws[sat_draws["Date_dt"] < hist_date].tail(20)
         hist_all_prior = sat_draws[sat_draws["Date_dt"] < hist_date]
 
-        combos, feats = build_forced_pool_and_combos(
+        combos, feats, _ = build_forced_pool_and_combos(
             hist_date,
             hist_nums,
             hist_window7,
@@ -384,7 +387,7 @@ def run_backtest():
         if any(dec(n) == "40s" for n in row["nums"]):
             continue
         test_draws.append(row)
-        if len(test_draws) == 20:
+        if len(test_draws) == 10:
             break
 
     test_draws.reverse()
@@ -406,7 +409,7 @@ def run_backtest():
         if window7.empty:
             continue
 
-        combos, features = build_forced_pool_and_combos(
+        combos, features, pool_used = build_forced_pool_and_combos(
             target_date, real_nums, window7, prior_sat, all_prior_sat
         )
 
@@ -440,7 +443,7 @@ def run_backtest():
                 best_match = match_count
                 best_rank = rank_idx + 1   # human-friendly 1-based
 
-        print(f"Target {target_date.strftime('%d-%b-%Y')}: jackpot selected? {selected} | Best ticket: #{best_rank} with {best_match} matches")
+        print(f"Target {target_date.strftime('%d-%b-%Y')}: jackpot selected? {selected} | Best ticket: #{best_rank} with {best_match} matches | Pool: {pool_used}")
 
     print(f"\nBacktest result: {hits}/{tested} jackpot selected.")
 
