@@ -12,9 +12,9 @@ from sklearn.pipeline import make_pipeline
 CSV_FILE = "cross_lotto_data_backup.csv"
 
 # ================= CONFIGURATION =================
-RUN_BACKTEST = False          # True = backtest last 10 draws, False = future prediction
+RUN_BACKTEST = True          # True = backtest last 10 draws, False = future prediction
 
-TARGET_DATE = "2026-08-15"   # Used only if RUN_BACKTEST = False
+TARGET_DATE = "2026-08-22"   # Used only if RUN_BACKTEST = False
 
 # Option A: provide EH/H/W/C pools directly
 EH = []
