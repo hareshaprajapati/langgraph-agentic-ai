@@ -1,30 +1,22 @@
 import csv
 import itertools
 import re
+import math
+import time
 import pandas as pd
 import numpy as np
 from datetime import datetime as dt, timedelta
 from collections import Counter
-from sklearn.linear_model import LogisticRegression
+
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV, Ridge
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 
 CSV_FILE = "cross_lotto_data_backup.csv"
 
 # ================= CONFIGURATION =================
-RUN_BACKTEST = True          # True = backtest last 10 draws, False = future prediction
-
-TARGET_DATE = "2026-08-22"   # Used only if RUN_BACKTEST = False
-
-# Option A: provide EH/H/W/C pools directly
-EH = []
-H  = []
-W  = []
-C  = []
-
-# Option B: provide one 15-number pool
-POOL = [2, 13, 17, 25, 31, 33, 1, 4, 6, 7, 8, 11, 12, 15, 30]
-
+BACKTEST_DRAWS = 20
 TOTAL = 50
 kill_list = ["40s"]
 
@@ -56,6 +48,14 @@ def consecutive(t):
 
 def mirror(t):
     return len({x % 10 for x in t}) < 6
+
+def is_prime(n):
+    if n < 2:
+        return False
+    for i in range(2, int(math.sqrt(n)) + 1):
+        if n % i == 0:
+            return False
+    return True
 
 def parse_nums(s):
     if pd.isna(s) or s == "":
@@ -160,6 +160,7 @@ def compute_feature_context(window7, prior_sat, all_prior_sat):
         'counts': counts,
     }
 
+# ================= FEATURE GENERATION (simple only) =================
 def make_features(t, ctx):
     counts = ctx['counts']
     freq20 = ctx['freq20']
@@ -239,12 +240,12 @@ def generate_combos(eh_use, h_use, w_use, c_use, ctx):
 
     return combos
 
-# ================= FORCED-WINNER POOL / BACKTEST =================
+# ================= POOL & COMBO FUNCTIONS =================
 def build_forced_pool_and_combos(target_date, real_nums, window7, prior_sat, all_prior_sat):
     REAL = set(real_nums)
 
     if window7.empty:
-        return None, None
+        return None, None, None
 
     ctx = compute_feature_context(window7, prior_sat, all_prior_sat)
 
@@ -296,29 +297,12 @@ def build_forced_pool_and_combos(target_date, real_nums, window7, prior_sat, all
     combos = generate_combos(eh_use, h_use, w_use, c_use, ctx)
     features = [make_features(t, ctx) for t in combos]
 
-    return combos, features
+    full_pool = sorted(set(eh_use) | set(h_use) | set(w_use) | set(c_use))
 
-# ================= FUTURE POOL COMBOS =================
-def build_future_pool_combos(window7, prior_sat, all_prior_sat, eh_list, h_list, w_list, c_list):
-    if window7.empty:
-        return None, None
-
-    ctx = compute_feature_context(window7, prior_sat, all_prior_sat)
-
-    killed_set = parse_kill(kill_list[0])
-
-    eh_use = [n for n in eh_list if dec(n) not in killed_set]
-    h_use  = [n for n in h_list if dec(n) not in killed_set]
-    w_use  = [n for n in w_list if dec(n) not in killed_set]
-    c_use  = [n for n in c_list if dec(n) not in killed_set]
-
-    combos = generate_combos(eh_use, h_use, w_use, c_use, ctx)
-    features = [make_features(t, ctx) for t in combos]
-
-    return combos, features
+    return combos, features, full_pool
 
 # ================= TRAINING =================
-def build_training_set(limit_date):
+def build_training_set(limit_date, label_mode='binary'):
     train_rows = []
     training_draws = sat_draws[sat_draws["Date_dt"] < limit_date].tail(200)
 
@@ -336,7 +320,7 @@ def build_training_set(limit_date):
         hist_prior_sat = sat_draws[sat_draws["Date_dt"] < hist_date].tail(20)
         hist_all_prior = sat_draws[sat_draws["Date_dt"] < hist_date]
 
-        combos, feats = build_forced_pool_and_combos(
+        combos, feats, _ = build_forced_pool_and_combos(
             hist_date,
             hist_nums,
             hist_window7,
@@ -350,7 +334,12 @@ def build_training_set(limit_date):
         win_ticket = tuple(sorted(hist_nums))
 
         for i, t in enumerate(combos):
-            label = 1 if t == win_ticket else 0
+            if label_mode == 'binary':
+                label = 1 if t == win_ticket else 0
+            elif label_mode == 'regression':
+                label = len(set(t) & set(win_ticket))  # 0-6
+            else:
+                raise ValueError("Unknown label_mode")
             train_rows.append((feats[i], label))
 
     if len(train_rows) < 10:
@@ -362,38 +351,97 @@ def build_training_set(limit_date):
 
     return X_train, y_train
 
-def train_model(limit_date):
-    data = build_training_set(limit_date)
+def train_model(limit_date, model_type='lr', label_mode='binary', tuned=False):
+    """
+    Trains model or ensemble.
+    model_type:
+        'lr'       -> LogisticRegression
+        'ensemble' -> list of models (LR, RF, GB)
+        'ridge'    -> Ridge regression (only for label_mode='regression')
+        'tuned_lr' -> LogisticRegressionCV
+    """
+    data = build_training_set(limit_date, label_mode=label_mode)
     if data is None:
         return None
 
     X_train, y_train = data
-    model = make_pipeline(
-        StandardScaler(),
-        LogisticRegression(class_weight='balanced', max_iter=1000)
-    )
-    model.fit(X_train, y_train)
 
-    return model
+    if model_type == 'lr':
+        model = make_pipeline(
+            StandardScaler(),
+            LogisticRegression(class_weight='balanced', max_iter=1000)
+        )
+        model.fit(X_train, y_train)
+        return model
 
-# ================= BACKTEST =================
-def run_backtest():
+    elif model_type == 'tuned_lr':
+        model = make_pipeline(
+            StandardScaler(),
+            LogisticRegressionCV(
+                Cs=[0.001, 0.01, 0.1, 1, 10],
+                cv=3,
+                scoring='roc_auc',
+                class_weight='balanced',
+                max_iter=1000,
+                solver='lbfgs'
+            )
+        )
+        model.fit(X_train, y_train)
+        return model
+
+    elif model_type == 'ridge':
+        model = make_pipeline(
+            StandardScaler(),
+            Ridge(alpha=1.0)
+        )
+        model.fit(X_train, y_train)
+        return model
+
+    elif model_type == 'ensemble':
+        models = [
+            make_pipeline(StandardScaler(), LogisticRegression(class_weight='balanced', max_iter=1000)),
+            make_pipeline(StandardScaler(), RandomForestClassifier(n_estimators=200, max_depth=5, class_weight='balanced', random_state=42, n_jobs=-1)),
+            make_pipeline(StandardScaler(), GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42))
+        ]
+        for m in models:
+            m.fit(X_train, y_train)
+        return models
+
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
+
+def predict_proba(model, X):
+    if isinstance(model, list):
+        probs = np.zeros(len(X))
+        for m in model:
+            probs += m.predict_proba(X)[:, 1]
+        return probs / len(model)
+    elif hasattr(model, 'predict_proba'):
+        return model.predict_proba(X)[:, 1]
+    else:
+        return model.predict(X)  # Ridge regression returns continuous values
+
+# ================= BACKTEST STRATEGIES =================
+def run_backtest(strategy, backtest_draws=20):
+    """
+    strategy: 'lr_simple', 'union_lr_ensemble', 'ridge_regression', 'tuned_lr'
+    """
     test_draws = []
 
     for _, row in sat_draws.iloc[::-1].iterrows():
         if any(dec(n) == "40s" for n in row["nums"]):
             continue
         test_draws.append(row)
-        if len(test_draws) == 20:
+        if len(test_draws) == backtest_draws:
             break
 
     test_draws.reverse()
 
-    # Counters for each rank index (0-49) -> dict of match_count -> count
-    rank_match_counts = [Counter() for _ in range(TOTAL)]
-
     hits = 0
     tested = 0
+    total_combos = 0
+
+    rank_match_counts = [Counter() for _ in range(TOTAL)]
 
     for target_row in test_draws:
         target_date = target_row["Date_dt"]
@@ -406,22 +454,57 @@ def run_backtest():
         if window7.empty:
             continue
 
-        combos, features = build_forced_pool_and_combos(
+        combos, features, pool_used = build_forced_pool_and_combos(
             target_date, real_nums, window7, prior_sat, all_prior_sat
         )
 
         if combos is None or len(combos) == 0:
             continue
 
-        model = train_model(target_date)
-        if model is None:
-            continue
-
         X_test = pd.DataFrame(features).values
-        probs = model.predict_proba(X_test)[:, 1]
-        ranked_idx = np.argsort(-probs)
-        top_tickets = [combos[i] for i in ranked_idx[:TOTAL]]
 
+        if strategy == 'lr_simple':
+            model = train_model(target_date, model_type='lr', label_mode='binary', tuned=False)
+            if model is None:
+                continue
+            probs = predict_proba(model, X_test)
+            ranked_idx = np.argsort(-probs)
+            top_tickets = [combos[i] for i in ranked_idx[:TOTAL]]
+
+        elif strategy == 'tuned_lr':
+            model = train_model(target_date, model_type='tuned_lr', label_mode='binary', tuned=False)
+            if model is None:
+                continue
+            probs = predict_proba(model, X_test)
+            ranked_idx = np.argsort(-probs)
+            top_tickets = [combos[i] for i in ranked_idx[:TOTAL]]
+
+        elif strategy == 'ridge_regression':
+            model = train_model(target_date, model_type='ridge', label_mode='regression', tuned=False)
+            if model is None:
+                continue
+            preds = predict_proba(model, X_test)   # returns predictions
+            ranked_idx = np.argsort(-preds)
+            top_tickets = [combos[i] for i in ranked_idx[:TOTAL]]
+
+        elif strategy == 'union_lr_ensemble':
+            # Train LR and ensemble separately
+            model_lr = train_model(target_date, model_type='lr', label_mode='binary', tuned=False)
+            model_ens = train_model(target_date, model_type='ensemble', label_mode='binary', tuned=False)
+            if model_lr is None or model_ens is None:
+                continue
+            probs_lr = predict_proba(model_lr, X_test)
+            probs_ens = predict_proba(model_ens, X_test)
+
+            # Combine by averaging probabilities
+            avg_probs = (probs_lr + probs_ens) / 2
+            ranked_idx = np.argsort(-avg_probs)
+            top_tickets = [combos[i] for i in ranked_idx[:TOTAL]]
+
+        else:
+            raise ValueError("Unknown strategy")
+
+        # Evaluate
         jackpot = tuple(sorted(real_nums))
         selected = jackpot in top_tickets
 
@@ -429,123 +512,124 @@ def run_backtest():
             hits += 1
         tested += 1
 
+        total_combos += len(combos)
+
         # Track match counts for each rank
         best_match = 0
         best_rank = None
         for rank_idx, ticket in enumerate(top_tickets):
             match_count = len(set(ticket) & set(real_nums))
             rank_match_counts[rank_idx][match_count] += 1
-
             if match_count > best_match:
                 best_match = match_count
-                best_rank = rank_idx + 1   # human-friendly 1-based
+                best_rank = rank_idx + 1
 
-        print(f"Target {target_date.strftime('%d-%b-%Y')}: jackpot selected? {selected} | Best ticket: #{best_rank} with {best_match} matches")
+        print(f"  {target_date.strftime('%d-%b-%Y')}: jackpot? {selected} | Best: #{best_rank} ({best_match} matches)")
 
-    print(f"\nBacktest result: {hits}/{tested} jackpot selected.")
+    # Summary
+    summary = {
+        'strategy': strategy,
+        'hits': hits,
+        'tested': tested,
+        'accuracy': hits / tested if tested else 0,
+        'total_combos_avg': total_combos / tested if tested else 0,
+        'best_rank_jackpot': None,
+        'jackpot_count_best_rank': 0,
+        'best_rank_5': None,
+        'count_5_best_rank': 0,
+        'best_rank_4': None,
+        'count_4_best_rank': 0,
+        'best_rank_3': None,
+        'count_3_best_rank': 0,
+    }
 
-    # Print summary of which ticket position achieved each match tier the most
-    print("\n=== Rank position performance summary ===")
-    print("(Counts represent how many times the ticket at that rank achieved the match level across all test draws)\n")
-
-    for match_level in [6, 5, 4, 3]:
-        best_rank_for_level = None
-        max_count = 0
-        print(f"Match level {match_level}:")
-        for rank_idx in range(TOTAL):
-            count = rank_match_counts[rank_idx].get(match_level, 0)
-            if count > max_count:
-                max_count = count
-                best_rank_for_level = rank_idx + 1
-        if max_count > 0:
-            print(f"  Ticket #{best_rank_for_level} achieved {match_level} matches {max_count} times.")
-        else:
-            print(f"  No ticket achieved {match_level} matches.")
-        print()
-
-    # Optional: full table of counts per rank (can be commented out if too long)
-    print("\nDetailed table (rank, jackpot, 5-match, 4-match, 3-match):")
+    # Best ranks
+    max_jp = 0
+    best_jp_rank = None
     for rank_idx in range(TOTAL):
-        jp = rank_match_counts[rank_idx].get(6, 0)
-        m5 = rank_match_counts[rank_idx].get(5, 0)
-        m4 = rank_match_counts[rank_idx].get(4, 0)
-        m3 = rank_match_counts[rank_idx].get(3, 0)
-        print(f"#{rank_idx+1:2d}: {jp} jackpot, {m5} five-match, {m4} four-match, {m3} three-match")
+        cnt = rank_match_counts[rank_idx].get(6, 0)
+        if cnt > max_jp:
+            max_jp = cnt
+            best_jp_rank = rank_idx + 1
+    if best_jp_rank is not None:
+        summary['best_rank_jackpot'] = best_jp_rank
+        summary['jackpot_count_best_rank'] = max_jp
 
-# ================= FUTURE PREDICTION =================
-def predict_future(target_date_str, pool_list=None, eh_list=None, h_list=None, w_list=None, c_list=None):
-    target_date = pd.to_datetime(target_date_str)
+    max_5 = 0
+    best_5_rank = None
+    for rank_idx in range(TOTAL):
+        cnt = rank_match_counts[rank_idx].get(5, 0)
+        if cnt > max_5:
+            max_5 = cnt
+            best_5_rank = rank_idx + 1
+    summary['best_rank_5'] = best_5_rank
+    summary['count_5_best_rank'] = max_5
 
-    target_window7 = df[(df["Date_dt"] >= target_date - timedelta(days=7)) & (df["Date_dt"] < target_date)]
-    target_prior_sat = sat_draws[sat_draws["Date_dt"] < target_date].tail(20)
-    target_all_prior = sat_draws[sat_draws["Date_dt"] < target_date]
+    max_4 = 0
+    best_4_rank = None
+    for rank_idx in range(TOTAL):
+        cnt = rank_match_counts[rank_idx].get(4, 0)
+        if cnt > max_4:
+            max_4 = cnt
+            best_4_rank = rank_idx + 1
+    summary['best_rank_4'] = best_4_rank
+    summary['count_4_best_rank'] = max_4
 
-    if target_window7.empty:
-        print("No 7-day window data before target.")
-        return
+    max_3 = 0
+    best_3_rank = None
+    for rank_idx in range(TOTAL):
+        cnt = rank_match_counts[rank_idx].get(3, 0)
+        if cnt > max_3:
+            max_3 = cnt
+            best_3_rank = rank_idx + 1
+    summary['best_rank_3'] = best_3_rank
+    summary['count_3_best_rank'] = max_3
 
-    if eh_list and h_list and w_list and c_list:
-        eh_input = eh_list
-        h_input = h_list
-        w_input = w_list
-        c_input = c_list
+    return summary
 
-    elif pool_list:
-        EH_tiers, H_tiers, W_tiers, C_tiers, _ = get_tiers(target_window7)
-
-        eh_input = [n for n in pool_list if n in EH_tiers]
-        h_input  = [n for n in pool_list if n in H_tiers]
-        w_input  = [n for n in pool_list if n in W_tiers]
-        c_input  = [n for n in pool_list if n in C_tiers]
-
-        all_tiered = set(eh_input) | set(h_input) | set(w_input) | set(c_input)
-        leftovers = [n for n in pool_list if n not in all_tiered]
-        w_input.extend(leftovers)
-
-    else:
-        print("Please provide EH/H/W/C or POOL.")
-        return
-
-    total_pool = set(eh_input) | set(h_input) | set(w_input) | set(c_input)
-    if len(total_pool) != 15:
-        print(f"Warning: pool size is {len(total_pool)}, expected 15.")
-
-    combos, features = build_future_pool_combos(
-        target_window7,
-        target_prior_sat,
-        target_all_prior,
-        eh_input,
-        h_input,
-        w_input,
-        c_input
-    )
-
-    if combos is None or len(combos) == 0:
-        print("No valid combos generated from the provided pool.")
-        return
-
-    model = train_model(target_date)
-    if model is None:
-        print("Not enough training data for the target date.")
-        return
-
-    X_target = pd.DataFrame(features).values
-    probs = model.predict_proba(X_target)[:, 1]
-    ranked_idx = np.argsort(-probs)
-    top_tickets = [combos[i] for i in ranked_idx[:TOTAL]]
-
-    print(f"\nTop {TOTAL} predicted tickets for {target_date_str}:\n")
-    for i, t in enumerate(top_tickets, 1):
-        print(f"{i:2d}: {sorted(t)}")
-
-# ================= MAIN =================
+# ================= MAIN EXPERIMENT RUNNER =================
 if __name__ == "__main__":
-    if RUN_BACKTEST:
-        run_backtest()
-    else:
-        if EH and H and W and C:
-            predict_future(TARGET_DATE, eh_list=EH, h_list=H, w_list=W, c_list=C)
-        elif POOL:
-            predict_future(TARGET_DATE, pool_list=POOL)
+    print("=" * 80)
+    print("RUNNING STRATEGY EXPERIMENTS ON 20 DRAWS")
+    print("=" * 80)
+
+    strategies = ['lr_simple', 'union_lr_ensemble', 'ridge_regression', 'tuned_lr']
+    results = []
+
+    for strategy in strategies:
+        print("\n" + "-" * 80)
+        print(f"Strategy: {strategy}")
+        print("-" * 80)
+
+        start_time = time.time()
+        summary = run_backtest(strategy, backtest_draws=BACKTEST_DRAWS)
+        elapsed = time.time() - start_time
+
+        summary['elapsed'] = elapsed
+        results.append(summary)
+
+        print(f"\nResult for {strategy}:")
+        print(f"  Jackpot selected: {summary['hits']}/{summary['tested']} = {summary['accuracy']:.2%}")
+        print(f"  Avg combos per draw: {summary['total_combos_avg']:.0f}")
+        if summary['best_rank_jackpot'] is not None:
+            print(f"  Best rank for jackpot: #{summary['best_rank_jackpot']} (hit {summary['jackpot_count_best_rank']} times)")
         else:
-            print("Please provide EH/H/W/C or POOL.")
+            print("  No jackpot hits")
+        print(f"  Best rank for 5-match: #{summary['best_rank_5']} (hit {summary['count_5_best_rank']} times)")
+        print(f"  Best rank for 4-match: #{summary['best_rank_4']} (hit {summary['count_4_best_rank']} times)")
+        print(f"  Best rank for 3-match: #{summary['best_rank_3']} (hit {summary['count_3_best_rank']} times)")
+        print(f"  Time: {elapsed:.1f}s")
+
+    # Final comparison
+    print("\n" + "=" * 80)
+    print("FINAL COMPARISON TABLE")
+    print("=" * 80)
+    print(f"{'Strategy':<25} {'Jackpot Hits':<15} {'Draws':<8} {'Accuracy':<10}")
+    print("-" * 60)
+    for res in results:
+        print(f"{res['strategy']:<25} {res['hits']:<15} {res['tested']:<8} {res['accuracy']:.2%}")
+
+    best = max(results, key=lambda x: x['accuracy'])
+    print("\nBest configuration:")
+    print(f"  Strategy: {best['strategy']}")
+    print(f"  Jackpot: {best['hits']}/{best['tested']} = {best['accuracy']:.2%}")
