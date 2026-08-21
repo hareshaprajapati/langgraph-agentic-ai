@@ -17,13 +17,13 @@ RUN_BACKTEST = False          # True = run backtest, False = future prediction
 TARGET_DATE = "2026-08-15"   # Used only if RUN_BACKTEST = False
 
 # Option A: provide EH/H/W/C pools directly (total should be 15)
-EH = []   # e.g., [1, 4, 6, 7, 8, 11]
-H  = []   # e.g., [2, 5, 9, 12, 15]
-W  = []   # e.g., [3, 10, 13, 17, 20]
-C  = []   # e.g., [14]
+EH = [33]   # e.g., [1, 4, 6, 7, 8, 11]
+H  = [ 2, ]   # e.g., [2, 5, 9, 12, 15]
+W  = [14, 17, 18, 19, 25, 31, 34, 38, 39]   # e.g., [3, 10, 13, 17, 20]
+C  = [13]   # e.g., [14]
 
 # Option B: provide a single 15-number pool list
-POOL = [1, 2, 7, 12, 13, 17, 20, 23, 25, 26, 27, 30, 31, 33, 34]
+POOL = []
 
 TOTAL = 50
 kill_list = ["40s"]
@@ -459,7 +459,7 @@ def predict_future(target_date_str, pool_list=None, eh_list=None, h_list=None, w
         print("No 7-day window data before target.")
         return
 
-    if eh_list and h_list and w_list and c_list:
+    if eh_list and h_list and w_list :
         eh_input = eh_list
         h_input = h_list
         w_input = w_list
@@ -519,7 +519,7 @@ if __name__ == "__main__":
     if RUN_BACKTEST:
         run_backtest()
     else:
-        if EH and H and W and C:
+        if EH and H and W :
             predict_future(TARGET_DATE, eh_list=EH, h_list=H, w_list=W, c_list=C)
         elif POOL:
             predict_future(TARGET_DATE, pool_list=POOL)
