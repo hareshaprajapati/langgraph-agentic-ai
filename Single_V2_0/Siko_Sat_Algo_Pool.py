@@ -359,6 +359,7 @@ def evaluate_config(cache, weights, caps, oe, prev, ld, run, hot, med, cold, tie
     five = 0
     four = 0
     high_draws = []
+    all_results = []                     # NEW: stores every draw's result
 
     for entry in cache:
         f = entry['features']
@@ -403,15 +404,24 @@ def evaluate_config(cache, weights, caps, oe, prev, ld, run, hot, med, cold, tie
         )
 
         cov = len(set(pool) & entry['real_nums'])
+        captured = sorted(set(pool) & entry['real_nums'])   # store captured numbers
         if cov >= 6:
             six += 1
         if cov >= 5:
             five += 1
-            high_draws.append((entry['date'], sorted(set(pool) & entry['real_nums']), pool))
+            high_draws.append((entry['date'], captured, pool))
         if cov >= 4:
             four += 1
 
-    return six, five, four, high_draws
+        # record every draw
+        all_results.append({
+            'date': entry['date'],
+            'match_count': cov,
+            'captured': captured,
+            'pool': pool
+        })
+
+    return six, five, four, high_draws, all_results
 
 # ================= BACKTEST MODE =================
 def run_backtest():
@@ -435,7 +445,7 @@ def run_backtest():
         print(f"  cached {len(cache)}: {pd.to_datetime(target_date).strftime('%d-%b-%Y')}")
 
     print("\nEvaluating best configuration...")
-    six, five, four, high_draws = evaluate_config(
+    six, five, four, high_draws, all_results = evaluate_config(
         cache, BEST_WEIGHTS, BEST_CAPS, BEST_OE, BEST_PREV, BEST_LD,
         BEST_RUN, BEST_HOT, BEST_MED, BEST_COLD, BEST_TIER_CAPS
     )
@@ -446,6 +456,15 @@ def run_backtest():
     print(f"5+ traps : {five}/20")
     print(f"6/6 traps: {six}/20")
     print(f"4+ traps : {four}/20")
+
+    # ---- NEW: print every draw ----
+    print("\nAll draws (captured numbers and pool):")
+    for res in all_results:
+        date_str = pd.to_datetime(res['date']).strftime('%d-%b-%Y')
+        cov = res['match_count']
+        captured = res['captured']
+        pool = res['pool']
+        print(f"  {date_str}: {cov}/6 -> {captured} | pool={pool}")
 
     if high_draws:
         print("\nHigh-capture draws (5+):")
