@@ -1,7 +1,9 @@
 import pandas as pd
 from collections import Counter
-import random
-import time
+
+# ================= CONFIGURATION =================
+MODE = "backtest"          # "backtest" or "predict"
+PREDICT_DATE = "Sat 22-Aug-2026"   # used only if MODE = "predict" 22-Aug-2026
 
 SATURDAY_FILE = "Saturday_data.csv"
 CROSS_FILE = "cross_lotto_data_backup.csv"
@@ -65,132 +67,6 @@ def get_tiers_saturday_to_friday(target_date):
     C  = set(n for n in range(1, 46) if dec(n) != "40s" and n not in counts)
 
     return EH, H, W, C
-
-# ================= POOL BUILDER WITH TIER CAPS =================
-def build_pool_general_with_tiers(
-    base_score, gap, last_draw_nums, eligible,
-    caps, hot_count, medium_count, cold_count,
-    ld_cap, max_prev, max_run, odd_even_cap,
-    tier_of, tier_caps
-):
-    hot_sorted = sorted(eligible, key=base_score, reverse=True)
-    cold_sorted = sorted(eligible, key=lambda n: gap.get(n, 0), reverse=True)
-
-    hot_picks = hot_sorted[:hot_count]
-    hot_set = set(hot_picks)
-
-    cold_picks = []
-    for n in cold_sorted:
-        if n in hot_set:
-            continue
-        cold_picks.append(n)
-        if len(cold_picks) == cold_count:
-            break
-
-    selected_set = hot_set | set(cold_picks)
-    medium_picks = []
-    for n in hot_sorted:
-        if n in selected_set:
-            continue
-        medium_picks.append(n)
-        if len(medium_picks) == medium_count:
-            break
-
-    priority = hot_picks + medium_picks + cold_picks
-
-    pool = []
-    pool_set = set()
-    decade_counts = Counter()
-    ld_counts = Counter()
-    prev_counts = Counter()
-    tier_counts = Counter()
-    odd_count = 0
-    even_count = 0
-
-    def run_len_if_add(n):
-        if max_run is None:
-            return 0
-        s = set(pool_set)
-        s.add(n)
-        left = n - 1
-        right = n + 1
-        run = 1
-        while left in s:
-            run += 1
-            left -= 1
-        while right in s:
-            run += 1
-            right += 1
-        return run
-
-    def can_add(n):
-        if n in pool_set:
-            return False
-        if n in last_draw_nums and prev_counts[n] >= max_prev:
-            return False
-        if n % 2 == 1 and odd_count >= odd_even_cap:
-            return False
-        if n % 2 == 0 and even_count >= odd_even_cap:
-            return False
-        if decade_counts[dec(n)] >= caps.get(dec(n), 4):
-            return False
-        if ld_counts[n % 10] >= ld_cap:
-            return False
-        if max_run is not None and run_len_if_add(n) > max_run:
-            return False
-
-        tier = tier_of(n)
-        if tier_counts[tier] >= tier_caps.get(tier, 99):
-            return False
-
-        return True
-
-    def add(n):
-        nonlocal odd_count, even_count
-        pool.append(n)
-        pool_set.add(n)
-        decade_counts[dec(n)] += 1
-        ld_counts[n % 10] += 1
-        tier_counts[tier_of(n)] += 1
-        if n % 2 == 1:
-            odd_count += 1
-        else:
-            even_count += 1
-        if n in last_draw_nums:
-            prev_counts[n] += 1
-
-    # Greedy fill with all constraints
-    for n in priority:
-        if len(pool) >= 15:
-            break
-        if can_add(n):
-            add(n)
-
-    for n in hot_sorted:
-        if len(pool) >= 15:
-            break
-        if n in pool_set:
-            continue
-        if can_add(n):
-            add(n)
-
-    for n in cold_sorted:
-        if len(pool) >= 15:
-            break
-        if n in pool_set:
-            continue
-        if can_add(n):
-            add(n)
-
-    # Final fallback to guarantee 15 numbers (bypass tier caps if necessary)
-    if len(pool) < 15:
-        for n in hot_sorted:
-            if len(pool) >= 15:
-                break
-            if n not in pool_set:
-                add(n)
-
-    return sorted(pool)
 
 # ================= EXPANDED FEATURE EXTRACTION =================
 def compute_expanded_features(target_date, prior_sat):
@@ -317,33 +193,172 @@ def compute_expanded_features(target_date, prior_sat):
         'last_draw_nums': last_draw_nums
     }
 
-# ================= CACHE LAST 20 =================
-def precompute_cache_last20_expanded():
-    test_draws = no40_df.tail(20)
-    cache = []
-    for _, target_row in test_draws.iterrows():
-        target_date = target_row["Date_dt"]
-        real_nums = set(target_row["nums"])
-        prior_sat = sat_df[sat_df["Date_dt"] < target_date]
-        features = compute_expanded_features(target_date, prior_sat)
-        tiers = get_tiers_saturday_to_friday(target_date)
-        eligible = [n for n in range(1, 46) if dec(n) != "40s"]
-        cache.append({
-            'date': target_date,
-            'real_nums': real_nums,
-            'eligible': eligible,
-            'features': features,
-            'tiers': tiers,
-        })
-    return cache
+# ================= POOL BUILDER WITH TIER CAPS =================
+def build_pool_general_with_tiers(
+    base_score, gap, last_draw_nums, eligible,
+    caps, hot_count, medium_count, cold_count,
+    ld_cap, max_prev, max_run, odd_even_cap,
+    tier_of, tier_caps
+):
+    hot_sorted = sorted(eligible, key=base_score, reverse=True)
+    cold_sorted = sorted(eligible, key=lambda n: gap.get(n, 0), reverse=True)
 
-# ================= EVALUATE CONFIG WITH TIER CAPS =================
+    hot_picks = hot_sorted[:hot_count]
+    hot_set = set(hot_picks)
+
+    cold_picks = []
+    for n in cold_sorted:
+        if n in hot_set:
+            continue
+        cold_picks.append(n)
+        if len(cold_picks) == cold_count:
+            break
+
+    selected_set = hot_set | set(cold_picks)
+    medium_picks = []
+    for n in hot_sorted:
+        if n in selected_set:
+            continue
+        medium_picks.append(n)
+        if len(medium_picks) == medium_count:
+            break
+
+    priority = hot_picks + medium_picks + cold_picks
+
+    pool = []
+    pool_set = set()
+    decade_counts = Counter()
+    ld_counts = Counter()
+    prev_counts = Counter()
+    tier_counts = Counter()
+    odd_count = 0
+    even_count = 0
+
+    def run_len_if_add(n):
+        if max_run is None:
+            return 0
+        s = set(pool_set)
+        s.add(n)
+        left = n - 1
+        right = n + 1
+        run = 1
+        while left in s:
+            run += 1
+            left -= 1
+        while right in s:
+            run += 1
+            right += 1
+        return run
+
+    def can_add(n):
+        if n in pool_set:
+            return False
+        if n in last_draw_nums and prev_counts[n] >= max_prev:
+            return False
+        if n % 2 == 1 and odd_count >= odd_even_cap:
+            return False
+        if n % 2 == 0 and even_count >= odd_even_cap:
+            return False
+        if decade_counts[dec(n)] >= caps.get(dec(n), 4):
+            return False
+        if ld_counts[n % 10] >= ld_cap:
+            return False
+        if max_run is not None and run_len_if_add(n) > max_run:
+            return False
+
+        tier = tier_of(n)
+        if tier_counts[tier] >= tier_caps.get(tier, 99):
+            return False
+
+        return True
+
+    def add(n):
+        nonlocal odd_count, even_count
+        pool.append(n)
+        pool_set.add(n)
+        decade_counts[dec(n)] += 1
+        ld_counts[n % 10] += 1
+        tier_counts[tier_of(n)] += 1
+        if n % 2 == 1:
+            odd_count += 1
+        else:
+            even_count += 1
+        if n in last_draw_nums:
+            prev_counts[n] += 1
+
+    for n in priority:
+        if len(pool) >= 15:
+            break
+        if can_add(n):
+            add(n)
+
+    for n in hot_sorted:
+        if len(pool) >= 15:
+            break
+        if n in pool_set:
+            continue
+        if can_add(n):
+            add(n)
+
+    for n in cold_sorted:
+        if len(pool) >= 15:
+            break
+        if n in pool_set:
+            continue
+        if can_add(n):
+            add(n)
+
+    if len(pool) < 15:
+        for n in hot_sorted:
+            if len(pool) >= 15:
+                break
+            if n not in pool_set:
+                add(n)
+
+    return sorted(pool)
+
+# ================= BEST CONFIGURATION =================
+BEST_WEIGHTS = {
+    'freq5': 1.2532,
+    'freq10': -0.2386,
+    'freq20': 1.0384,
+    'freq50': 2.3986,
+    'freq100': -0.1908,
+    'gap': 0.1080,
+    'pos_score': -0.0095,
+    'cross_total_1w': -0.3296,
+    'cross_sfl_1w': 0.0729,
+    'cross_other_1w': -0.1047,
+    'cross_total_14d': -1.0839,
+    'cross_total_28d': 0.7758,
+    'freq_no40_10': 1.2269,
+    'freq_no40_20': 0.4492,
+    'freq_no40_50': 0.3940,
+    'gap_no40': 0.9103,
+    'last_digit_freq': -0.0609,
+    'decade_freq': -0.2836,
+    'tier_EH': -0.9942,
+    'tier_H': 0.5878,
+    'tier_W': 1.9972,
+    'tier_C': -1.2885,
+}
+
+BEST_CAPS = {'0s': 6, '10s': 3, '20s': 3, '30s': 3}
+BEST_OE = 8
+BEST_PREV = 1
+BEST_LD = 3
+BEST_RUN = 3
+BEST_HOT = 7
+BEST_MED = 4
+BEST_COLD = 6
+BEST_TIER_CAPS = {'EH': 2, 'H': 3, 'W': 7, 'C': 1}
+
+# ================= EVALUATE CONFIG =================
 def evaluate_config(cache, weights, caps, oe, prev, ld, run, hot, med, cold, tier_caps):
     six = 0
     five = 0
     four = 0
     high_draws = []
-    draw_pools = {}
 
     for entry in cache:
         f = entry['features']
@@ -396,353 +411,121 @@ def evaluate_config(cache, weights, caps, oe, prev, ld, run, hot, med, cold, tie
         if cov >= 4:
             four += 1
 
-        draw_pools[entry['date']] = pool
+    return six, five, four, high_draws
 
-    return six, five, four, high_draws, draw_pools
-
-# ================= HILL CLIMB =================
-def hill_climb(cache, init_weights, init_constraints, init_tier_caps, steps=300):
-    current_weights = init_weights.copy()
-    current_constraints = list(init_constraints)
-    current_tier_caps = init_tier_caps.copy()
-    current_six, current_five, current_four, _, _ = evaluate_config(
-        cache, current_weights, *current_constraints, current_tier_caps
-    )
-    current_fitness = (current_five, current_six, current_four)
-
-    best = {
-        'weights': current_weights.copy(),
-        'constraints': current_constraints.copy(),
-        'tier_caps': current_tier_caps.copy(),
-        'six': current_six,
-        'five': current_five,
-        'four': current_four,
-        'fitness': current_fitness,
-    }
-
-    cap_options = [
-        {'0s': 5, '10s': 4, '20s': 3, '30s': 3},
-        {'0s': 5, '10s': 4, '20s': 4, '30s': 2},
-        {'0s': 6, '10s': 4, '20s': 3, '30s': 2},
-        {'0s': 5, '10s': 5, '20s': 3, '30s': 2},
-        {'0s': 4, '10s': 5, '20s': 3, '30s': 3},
-        {'0s': 6, '10s': 3, '20s': 3, '30s': 3},
-    ]
-    tier_cap_options = {
-        'EH': [1, 2, 3],
-        'H': [2, 3, 4],
-        'W': [4, 5, 6, 7],
-        'C': [0, 1, 2]
-    }
-
-    for step in range(steps):
-        new_weights = current_weights.copy()
-        for key in new_weights:
-            if random.random() < 0.4:
-                new_weights[key] += random.uniform(-0.3, 0.3)
-
-        new_constraints = list(current_constraints)
-        if random.random() < 0.2:
-            new_constraints[0] = random.choice(cap_options)
-        if random.random() < 0.2:
-            new_constraints[1] = random.choice([7, 8, 9])
-        if random.random() < 0.2:
-            new_constraints[2] = random.choice([1, 2])
-        if random.random() < 0.2:
-            new_constraints[3] = random.choice([3, 4])
-        if random.random() < 0.2:
-            new_constraints[4] = random.choice([2, 3, None])
-        if random.random() < 0.2:
-            new_constraints[5] = random.choice([5, 6, 7, 8])
-        if random.random() < 0.2:
-            new_constraints[6] = random.choice([2, 3, 4])
-        if random.random() < 0.2:
-            new_constraints[7] = random.choice([4, 5, 6])
-
-        new_tier_caps = current_tier_caps.copy()
-        if random.random() < 0.3:
-            tier_key = random.choice(list(tier_cap_options.keys()))
-            new_tier_caps[tier_key] = random.choice(tier_cap_options[tier_key])
-
-        new_six, new_five, new_four, new_high, new_pools = evaluate_config(
-            cache, new_weights, *new_constraints, new_tier_caps
-        )
-        new_fitness = (new_five, new_six, new_four)
-
-        if new_fitness > current_fitness:
-            current_weights = new_weights
-            current_constraints = new_constraints
-            current_tier_caps = new_tier_caps
-            current_six, current_five, current_four = new_six, new_five, new_four
-            current_fitness = new_fitness
-
-            if new_fitness > best['fitness']:
-                best = {
-                    'weights': current_weights.copy(),
-                    'constraints': current_constraints.copy(),
-                    'tier_caps': current_tier_caps.copy(),
-                    'six': current_six,
-                    'five': current_five,
-                    'four': current_four,
-                    'fitness': current_fitness,
-                }
-
-    final_six, final_five, final_four, final_high, final_pools = evaluate_config(
-        cache, best['weights'], *best['constraints'], best['tier_caps']
-    )
-    best['high_draws'] = final_high
-    best['draw_pools'] = final_pools
-    return best
-
-# ================= GENETIC ALGORITHM WITH TIER CAPS =================
-def run_ga_tier_caps(pop_size=150, generations=150, mutation_rate=0.3, hill_steps=300):
-    print("Precomputing expanded features for last 20 no-40 draws...")
-    cache = precompute_cache_last20_expanded()
-    print(f"Cached {len(cache)} draws.\n")
-
-    weight_ranges = {
-        'freq5': (-1.0, 1.5),
-        'freq10': (-1.0, 1.5),
-        'freq20': (-1.0, 2.0),
-        'freq50': (-0.5, 2.5),
-        'freq100': (-1.0, 1.0),
-        'gap': (-0.5, 0.5),
-        'pos_score': (-0.05, 0.05),
-        'cross_total_1w': (-0.5, 1.0),
-        'cross_sfl_1w': (-0.5, 0.5),
-        'cross_other_1w': (-0.5, 0.5),
-        'cross_total_14d': (-1.0, 1.5),
-        'cross_total_28d': (-1.0, 1.5),
-        'freq_no40_10': (-1.0, 2.0),
-        'freq_no40_20': (-1.0, 2.0),
-        'freq_no40_50': (-0.5, 2.5),
-        'gap_no40': (-0.5, 1.0),
-        'last_digit_freq': (-0.5, 0.5),
-        'decade_freq': (-0.5, 0.5),
-        'tier_EH': (-2.0, 0.5),
-        'tier_H': (0.0, 2.0),
-        'tier_W': (0.0, 2.0),
-        'tier_C': (-2.0, 0.5),
-    }
-
-    cap_options = [
-        {'0s': 5, '10s': 4, '20s': 3, '30s': 3},
-        {'0s': 5, '10s': 4, '20s': 4, '30s': 2},
-        {'0s': 6, '10s': 4, '20s': 3, '30s': 2},
-        {'0s': 5, '10s': 5, '20s': 3, '30s': 2},
-        {'0s': 4, '10s': 5, '20s': 3, '30s': 3},
-        {'0s': 6, '10s': 3, '20s': 3, '30s': 3},
-    ]
-    oe_options = [7, 8, 9]
-    prev_options = [1, 2]
-    ld_options = [3, 4]
-    run_options = [2, 3, None]
-    hot_options = [5, 6, 7, 8]
-    med_options = [2, 3, 4]
-    cold_options = [4, 5, 6]
-    tier_cap_options = {
-        'EH': [1, 2, 3],
-        'H': [2, 3, 4],
-        'W': [4, 5, 6, 7],
-        'C': [0, 1, 2]
-    }
-
-    # Seed from latest best 5+ config
-    seed_weights = {
-        'freq5': -0.3514,
-        'freq10': -0.7094,
-        'freq20': 1.0384,
-        'freq50': 1.6005,
-        'freq100': 0.0156,
-        'gap': -0.1976,
-        'pos_score': 0.0704,
-        'cross_total_1w': -0.3296,
-        'cross_sfl_1w': -0.1901,
-        'cross_other_1w': -0.6520,
-        'cross_total_14d': -0.8843,
-        'cross_total_28d': 1.4363,
-        'freq_no40_10': 1.7386,
-        'freq_no40_20': 1.6522,
-        'freq_no40_50': 0.2767,
-        'gap_no40': 0.5477,
-        'last_digit_freq': -0.0609,
-        'decade_freq': -0.1674,
-        'tier_EH': -1.6344,
-        'tier_H': 1.5291,
-        'tier_W': 1.9156,
-        'tier_C': -1.0881,
-    }
-    seed_constraints = [
-        {'0s': 4, '10s': 5, '20s': 3, '30s': 3},
-        8, 1, 4, None, 7, 4, 6
-    ]
-    seed_tier_caps = {'EH': 2, 'H': 3, 'W': 6, 'C': 1}
-
-    population = [
-        {
-            'weights': seed_weights.copy(),
-            'caps': seed_constraints[0].copy(),
-            'oe': seed_constraints[1],
-            'prev': seed_constraints[2],
-            'ld': seed_constraints[3],
-            'run': seed_constraints[4],
-            'hot': seed_constraints[5],
-            'med': seed_constraints[6],
-            'cold': seed_constraints[7],
-            'tier_caps': seed_tier_caps.copy(),
-        }
-    ]
-    while len(population) < pop_size:
-        population.append({
-            'weights': {k: random.uniform(v[0], v[1]) for k, v in weight_ranges.items()},
-            'caps': random.choice(cap_options),
-            'oe': random.choice(oe_options),
-            'prev': random.choice(prev_options),
-            'ld': random.choice(ld_options),
-            'run': random.choice(run_options),
-            'hot': random.choice(hot_options),
-            'med': random.choice(med_options),
-            'cold': random.choice(cold_options),
-            'tier_caps': {k: random.choice(v) for k, v in tier_cap_options.items()},
+# ================= BACKTEST MODE =================
+def run_backtest():
+    print("Precomputing features for last 20 no-40 draws...")
+    test_draws = no40_df.tail(20)
+    cache = []
+    for _, target_row in test_draws.iterrows():
+        target_date = target_row["Date_dt"]
+        real_nums = set(target_row["nums"])
+        prior_sat = sat_df[sat_df["Date_dt"] < target_date]
+        features = compute_expanded_features(target_date, prior_sat)
+        tiers = get_tiers_saturday_to_friday(target_date)
+        eligible = [n for n in range(1, 46) if dec(n) != "40s"]
+        cache.append({
+            'date': target_date,
+            'real_nums': real_nums,
+            'eligible': eligible,
+            'features': features,
+            'tiers': tiers,
         })
+        print(f"  cached {len(cache)}: {pd.to_datetime(target_date).strftime('%d-%b-%Y')}")
 
-    best_ind = None
-    best_fitness = (-1, -1, -1)  # (five, six, four)
-    best_high = []
-    best_pools = {}
+    print("\nEvaluating best configuration...")
+    six, five, four, high_draws = evaluate_config(
+        cache, BEST_WEIGHTS, BEST_CAPS, BEST_OE, BEST_PREV, BEST_LD,
+        BEST_RUN, BEST_HOT, BEST_MED, BEST_COLD, BEST_TIER_CAPS
+    )
 
-    start_time = time.time()
+    print("\n" + "=" * 70)
+    print("BACKTEST RESULT (LAST 20 NO-40 DRAWS)")
+    print("=" * 70)
+    print(f"5+ traps : {five}/20")
+    print(f"6/6 traps: {six}/20")
+    print(f"4+ traps : {four}/20")
 
-    for gen in range(generations):
-        fitnesses = []
-        for ind in population:
-            six, five, four, high, pools = evaluate_config(
-                cache,
-                ind['weights'],
-                ind['caps'],
-                ind['oe'],
-                ind['prev'],
-                ind['ld'],
-                ind['run'],
-                ind['hot'],
-                ind['med'],
-                ind['cold'],
-                ind['tier_caps']
-            )
-            fitness = (five, six, four)
-            fitnesses.append((fitness, high, pools, ind))
-
-        for fitness, high, pools, ind in fitnesses:
-            if fitness > best_fitness:
-                best_fitness = fitness
-                best_ind = ind.copy()
-                best_high = high
-                best_pools = pools
-
-        fitnesses.sort(key=lambda x: x[0], reverse=True)
-
-        if gen % 10 == 0 or gen == generations - 1:
-            elapsed = time.time() - start_time
-            print(f"Gen {gen:3d}/{generations} | best 5+={best_fitness[0]}, 6/6={best_fitness[1]}, 4+={best_fitness[2]} | elapsed={elapsed:.1f}s")
-
-        new_population = []
-        elite_count = max(5, pop_size // 20)
-        for i in range(elite_count):
-            new_population.append(fitnesses[i][3].copy())
-
-        while len(new_population) < pop_size:
-            def tournament(k=5):
-                selected = random.sample(fitnesses, k)
-                selected.sort(key=lambda x: x[0], reverse=True)
-                return selected[0][3].copy()
-
-            p1 = tournament()
-            p2 = tournament()
-
-            child = {
-                'weights': {},
-                'caps': p1['caps'] if random.random() < 0.5 else p2['caps'],
-                'oe': p1['oe'] if random.random() < 0.5 else p2['oe'],
-                'prev': p1['prev'] if random.random() < 0.5 else p2['prev'],
-                'ld': p1['ld'] if random.random() < 0.5 else p2['ld'],
-                'run': p1['run'] if random.random() < 0.5 else p2['run'],
-                'hot': p1['hot'] if random.random() < 0.5 else p2['hot'],
-                'med': p1['med'] if random.random() < 0.5 else p2['med'],
-                'cold': p1['cold'] if random.random() < 0.5 else p2['cold'],
-                'tier_caps': {},
-            }
-            for key in weight_ranges:
-                if random.random() < 0.5:
-                    child['weights'][key] = p1['weights'][key]
-                else:
-                    child['weights'][key] = p2['weights'][key]
-            for key in tier_cap_options:
-                if random.random() < 0.5:
-                    child['tier_caps'][key] = p1['tier_caps'][key]
-                else:
-                    child['tier_caps'][key] = p2['tier_caps'][key]
-
-            if random.random() < mutation_rate:
-                for key in child['weights']:
-                    if random.random() < 0.2:
-                        child['weights'][key] += random.uniform(-0.3, 0.3)
-            if random.random() < 0.1:
-                child['caps'] = random.choice(cap_options)
-            if random.random() < 0.1:
-                child['oe'] = random.choice(oe_options)
-            if random.random() < 0.1:
-                child['prev'] = random.choice(prev_options)
-            if random.random() < 0.1:
-                child['ld'] = random.choice(ld_options)
-            if random.random() < 0.1:
-                child['run'] = random.choice(run_options)
-            if random.random() < 0.1:
-                child['hot'] = random.choice(hot_options)
-            if random.random() < 0.1:
-                child['med'] = random.choice(med_options)
-            if random.random() < 0.1:
-                child['cold'] = random.choice(cold_options)
-            if random.random() < 0.2:
-                key = random.choice(list(tier_cap_options.keys()))
-                child['tier_caps'][key] = random.choice(tier_cap_options[key])
-
-            new_population.append(child)
-
-        population = new_population
-
-    # Final hill climb
-    print(f"\nGA complete. Best before hill climb: 5+={best_fitness[0]}, 6/6={best_fitness[1]}, 4+={best_fitness[2]}")
-    constraints = [
-        best_ind['caps'], best_ind['oe'], best_ind['prev'], best_ind['ld'],
-        best_ind['run'], best_ind['hot'], best_ind['med'], best_ind['cold']
-    ]
-    hill_result = hill_climb(cache, best_ind['weights'], constraints, best_ind['tier_caps'], steps=hill_steps)
-
-    print("\n" + "=" * 90)
-    print("FINAL BEST AFTER TIER-CAPPED GA + HILL CLIMB")
-    print("=" * 90)
-    print(f"5+ traps : {hill_result['five']}/20")
-    print(f"6/6 traps: {hill_result['six']}/20")
-    print(f"4+ traps : {hill_result['four']}/20")
-    print("\nWeights:")
-    for k, v in hill_result['weights'].items():
-        print(f"  {k}: {v:.4f}")
-    print("\nConstraints:")
-    c = hill_result['constraints']
-    print(f"  caps={c[0]}")
-    print(f"  odd_even_cap={c[1]}")
-    print(f"  max_prev={c[2]}")
-    print(f"  ld_cap={c[3]}")
-    print(f"  max_run={c[4]}")
-    print(f"  hot_count={c[5]}")
-    print(f"  medium_count={c[6]}")
-    print(f"  cold_count={c[7]}")
-    print(f"  tier_caps={hill_result['tier_caps']}")
-
-    if hill_result['high_draws']:
+    if high_draws:
         print("\nHigh-capture draws (5+):")
-        for date, cap, pool in hill_result['high_draws']:
+        for date, cap, pool in high_draws:
             print(f"  {pd.to_datetime(date).strftime('%d-%b-%Y')}: {len(cap)}/6 -> {cap} | pool={pool}")
 
+# ================= PREDICTION MODE =================
+def predict_for_date(date_str):
+    target_date = pd.to_datetime(date_str, format="%a %d-%b-%Y")
+    print(f"Generating pool for {target_date.strftime('%d-%b-%Y')}...\n")
+
+    prior_sat = sat_df[sat_df["Date_dt"] < target_date]
+    if prior_sat.empty:
+        print("No prior Saturday data available.")
+        return
+
+    features = compute_expanded_features(target_date, prior_sat)
+    tiers = get_tiers_saturday_to_friday(target_date)
+    if tiers is None:
+        print("Could not compute tiers for this date.")
+        return
+
+    eligible = [n for n in range(1, 46) if dec(n) != "40s"]
+
+    def tier_of(n):
+        if n in tiers[0]: return 'EH'
+        if n in tiers[1]: return 'H'
+        if n in tiers[2]: return 'W'
+        return 'C'
+
+    def score(n):
+        w = BEST_WEIGHTS
+        f = features
+        t = tiers
+        return (
+            w['freq5'] * f['freq5'].get(n, 0)
+            + w['freq10'] * f['freq10'].get(n, 0)
+            + w['freq20'] * f['freq20'].get(n, 0)
+            + w['freq50'] * f['freq50'].get(n, 0)
+            + w['freq100'] * f['freq100'].get(n, 0)
+            + w['gap'] * f['gap'].get(n, 0)
+            + w['pos_score'] * f['pos_score'].get(n, 0)
+            + w['cross_total_1w'] * f['cross_total_1w'].get(n, 0)
+            + w['cross_sfl_1w'] * f['cross_sfl_1w'].get(n, 0)
+            + w['cross_other_1w'] * f['cross_other_1w'].get(n, 0)
+            + w['cross_total_14d'] * f['cross_total_14d'].get(n, 0)
+            + w['cross_total_28d'] * f['cross_total_28d'].get(n, 0)
+            + w['freq_no40_10'] * f['freq_no40_10'].get(n, 0)
+            + w['freq_no40_20'] * f['freq_no40_20'].get(n, 0)
+            + w['freq_no40_50'] * f['freq_no40_50'].get(n, 0)
+            + w['gap_no40'] * f['gap_no40'].get(n, 0)
+            + w['last_digit_freq'] * f['last_digit_freq'].get(n % 10, 0)
+            + w['decade_freq'] * f['decade_freq'].get(dec(n), 0)
+            + (w['tier_EH'] if n in t[0] else 0)
+            + (w['tier_H'] if n in t[1] else 0)
+            + (w['tier_W'] if n in t[2] else 0)
+            + (w['tier_C'] if n in t[3] else 0)
+        )
+
+    pool = build_pool_general_with_tiers(
+        score, features['gap'], features['last_draw_nums'], eligible,
+        BEST_CAPS, BEST_HOT, BEST_MED, BEST_COLD,
+        BEST_LD, BEST_PREV, BEST_RUN, BEST_OE,
+        tier_of, BEST_TIER_CAPS
+    )
+
+    print("Predicted 15-number pool:")
+    print(pool)
+
+    # Show tier breakdown
+    tier_counts = Counter()
+    for n in pool:
+        tier_counts[tier_of(n)] += 1
+    print(f"\nTier breakdown: EH={tier_counts['EH']}, H={tier_counts['H']}, W={tier_counts['W']}, C={tier_counts['C']}")
+
+# ================= MAIN =================
 if __name__ == "__main__":
-    run_ga_tier_caps(pop_size=150, generations=150, mutation_rate=0.3, hill_steps=300)
+    if MODE == "backtest":
+        run_backtest()
+    elif MODE == "predict":
+        predict_for_date(PREDICT_DATE)
+    else:
+        print("Invalid MODE. Use 'backtest' or 'predict'.")

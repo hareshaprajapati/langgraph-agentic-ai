@@ -3,7 +3,7 @@ from collections import Counter
 from datetime import datetime
 
 CSV_FILE = "cross_lotto_data_backup.csv"
-OUTPUT_LAST_N = 60
+OUTPUT_LAST_N = 60*60
 
 def parse_date(s):
     return datetime.strptime(s[4:], '%d-%b-%Y')
