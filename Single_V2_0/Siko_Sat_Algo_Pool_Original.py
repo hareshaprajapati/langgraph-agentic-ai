@@ -215,6 +215,7 @@ def build_pool_general_with_tiers(
             break
 
     selected_set = hot_set | set(cold_picks)
+
     medium_picks = []
     for n in hot_sorted:
         if n in selected_set:
@@ -229,10 +230,12 @@ def build_pool_general_with_tiers(
     pool_set = set()
     decade_counts = Counter()
     ld_counts = Counter()
-    prev_counts = Counter()
     tier_counts = Counter()
     odd_count = 0
     even_count = 0
+
+    # FIX: use a scalar counter for previous-draw numbers
+    prev_total = 0
 
     def run_len_if_add(n):
         if max_run is None:
@@ -251,10 +254,15 @@ def build_pool_general_with_tiers(
         return run
 
     def can_add(n):
+        nonlocal prev_total
+
         if n in pool_set:
             return False
-        if n in last_draw_nums and prev_counts[n] >= max_prev:
+
+        # FIX: enforce total previous-draw limit
+        if n in last_draw_nums and prev_total >= max_prev:
             return False
+
         if n % 2 == 1 and odd_count >= odd_even_cap:
             return False
         if n % 2 == 0 and even_count >= odd_even_cap:
@@ -273,18 +281,22 @@ def build_pool_general_with_tiers(
         return True
 
     def add(n):
-        nonlocal odd_count, even_count
+        nonlocal odd_count, even_count, prev_total
+
         pool.append(n)
         pool_set.add(n)
         decade_counts[dec(n)] += 1
         ld_counts[n % 10] += 1
         tier_counts[tier_of(n)] += 1
+
         if n % 2 == 1:
             odd_count += 1
         else:
             even_count += 1
+
+        # FIX: increment total previous-draw count
         if n in last_draw_nums:
-            prev_counts[n] += 1
+            prev_total += 1
 
     for n in priority:
         if len(pool) >= 15:
@@ -316,6 +328,7 @@ def build_pool_general_with_tiers(
                 add(n)
 
     return sorted(pool)
+
 
 # ================= BEST CONFIGURATION =================
 BEST_WEIGHTS = {

@@ -13,17 +13,17 @@ from sklearn.pipeline import make_pipeline
 CSV_FILE = "cross_lotto_data_backup.csv"
 
 RUN_BACKTEST = False          # True = run backtest, False = future prediction
-
-TARGET_DATE = "2026-08-15"   # Used only if RUN_BACKTEST = False
+TOTAL_BACKTEST_DRAWS = 5
+TARGET_DATE = "2026-08-22"   # Used only if RUN_BACKTEST = False
 
 # Option A: provide EH/H/W/C pools directly (total should be 15)
-EH = [33]   # e.g., [1, 4, 6, 7, 8, 11]
-H  = [ 2, ]   # e.g., [2, 5, 9, 12, 15]
-W  = [14, 17, 18, 19, 25, 31, 34, 38, 39]   # e.g., [3, 10, 13, 17, 20]
-C  = [13]   # e.g., [14]
+EH = [28, 33]   # e.g., [1, 4, 6, 7, 8, 11]
+H  = [4, 13, 29]   # e.g., [2, 5, 9, 12, 15]
+W  = [1, 3, 10, 14, 17, 20, 30, 32, 34]   # e.g., [3, 10, 13, 17, 20]
+C  = [8]   # e.g., [14]
 
 # Option B: provide a single 15-number pool list
-POOL = []
+POOL = [1, 3, 4, 8, 10, 13, 14, 17, 20, 28, 29, 30, 32, 33, 34]
 
 TOTAL = 50
 kill_list = ["40s"]
@@ -376,7 +376,7 @@ def run_backtest():
         if any(dec(n) == "40s" for n in row["nums"]):
             continue
         test_draws.append(row)
-        if len(test_draws) == 20:
+        if len(test_draws) == TOTAL_BACKTEST_DRAWS:
             break
 
     test_draws.reverse()
@@ -520,8 +520,10 @@ if __name__ == "__main__":
         run_backtest()
     else:
         if EH and H and W :
+            print("using EH/H/W")
             predict_future(TARGET_DATE, eh_list=EH, h_list=H, w_list=W, c_list=C)
         elif POOL:
+            print("using pool")
             predict_future(TARGET_DATE, pool_list=POOL)
         else:
             print("Please provide EH/H/W/C or POOL.")

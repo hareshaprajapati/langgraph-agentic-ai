@@ -25,18 +25,16 @@ DRAW_RE = re.compile(r"^Draw\s+[\d,]+$")
 def parse_date_line(s: str) -> datetime:
     return datetime.strptime(s.strip(), "%A %d %B %Y")
 
+def parse_csv_date(s: str) -> datetime:
+    return datetime.strptime(s.strip(), "%a %d-%b-%Y")
+
 def fetch_page(url: str) -> str:
     r = requests.get(url, headers=UA, timeout=TIMEOUT)
     r.raise_for_status()
     return r.text
 
-def parse_year_archive(year: int):
-    """
-    Fetch and parse a Saturday Lotto archive page.
-    Returns list of tuples: (datetime, main_numbers_list)
-    """
+def parse_year_archive(year: int, latest_date=None):
     url = f"https://au.lottonumbers.com/saturday-lotto/results/{year}-archive"
-
     try:
         html = fetch_page(url)
     except Exception as e:
@@ -48,20 +46,21 @@ def parse_year_archive(year: int):
 
     results = []
     i = 0
-
     while i < len(lines):
         if DRAW_RE.match(lines[i]):
             j = i + 1
             while j < len(lines) and not DATE_LINE_RE.match(lines[j]):
                 j += 1
-
             if j >= len(lines):
                 i += 1
                 continue
 
             dt = parse_date_line(lines[j])
+            # Skip draws already in CSV
+            if latest_date is not None and dt <= latest_date:
+                i = j + 1
+                continue
 
-            # Saturday Lotto: 6 main numbers + 2 supplementary = 8 numbers
             nums = []
             k = j + 1
             while k < len(lines) and len(nums) < 8:
@@ -79,51 +78,69 @@ def parse_year_archive(year: int):
 
     return results
 
-# ---------- Fetch all years ----------
+# ---------- Read existing CSV ----------
+existing_draws = {}
+latest_date = None
+
+if os.path.exists(OUTPUT_CSV):
+    with open(OUTPUT_CSV, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        for row in reader:
+            if len(row) >= 2:
+                date_str = row[0]
+                main_str = row[1]
+                try:
+                    dt = parse_csv_date(date_str)
+                    main = [int(x) for x in main_str.split(",") if x]
+                    existing_draws[dt] = main
+                    if latest_date is None or dt > latest_date:
+                        latest_date = dt
+                except Exception:
+                    pass
+
+print(f"Loaded {len(existing_draws)} existing draws. Latest date: {latest_date.strftime('%d-%b-%Y') if latest_date else 'None'}")
+
+# ---------- Fetch only newer draws ----------
 current_year = datetime.now().year
-all_draws = []
+start_year = START_YEAR if latest_date is None else latest_date.year
 
-print(f"Fetching Saturday Lotto history from {START_YEAR} to {current_year} using archive pages...\n")
+print(f"Fetching from year {start_year} to {current_year} (only new draws)...\n")
 
-for year in range(current_year, START_YEAR - 1, -1):
+new_draws = []
+for year in range(current_year, start_year - 1, -1):
     print(f"Fetching {year}...")
-    year_draws = parse_year_archive(year)
-
+    year_draws = parse_year_archive(year, latest_date)
     if year_draws:
-        print(f"  Found {len(year_draws)} draws")
-        all_draws.extend(year_draws)
+        print(f"  Found {len(year_draws)} new draws")
+        new_draws.extend(year_draws)
     else:
-        print(f"  No draws found for {year}")
-
+        print(f"  No new draws found for {year}")
     time.sleep(0.5)
 
-# ---------- Sort and deduplicate by date ----------
-all_draws.sort(key=lambda x: x[0])
+# ---------- Merge, deduplicate, sort descending ----------
+all_draws = dict(existing_draws)
+for dt, main in new_draws:
+    if dt not in all_draws:
+        all_draws[dt] = main
 
-deduped = {}
-for dt, main in all_draws:
-    if dt not in deduped:
-        deduped[dt] = main
+all_draws_sorted = sorted(all_draws.items(), key=lambda x: x[0], reverse=True)
 
-all_draws = sorted(deduped.items(), key=lambda x: x[0])
-
-print(f"\nTotal unique Saturday Lotto draws fetched: {len(all_draws)}")
-
-if not all_draws:
+print(f"\nTotal unique draws after update: {len(all_draws_sorted)}")
+if not all_draws_sorted:
     print("No draws found. Exiting.")
     exit(0)
 
-print(f"Date range: {all_draws[0][0].strftime('%d-%b-%Y')} to "
-      f"{all_draws[-1][0].strftime('%d-%b-%Y')}")
+print(f"Date range: {all_draws_sorted[-1][0].strftime('%d-%b-%Y')} (oldest) to "
+      f"{all_draws_sorted[0][0].strftime('%d-%b-%Y')} (newest)")
 
-# ---------- Save to CSV ----------
+# ---------- Write CSV (newest first) ----------
 with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
     writer.writerow(["Date", "Main"])
-
-    for dt, main in all_draws:
+    for dt, main in all_draws_sorted:
         date_str = dt.strftime("%a %d-%b-%Y")
         main_str = ",".join(str(n) for n in main)
         writer.writerow([date_str, main_str])
 
-print(f"\n✅ Saved {len(all_draws)} draws to: {os.path.abspath(OUTPUT_CSV)}")
+print(f"\n✅ Saved {len(all_draws_sorted)} draws to: {os.path.abspath(OUTPUT_CSV)}")
