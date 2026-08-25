@@ -3,6 +3,8 @@ from collections import Counter
 
 # ================= CONFIGURATION =================
 MODE = "backtest"          # "backtest" or "predict"
+NO_OF_BACKTEST_DRAWS = 10
+POOL_SIZE=15
 PREDICT_DATE = "Sat 22-Aug-2026"   # used only if MODE = "predict" 22-Aug-2026
 
 SATURDAY_FILE = "Saturday_data.csv"
@@ -299,13 +301,13 @@ def build_pool_general_with_tiers(
             prev_total += 1
 
     for n in priority:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if can_add(n):
             add(n)
 
     for n in hot_sorted:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if n in pool_set:
             continue
@@ -313,16 +315,16 @@ def build_pool_general_with_tiers(
             add(n)
 
     for n in cold_sorted:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if n in pool_set:
             continue
         if can_add(n):
             add(n)
 
-    if len(pool) < 15:
+    if len(pool) < POOL_SIZE:
         for n in hot_sorted:
-            if len(pool) >= 15:
+            if len(pool) >= POOL_SIZE:
                 break
             if n not in pool_set:
                 add(n)
@@ -438,8 +440,8 @@ def evaluate_config(cache, weights, caps, oe, prev, ld, run, hot, med, cold, tie
 
 # ================= BACKTEST MODE =================
 def run_backtest():
-    print("Precomputing features for last 20 no-40 draws...")
-    test_draws = no40_df.tail(20)
+    print(f"Precomputing features for last {NO_OF_BACKTEST_DRAWS} no-40 draws...")
+    test_draws = no40_df.tail(NO_OF_BACKTEST_DRAWS)
     cache = []
     for _, target_row in test_draws.iterrows():
         target_date = target_row["Date_dt"]
@@ -464,11 +466,11 @@ def run_backtest():
     )
 
     print("\n" + "=" * 70)
-    print("BACKTEST RESULT (LAST 20 NO-40 DRAWS)")
+    print(f"BACKTEST RESULT (LAST {NO_OF_BACKTEST_DRAWS} NO-40 DRAWS)")
     print("=" * 70)
-    print(f"5+ traps : {five}/20")
-    print(f"6/6 traps: {six}/20")
-    print(f"4+ traps : {four}/20")
+    print(f"5+ traps : {five}/{NO_OF_BACKTEST_DRAWS}")
+    print(f"6/6 traps: {six}/{NO_OF_BACKTEST_DRAWS}")
+    print(f"4+ traps : {four}/{NO_OF_BACKTEST_DRAWS}")
 
     # ---- NEW: print every draw ----
     print("\nAll draws (captured numbers and pool):")
@@ -544,7 +546,7 @@ def predict_for_date(date_str):
         tier_of, BEST_TIER_CAPS
     )
 
-    print("Predicted 15-number pool:")
+    print(f"Predicted {POOL_SIZE}-number pool:")
     print(pool)
 
     # Show tier breakdown

@@ -3,6 +3,8 @@ from collections import Counter
 
 # ================= CONFIGURATION =================
 MODE = "backtest"          # "backtest" or "predict"
+NO_OF_BACKTEST_DRAWS = 10
+POOL_SIZE=15
 PREDICT_DATE = "Sat 22-Aug-2026"   # used only if MODE = "predict"
 
 SATURDAY_FILE = "Saturday_data.csv"
@@ -358,13 +360,13 @@ def build_pool_from_score(score_func, f, t, last_draw_nums, caps, max_prev):
             prev_total += 1
 
     for n in priority:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if can_add(n):
             add(n)
 
     for n in hot_sorted:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if n in pool_set:
             continue
@@ -372,16 +374,16 @@ def build_pool_from_score(score_func, f, t, last_draw_nums, caps, max_prev):
             add(n)
 
     for n in cold_sorted:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if n in pool_set:
             continue
         if can_add(n):
             add(n)
 
-    if len(pool) < 15:
+    if len(pool) < POOL_SIZE:
         for n in hot_sorted:
-            if len(pool) >= 15:
+            if len(pool) >= POOL_SIZE:
                 break
             if n not in pool_set:
                 add(n)
@@ -477,13 +479,13 @@ def build_pool_original_buggy(f, t, last_draw_nums):
             prev_counts[n] += 1
 
     for n in priority:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if can_add(n):
             add(n)
 
     for n in hot_sorted:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if n in pool_set:
             continue
@@ -491,16 +493,16 @@ def build_pool_original_buggy(f, t, last_draw_nums):
             add(n)
 
     for n in cold_sorted:
-        if len(pool) >= 15:
+        if len(pool) >= POOL_SIZE:
             break
         if n in pool_set:
             continue
         if can_add(n):
             add(n)
 
-    if len(pool) < 15:
+    if len(pool) < POOL_SIZE:
         for n in hot_sorted:
-            if len(pool) >= 15:
+            if len(pool) >= POOL_SIZE:
                 break
             if n not in pool_set and can_add(n):
                 add(n)
@@ -567,7 +569,7 @@ def precompute_cache():
     return cache
 
 # ================= BACKTEST MODE =================
-def run_backtest(n_test=20):
+def run_backtest(n_test=NO_OF_BACKTEST_DRAWS):
     cache = precompute_cache()
     target_cache = cache[-n_test:]
 
@@ -601,10 +603,10 @@ def run_backtest(n_test=20):
             total_four += 1
 
         print(f"Target {idx:2d}/{n_test}: {pd.to_datetime(date).strftime('%d-%b-%Y')} | "
-              f"{cov}/6 -> {sorted(captured)} | pool={pool}")
+              f"{cov}/6 -> real winner {real} | captured {sorted(captured)} | pool={pool}")
 
     avg_cov = total_cov / n_test
-    random_exp = 15 * 6 / 39
+    random_exp = POOL_SIZE * 6 / 39
 
     print("\n" + "=" * 90)
     print(f"3-LEGACY VOTE BACKTEST RESULT (LAST {n_test} NO-40 DRAWS)")
@@ -639,7 +641,7 @@ def predict_for_date(date_str):
     last_draw = features['last_draw_nums']
     pool = build_3_legacy_vote_pool(features, tiers, last_draw)
 
-    print("Predicted 15-number pool:")
+    print(f"Predicted {POOL_SIZE}-number pool:")
     print(pool)
 
     # Tier breakdown
@@ -651,7 +653,7 @@ def predict_for_date(date_str):
 # ================= MAIN =================
 if __name__ == "__main__":
     if MODE == "backtest":
-        run_backtest(20)          # change to 5 for last 5 draws
+        run_backtest(NO_OF_BACKTEST_DRAWS)          # change to 5 for last 5 draws
     elif MODE == "predict":
         predict_for_date(PREDICT_DATE)
     else:

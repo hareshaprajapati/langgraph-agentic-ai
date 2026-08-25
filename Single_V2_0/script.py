@@ -1,12 +1,19 @@
 import pandas as pd
 from collections import Counter
+import random
+import numpy as np
 
-# ================= CONFIG =================
-MODE = "predict"
+# ================= CONFIGURATION =================
+MODE = "backtest"
 PREDICT_DATE = "Sat 22-Aug-2026"
 
 SATURDAY_FILE = "Saturday_data.csv"
 CROSS_FILE = "cross_lotto_data_backup.csv"
+
+TRAIN_WINDOW = 30          # previous no-40 draws used for training each target
+TEST_N_DRAWS = 60          # evaluate last 60 no-40 draws
+SEARCH_ITERATIONS = 150    # random search iterations per target
+RANDOM_SEED = 42
 
 # ================= HELPERS =================
 def dec(n):
@@ -92,10 +99,10 @@ def compute_expanded_features(target_date, prior_sat):
         sorted_nums = sorted(row["nums"])
         for pos, n in enumerate(sorted_nums, 1):
             pos_counts[pos][n] += 1
-    position_score = Counter()
+    pos_score = Counter()
     for pos in pos_counts:
         for n, c in pos_counts[pos].items():
-            position_score[n] += c
+            pos_score[n] += c
 
     cross_total_1w = Counter()
     cross_sfl_1w = Counter()
@@ -140,9 +147,19 @@ def compute_expanded_features(target_date, prior_sat):
                 cross_total_28d[n] += 1
 
     no40_prior = no40_df[no40_df["Date_dt"] < target_date]
+    freq_no40_3 = Counter()
+    freq_no40_5 = Counter()
+    freq_no40_7 = Counter()
     freq_no40_10 = Counter()
     freq_no40_20 = Counter()
     freq_no40_50 = Counter()
+
+    for nums in no40_prior.tail(3)['nums']:
+        freq_no40_3.update(nums)
+    for nums in no40_prior.tail(5)['nums']:
+        freq_no40_5.update(nums)
+    for nums in no40_prior.tail(7)['nums']:
+        freq_no40_7.update(nums)
     for nums in no40_prior.tail(10)['nums']:
         freq_no40_10.update(nums)
     for nums in no40_prior.tail(20)['nums']:
@@ -175,12 +192,15 @@ def compute_expanded_features(target_date, prior_sat):
     return {
         'freq5': freq[5], 'freq10': freq[10], 'freq20': freq[20],
         'freq50': freq[50], 'freq100': freq[100],
-        'gap': gap, 'pos_score': position_score,
+        'gap': gap, 'pos_score': pos_score,
         'cross_total_1w': cross_total_1w,
         'cross_sfl_1w': cross_sfl_1w,
         'cross_other_1w': cross_other_1w,
         'cross_total_14d': cross_total_14d,
         'cross_total_28d': cross_total_28d,
+        'freq_no40_3': freq_no40_3,
+        'freq_no40_5': freq_no40_5,
+        'freq_no40_7': freq_no40_7,
         'freq_no40_10': freq_no40_10,
         'freq_no40_20': freq_no40_20,
         'freq_no40_50': freq_no40_50,
@@ -190,15 +210,121 @@ def compute_expanded_features(target_date, prior_sat):
         'last_draw_nums': last_draw_nums
     }
 
+# ================= BASE WEIGHTS =================
+BASE_WEIGHTS = {
+    'freq5': 1.2532,
+    'freq10': -0.2386,
+    'freq20': 1.0384,
+    'freq50': 2.3986,
+    'freq100': -0.1908,
+    'gap': 0.1080,
+    'pos_score': -0.0095,
+    'cross_total_1w': -0.3296,
+    'cross_sfl_1w': 0.0729,
+    'cross_other_1w': -0.1047,
+    'cross_total_14d': -1.0839,
+    'cross_total_28d': 0.7758,
+    'freq_no40_3': 0.0,
+    'freq_no40_5': 0.0,
+    'freq_no40_7': 0.0,
+    'freq_no40_10': 1.2269,
+    'freq_no40_20': 0.4492,
+    'freq_no40_50': 0.3940,
+    'gap_no40': 0.9103,
+    'last_digit_freq': -0.0609,
+    'decade_freq': -0.2836,
+    'tier_EH': -0.9942,
+    'tier_H': 0.5878,
+    'tier_W': 1.9972,
+    'tier_C': -1.2885,
+}
+
+# ================= PARAMETER SPACE =================
+# candidate decade cap variants
+DECADE_CAP_OPTIONS = [
+    {'0s': 6, '10s': 3, '20s': 3, '30s': 3},
+    {'0s': 6, '10s': 4, '20s': 4, '30s': 3},
+    {'0s': 5, '10s': 4, '20s': 4, '30s': 3},
+    {'0s': 7, '10s': 3, '20s': 3, '30s': 3},
+]
+
+def random_params():
+    return {
+        'mult_freq_no40_10': random.uniform(0.5, 3.5),
+        'mult_freq_no40_20': random.uniform(0.2, 2.5),
+        'mult_gap_no40': random.uniform(-2.0, 2.0),
+        'mult_cross_14d': random.uniform(-2.0, 0.5),
+        'eh_cap': random.choice([2, 3]),
+        'h_cap': random.choice([2, 3]),
+        'w_cap': random.choice([6, 7]),
+        'decade_caps': random.choice(DECADE_CAP_OPTIONS),
+        'max_prev': random.choice([1, 2]),
+    }
+
+# ================= SCORE FUNCTION =================
+def tier_of(n, t):
+    if n in t[0]:
+        return 'EH'
+    if n in t[1]:
+        return 'H'
+    if n in t[2]:
+        return 'W'
+    return 'C'
+
+def build_weighted_score(f, t, params):
+    weights = BASE_WEIGHTS.copy()
+
+    # Apply learned multipliers
+    weights['freq_no40_10'] = params['mult_freq_no40_10']
+    weights['freq_no40_20'] = params['mult_freq_no40_20']
+    weights['gap_no40'] = params['mult_gap_no40']
+    weights['cross_total_14d'] = params['mult_cross_14d']
+
+    # Keep freq_no40_3/5/7 from base (zero)
+    def score(n):
+        return (
+            weights['freq5'] * f['freq5'].get(n, 0)
+            + weights['freq10'] * f['freq10'].get(n, 0)
+            + weights['freq20'] * f['freq20'].get(n, 0)
+            + weights['freq50'] * f['freq50'].get(n, 0)
+            + weights['freq100'] * f['freq100'].get(n, 0)
+            + weights['gap'] * f['gap'].get(n, 0)
+            + weights['pos_score'] * f['pos_score'].get(n, 0)
+            + weights['cross_total_1w'] * f['cross_total_1w'].get(n, 0)
+            + weights['cross_sfl_1w'] * f['cross_sfl_1w'].get(n, 0)
+            + weights['cross_other_1w'] * f['cross_other_1w'].get(n, 0)
+            + weights['cross_total_14d'] * f['cross_total_14d'].get(n, 0)
+            + weights['cross_total_28d'] * f['cross_total_28d'].get(n, 0)
+            + weights['freq_no40_3'] * f['freq_no40_3'].get(n, 0)
+            + weights['freq_no40_5'] * f['freq_no40_5'].get(n, 0)
+            + weights['freq_no40_7'] * f['freq_no40_7'].get(n, 0)
+            + weights['freq_no40_10'] * f['freq_no40_10'].get(n, 0)
+            + weights['freq_no40_20'] * f['freq_no40_20'].get(n, 0)
+            + weights['freq_no40_50'] * f['freq_no40_50'].get(n, 0)
+            + weights['gap_no40'] * f['gap_no40'].get(n, 0)
+            + weights['last_digit_freq'] * f['last_digit_freq'].get(n % 10, 0)
+            + weights['decade_freq'] * f['decade_freq'].get(dec(n), 0)
+            + (weights['tier_EH'] if n in t[0] else 0)
+            + (weights['tier_H'] if n in t[1] else 0)
+            + (weights['tier_W'] if n in t[2] else 0)
+            + (weights['tier_C'] if n in t[3] else 0)
+        )
+
+    return score
+
 # ================= POOL BUILDER =================
-def build_pool_general_with_tiers(
-    base_score, gap, last_draw_nums, eligible,
-    caps, hot_count, medium_count, cold_count,
-    ld_cap, max_prev, max_run, odd_even_cap,
-    tier_of, tier_caps
-):
-    hot_sorted = sorted(eligible, key=base_score, reverse=True)
-    cold_sorted = sorted(eligible, key=lambda n: gap.get(n, 0), reverse=True)
+def build_pool_from_score(score_func, f, t, last_draw_nums, decade_caps, max_prev, tier_caps):
+    eligible = [n for n in range(1, 46) if dec(n) != "40s"]
+
+    hot_sorted = sorted(eligible, key=score_func, reverse=True)
+    cold_sorted = sorted(eligible, key=lambda n: f['gap'].get(n, 0), reverse=True)
+
+    hot_count = 7
+    medium_count = 4
+    cold_count = 6
+    odd_even_cap = 8
+    ld_cap = 3
+    run_cap = 3
 
     hot_picks = hot_sorted[:hot_count]
     hot_set = set(hot_picks)
@@ -212,7 +338,6 @@ def build_pool_general_with_tiers(
             break
 
     selected_set = hot_set | set(cold_picks)
-
     medium_picks = []
     for n in hot_sorted:
         if n in selected_set:
@@ -233,24 +358,21 @@ def build_pool_general_with_tiers(
     prev_total = 0
 
     def run_len_if_add(n):
-        if max_run is None:
-            return 0
         s = set(pool_set)
         s.add(n)
         left = n - 1
         right = n + 1
-        run = 1
+        r = 1
         while left in s:
-            run += 1
+            r += 1
             left -= 1
         while right in s:
-            run += 1
+            r += 1
             right += 1
-        return run
+        return r
 
     def can_add(n):
         nonlocal prev_total
-
         if n in pool_set:
             return False
         if n in last_draw_nums and prev_total >= max_prev:
@@ -259,33 +381,29 @@ def build_pool_general_with_tiers(
             return False
         if n % 2 == 0 and even_count >= odd_even_cap:
             return False
-        if decade_counts[dec(n)] >= caps.get(dec(n), 4):
+        if decade_counts[dec(n)] >= decade_caps.get(dec(n), 4):
             return False
         if ld_counts[n % 10] >= ld_cap:
             return False
-        if max_run is not None and run_len_if_add(n) > max_run:
+        if run_len_if_add(n) > run_cap:
             return False
 
-        tier = tier_of(n)
+        tier = tier_of(n, t)
         if tier_counts[tier] >= tier_caps.get(tier, 99):
             return False
-
         return True
 
     def add(n):
         nonlocal odd_count, even_count, prev_total
-
         pool.append(n)
         pool_set.add(n)
         decade_counts[dec(n)] += 1
         ld_counts[n % 10] += 1
-        tier_counts[tier_of(n)] += 1
-
+        tier_counts[tier_of(n, t)] += 1
         if n % 2 == 1:
             odd_count += 1
         else:
             even_count += 1
-
         if n in last_draw_nums:
             prev_total += 1
 
@@ -315,163 +433,175 @@ def build_pool_general_with_tiers(
         for n in hot_sorted:
             if len(pool) >= 15:
                 break
-            if n not in pool_set:
+            if n not in pool_set and can_add(n):
                 add(n)
 
     return sorted(pool)
 
-# ================= BEST CONFIGURATION =================
-BEST_WEIGHTS = {
-    'freq5': 1.2532,
-    'freq10': -0.2386,
-    'freq20': 1.0384,
-    'freq50': 2.3986,
-    'freq100': -0.1908,
-    'gap': 0.1080,
-    'pos_score': -0.0095,
-    'cross_total_1w': -0.3296,
-    'cross_sfl_1w': 0.0729,
-    'cross_other_1w': -0.1047,
-    'cross_total_14d': -1.0839,
-    'cross_total_28d': 0.7758,
-    'freq_no40_10': 1.2269,
-    'freq_no40_20': 0.4492,
-    'freq_no40_50': 0.3940,
-    'gap_no40': 0.9103,
-    'last_digit_freq': -0.0609,
-    'decade_freq': -0.2836,
-    'tier_EH': -0.9942,
-    'tier_H': 0.5878,
-    'tier_W': 1.9972,
-    'tier_C': -1.2885,
-}
+# ================= EVALUATE PARAMS ON TRAINING WINDOW =================
+def evaluate_params_on_entries(params, entries):
+    six = 0
+    five = 0
+    four = 0
 
-BEST_CAPS = {'0s': 6, '10s': 3, '20s': 3, '30s': 3}
-BEST_OE = 8
-BEST_PREV = 1
-BEST_LD = 3
-BEST_RUN = 3
-BEST_HOT = 7
-BEST_MED = 4
-BEST_COLD = 6
-BEST_TIER_CAPS = {'EH': 2, 'H': 3, 'W': 7, 'C': 1}
+    tier_caps = {
+        'EH': params['eh_cap'],
+        'H': params['h_cap'],
+        'W': params['w_cap'],
+        'C': 1,
+    }
 
-# ================= DIAGNOSTIC =================
-def tier_of(n, t):
-    if n in t[0]: return 'EH'
-    if n in t[1]: return 'H'
-    if n in t[2]: return 'W'
-    return 'C'
+    for entry in entries:
+        f = entry['features']
+        t = entry['tiers']
+        real = entry['real_nums']
+        last_draw = f['last_draw_nums']
 
-def score_of(n, f, t):
-    w = BEST_WEIGHTS
-    return (
-        w['freq5'] * f['freq5'].get(n, 0)
-        + w['freq10'] * f['freq10'].get(n, 0)
-        + w['freq20'] * f['freq20'].get(n, 0)
-        + w['freq50'] * f['freq50'].get(n, 0)
-        + w['freq100'] * f['freq100'].get(n, 0)
-        + w['gap'] * f['gap'].get(n, 0)
-        + w['pos_score'] * f['pos_score'].get(n, 0)
-        + w['cross_total_1w'] * f['cross_total_1w'].get(n, 0)
-        + w['cross_sfl_1w'] * f['cross_sfl_1w'].get(n, 0)
-        + w['cross_other_1w'] * f['cross_other_1w'].get(n, 0)
-        + w['cross_total_14d'] * f['cross_total_14d'].get(n, 0)
-        + w['cross_total_28d'] * f['cross_total_28d'].get(n, 0)
-        + w['freq_no40_10'] * f['freq_no40_10'].get(n, 0)
-        + w['freq_no40_20'] * f['freq_no40_20'].get(n, 0)
-        + w['freq_no40_50'] * f['freq_no40_50'].get(n, 0)
-        + w['gap_no40'] * f['gap_no40'].get(n, 0)
-        + w['last_digit_freq'] * f['last_digit_freq'].get(n % 10, 0)
-        + w['decade_freq'] * f['decade_freq'].get(dec(n), 0)
-        + (w['tier_EH'] if n in t[0] else 0)
-        + (w['tier_H'] if n in t[1] else 0)
-        + (w['tier_W'] if n in t[2] else 0)
-        + (w['tier_C'] if n in t[3] else 0)
-    )
+        score_func = build_weighted_score(f, t, params)
+        pool = build_pool_from_score(
+            score_func,
+            f,
+            t,
+            last_draw,
+            params['decade_caps'],
+            params['max_prev'],
+            tier_caps
+        )
 
-# ================= RUN DIAGNOSTIC =================
-target_date = pd.to_datetime(PREDICT_DATE, format="%a %d-%b-%Y")
-prior_sat = sat_df[sat_df["Date_dt"] < target_date]
-features = compute_expanded_features(target_date, prior_sat)
-tiers = get_tiers_saturday_to_friday(target_date)
+        hits = len(set(pool) & real)
+        if hits >= 6:
+            six += 1
+        if hits >= 5:
+            five += 1
+        if hits >= 4:
+            four += 1
 
-eligible = [n for n in range(1, 46) if dec(n) != "40s"]
+    return six, five, four
 
-pool = build_pool_general_with_tiers(
-    lambda n: score_of(n, features, tiers),
-    features['gap'],
-    features['last_draw_nums'],
-    eligible,
-    BEST_CAPS,
-    BEST_HOT,
-    BEST_MED,
-    BEST_COLD,
-    BEST_LD,
-    BEST_PREV,
-    BEST_RUN,
-    BEST_OE,
-    lambda n: tier_of(n, tiers),
-    BEST_TIER_CAPS
-)
+# ================= RANDOM SEARCH ON TRAINING WINDOW =================
+def random_search_train(train_entries):
+    best_params = None
+    best_score = (-1, -1, -1)
 
-actual_winning = {1, 2, 9, 11, 13, 20}
-captured = set(pool) & actual_winning
-missed = actual_winning - set(pool)
+    for _ in range(SEARCH_ITERATIONS):
+        params = random_params()
+        six, five, four = evaluate_params_on_entries(params, train_entries)
 
-print("\n" + "="*100)
-print(f"DIAGNOSTIC ANALYSIS FOR {PREDICT_DATE}")
-print("="*100)
+        # Score: prioritize 6/6, then 5+, then 4+
+        score = (six, five, four)
 
-print(f"\nFinal pool:")
-print(pool)
+        if score > best_score:
+            best_score = score
+            best_params = params
 
-print(f"\nActual winning numbers : {sorted(actual_winning)}")
-print(f"Captured winning numbers : {sorted(captured)}")
-print(f"Missed winning numbers   : {sorted(missed)}")
+    return best_params
 
-# Tier counts in pool
-tier_counts = Counter(tier_of(n, tiers) for n in pool)
-print(f"\nTier counts in pool: EH={tier_counts['EH']}, H={tier_counts['H']}, W={tier_counts['W']}, C={tier_counts['C']}")
+# ================= PRECOMPUTE CACHE =================
+def precompute_cache():
+    print("Precomputing features for all no-40 draws...")
+    cache = []
+    for _, target_row in no40_df.iterrows():
+        target_date = target_row["Date_dt"]
+        real_nums = set(target_row["nums"])
+        prior_sat = sat_df[sat_df["Date_dt"] < target_date]
+        if prior_sat.empty:
+            continue
+        features = compute_expanded_features(target_date, prior_sat)
+        tiers = get_tiers_saturday_to_friday(target_date)
+        if tiers is None:
+            continue
+        cache.append({
+            'date': target_date,
+            'real_nums': real_nums,
+            'features': features,
+            'tiers': tiers,
+        })
+    print(f"Cached {len(cache)} no-40 draws.\n")
+    return cache
 
-# All numbers table
-rows = []
-for n in range(1, 40):
-    rows.append({
-        'n': n,
-        'decade': dec(n),
-        'score': score_of(n, features, tiers),
-        'tier': tier_of(n, tiers),
-        'freq_no40_10': features['freq_no40_10'].get(n, 0),
-        'freq_no40_20': features['freq_no40_20'].get(n, 0),
-        'gap_no40': features['gap_no40'].get(n, 0),
-        'cross_14d': features['cross_total_14d'].get(n, 0),
-        'in_pool': n in pool,
-        'won': n in actual_winning,
-    })
+# ================= WALK-FORWARD EVALUATION =================
+def walk_forward_backtest(cache, n_test=TEST_N_DRAWS, train_window=TRAIN_WINDOW):
+    target_cache = cache[-n_test:]
 
-df = pd.DataFrame(rows).sort_values('score', ascending=False).reset_index(drop=True)
-df.insert(0, 'rank', df.index + 1)
+    total_five = 0
+    total_six = 0
+    total_four = 0
+    total_cov = 0
+    high_draws = []
 
-print("\nTop 25 numbers by legacy score:")
-print(df.head(25)[['rank','n','decade','score','tier','freq_no40_10','freq_no40_20','gap_no40','cross_14d','in_pool','won']].to_string(index=False))
+    print(f"Walk-forward learning backtest on last {n_test} no-40 draws")
+    print(f"Training window: {train_window}\n")
+    print("=" * 90)
 
-print("\nWinning numbers detail:")
-win_df = df[df['won']].sort_values('score', ascending=False)
-print(win_df[['rank','n','decade','score','tier','freq_no40_10','freq_no40_20','gap_no40','cross_14d','in_pool']].to_string(index=False))
+    for idx, entry in enumerate(target_cache, 1):
+        target_date = entry['date']
+        real = entry['real_nums']
+        f = entry['features']
+        t = entry['tiers']
+        last_draw = f['last_draw_nums']
 
-print("\nEH numbers sorted by score:")
-eh_df = df[df['tier'] == 'EH'].sort_values('score', ascending=False)
-print(eh_df[['rank','n','decade','score','freq_no40_10','freq_no40_20','gap_no40','cross_14d','in_pool','won']].to_string(index=False))
+        # Training set: previous draws before target
+        train_entries = [e for e in cache if e['date'] < target_date][-train_window:]
 
-print("\nH numbers sorted by score:")
-h_df = df[df['tier'] == 'H'].sort_values('score', ascending=False)
-print(h_df[['rank','n','decade','score','in_pool','won']].to_string(index=False))
+        if len(train_entries) < 5:
+            print(f"Skip {pd.to_datetime(target_date).strftime('%d-%b-%Y')}: insufficient training draws")
+            continue
 
-print("\nW numbers sorted by score:")
-w_df = df[df['tier'] == 'W'].sort_values('score', ascending=False)
-print(w_df[['rank','n','decade','score','in_pool','won']].to_string(index=False))
+        # Learn best params from training window
+        best_params = random_search_train(train_entries)
 
-print("\nC numbers sorted by score:")
-c_df = df[df['tier'] == 'C'].sort_values('score', ascending=False)
-print(c_df[['rank','n','decade','score','in_pool','won']].to_string(index=False))
+        tier_caps = {
+            'EH': best_params['eh_cap'],
+            'H': best_params['h_cap'],
+            'W': best_params['w_cap'],
+            'C': 1,
+        }
+
+        score_func = build_weighted_score(f, t, best_params)
+        pool = build_pool_from_score(
+            score_func,
+            f,
+            t,
+            last_draw,
+            best_params['decade_caps'],
+            best_params['max_prev'],
+            tier_caps
+        )
+
+        captured = set(pool) & real
+        cov = len(captured)
+        total_cov += cov
+
+        if cov >= 6:
+            total_six += 1
+        if cov >= 5:
+            total_five += 1
+            high_draws.append((target_date, sorted(captured), pool))
+        if cov >= 4:
+            total_four += 1
+
+        print(f"Target {idx:2d}/{n_test}: {pd.to_datetime(target_date).strftime('%d-%b-%Y')} | "
+              f"{cov}/6 -> {sorted(captured)} | pool={pool}")
+
+    avg_cov = total_cov / n_test
+    random_exp = 15 * 6 / 39
+
+    print("\n" + "=" * 90)
+    print("WALK-FORWARD LEARNING BACKTEST RESULT")
+    print("=" * 90)
+    print(f"5+ traps : {total_five}/{n_test}")
+    print(f"6/6 traps: {total_six}/{n_test}")
+    print(f"4+ traps : {total_four}/{n_test}")
+    print(f"Average captured per draw : {avg_cov:.3f}")
+    print(f"Random expectation          : {random_exp:.3f}")
+
+    if high_draws:
+        print("\nHigh-capture draws (5+):")
+        for date, cap, pool in high_draws:
+            print(f"  {pd.to_datetime(date).strftime('%d-%b-%Y')}: {len(cap)}/6 -> {cap} | pool={pool}")
+
+# ================= MAIN =================
+if __name__ == "__main__":
+    random.seed(RANDOM_SEED)
+    cache = precompute_cache()
+    walk_forward_backtest(cache, n_test=TEST_N_DRAWS, train_window=TRAIN_WINDOW)
