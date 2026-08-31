@@ -2,10 +2,10 @@ import pandas as pd
 from collections import Counter
 
 # ================= CONFIGURATION =================
-MODE = "backtest"          # "backtest" or "predict"
+MODE = "predict"          # "backtest" or "predict"
 NO_OF_BACKTEST_DRAWS = 10
 POOL_SIZE=15
-PREDICT_DATE = "Sat 22-Aug-2026"   # used only if MODE = "predict" 22-Aug-2026
+PREDICT_DATE = "Sat 29-Aug-2026"   # used only if MODE = "predict" 22-Aug-2026
 
 SATURDAY_FILE = "Saturday_data.csv"
 CROSS_FILE = "cross_lotto_data_backup.csv"

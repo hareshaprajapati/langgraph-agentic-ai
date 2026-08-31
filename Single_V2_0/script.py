@@ -1,18 +1,15 @@
 import pandas as pd
 from collections import Counter
 import random
-import numpy as np
 
-# ================= CONFIGURATION =================
-MODE = "backtest"
-PREDICT_DATE = "Sat 22-Aug-2026"
-
+# ================= CONFIG =================
 SATURDAY_FILE = "Saturday_data.csv"
 CROSS_FILE = "cross_lotto_data_backup.csv"
+PREDICT_DATE = "Sat 22-Aug-2026"   # change to next Saturday
 
-TRAIN_WINDOW = 30          # previous no-40 draws used for training each target
-TEST_N_DRAWS = 60          # evaluate last 60 no-40 draws
-SEARCH_ITERATIONS = 150    # random search iterations per target
+# Brute-force settings
+TRAIN_DRAWS = 30
+N_ITERATIONS = 2000
 RANDOM_SEED = 42
 
 # ================= HELPERS =================
@@ -52,7 +49,43 @@ others_col = get_others_col(cross_df)
 
 no40_df = sat_df[sat_df["nums"].apply(lambda nums: all(dec(n) != "40s" for n in nums))].copy().sort_values("Date_dt")
 
-# ================= TIERS =================
+# ================= BEST WEIGHTS =================
+BEST_WEIGHTS = {
+    'freq5': 1.2532,
+    'freq10': -0.2386,
+    'freq20': 1.0384,
+    'freq50': 2.3986,
+    'freq100': -0.1908,
+    'gap': 0.1080,
+    'pos_score': -0.0095,
+    'cross_total_1w': -0.3296,
+    'cross_sfl_1w': 0.0729,
+    'cross_other_1w': -0.1047,
+    'cross_total_14d': -1.0839,
+    'cross_total_28d': 0.7758,
+    'freq_no40_10': 1.2269,
+    'freq_no40_20': 0.4492,
+    'freq_no40_50': 0.3940,
+    'gap_no40': 0.9103,
+    'last_digit_freq': -0.0609,
+    'decade_freq': -0.2836,
+    'tier_EH': -0.9942,
+    'tier_H': 0.5878,
+    'tier_W': 1.9972,
+    'tier_C': -1.2885,
+}
+
+BEST_CAPS = {'0s': 6, '10s': 3, '20s': 3, '30s': 3}
+BEST_OE = 8
+BEST_PREV = 2
+BEST_LD = 3
+BEST_RUN = 3
+BEST_HOT = 7
+BEST_MED = 4
+BEST_COLD = 6
+BEST_TIER_CAPS = {'EH': 2, 'H': 3, 'W': 7, 'C': 1}
+
+# ================= FUNCTIONS =================
 def get_tiers_saturday_to_friday(target_date):
     prev_sat = cross_df[(cross_df["Date_dt"] < target_date) & (cross_df["Date"].str.startswith("Sat"))].tail(1)
     if prev_sat.empty:
@@ -75,8 +108,10 @@ def get_tiers_saturday_to_friday(target_date):
 
     return EH, H, W, C
 
-# ================= FEATURE EXTRACTION =================
-def compute_expanded_features(target_date, prior_sat):
+def compute_features(target_date):
+    prior_sat = sat_df[sat_df["Date_dt"] < target_date]
+    prior_no40 = no40_df[no40_df["Date_dt"] < target_date]
+
     windows = [5, 10, 20, 50, 100]
     freq = {w: Counter() for w in windows}
     for w in windows:
@@ -94,7 +129,6 @@ def compute_expanded_features(target_date, prior_sat):
         gap[n] = max_idx - last_seen.get(n, -1)
 
     pos_counts = {pos: Counter() for pos in range(1, 7)}
-    prior_no40 = prior_sat[prior_sat["nums"].apply(lambda nums: all(dec(n) != "40s" for n in nums))]
     for _, row in prior_no40.tail(300).iterrows():
         sorted_nums = sorted(row["nums"])
         for pos, n in enumerate(sorted_nums, 1):
@@ -146,30 +180,19 @@ def compute_expanded_features(target_date, prior_sat):
             if 1 <= n <= 45:
                 cross_total_28d[n] += 1
 
-    no40_prior = no40_df[no40_df["Date_dt"] < target_date]
-    freq_no40_3 = Counter()
-    freq_no40_5 = Counter()
-    freq_no40_7 = Counter()
     freq_no40_10 = Counter()
     freq_no40_20 = Counter()
     freq_no40_50 = Counter()
-
-    for nums in no40_prior.tail(3)['nums']:
-        freq_no40_3.update(nums)
-    for nums in no40_prior.tail(5)['nums']:
-        freq_no40_5.update(nums)
-    for nums in no40_prior.tail(7)['nums']:
-        freq_no40_7.update(nums)
-    for nums in no40_prior.tail(10)['nums']:
+    for nums in prior_no40.tail(10)['nums']:
         freq_no40_10.update(nums)
-    for nums in no40_prior.tail(20)['nums']:
+    for nums in prior_no40.tail(20)['nums']:
         freq_no40_20.update(nums)
-    for nums in no40_prior.tail(50)['nums']:
+    for nums in prior_no40.tail(50)['nums']:
         freq_no40_50.update(nums)
 
     gap_no40 = {}
     last_seen_no40 = {}
-    no40_nums_list = list(no40_prior['nums'])
+    no40_nums_list = list(prior_no40['nums'])
     for idx, nums in enumerate(no40_nums_list):
         for n in nums:
             last_seen_no40[n] = idx
@@ -198,135 +221,53 @@ def compute_expanded_features(target_date, prior_sat):
         'cross_other_1w': cross_other_1w,
         'cross_total_14d': cross_total_14d,
         'cross_total_28d': cross_total_28d,
-        'freq_no40_3': freq_no40_3,
-        'freq_no40_5': freq_no40_5,
-        'freq_no40_7': freq_no40_7,
         'freq_no40_10': freq_no40_10,
         'freq_no40_20': freq_no40_20,
         'freq_no40_50': freq_no40_50,
         'gap_no40': gap_no40,
         'last_digit_freq': last_digit_freq,
         'decade_freq': decade_freq,
-        'last_draw_nums': last_draw_nums
+        'last_draw_nums': last_draw_nums,
     }
 
-# ================= BASE WEIGHTS =================
-BASE_WEIGHTS = {
-    'freq5': 1.2532,
-    'freq10': -0.2386,
-    'freq20': 1.0384,
-    'freq50': 2.3986,
-    'freq100': -0.1908,
-    'gap': 0.1080,
-    'pos_score': -0.0095,
-    'cross_total_1w': -0.3296,
-    'cross_sfl_1w': 0.0729,
-    'cross_other_1w': -0.1047,
-    'cross_total_14d': -1.0839,
-    'cross_total_28d': 0.7758,
-    'freq_no40_3': 0.0,
-    'freq_no40_5': 0.0,
-    'freq_no40_7': 0.0,
-    'freq_no40_10': 1.2269,
-    'freq_no40_20': 0.4492,
-    'freq_no40_50': 0.3940,
-    'gap_no40': 0.9103,
-    'last_digit_freq': -0.0609,
-    'decade_freq': -0.2836,
-    'tier_EH': -0.9942,
-    'tier_H': 0.5878,
-    'tier_W': 1.9972,
-    'tier_C': -1.2885,
-}
+def legacy_score(n, f, t, weights):
+    return (
+        weights['freq5'] * f['freq5'].get(n, 0)
+        + weights['freq10'] * f['freq10'].get(n, 0)
+        + weights['freq20'] * f['freq20'].get(n, 0)
+        + weights['freq50'] * f['freq50'].get(n, 0)
+        + weights['freq100'] * f['freq100'].get(n, 0)
+        + weights['gap'] * f['gap'].get(n, 0)
+        + weights['pos_score'] * f['pos_score'].get(n, 0)
+        + weights['cross_total_1w'] * f['cross_total_1w'].get(n, 0)
+        + weights['cross_sfl_1w'] * f['cross_sfl_1w'].get(n, 0)
+        + weights['cross_other_1w'] * f['cross_other_1w'].get(n, 0)
+        + weights['cross_total_14d'] * f['cross_total_14d'].get(n, 0)
+        + weights['cross_total_28d'] * f['cross_total_28d'].get(n, 0)
+        + weights['freq_no40_10'] * f['freq_no40_10'].get(n, 0)
+        + weights['freq_no40_20'] * f['freq_no40_20'].get(n, 0)
+        + weights['freq_no40_50'] * f['freq_no40_50'].get(n, 0)
+        + weights['gap_no40'] * f['gap_no40'].get(n, 0)
+        + weights['last_digit_freq'] * f['last_digit_freq'].get(n % 10, 0)
+        + weights['decade_freq'] * f['decade_freq'].get(dec(n), 0)
+        + (weights['tier_EH'] if n in t[0] else 0)
+        + (weights['tier_H'] if n in t[1] else 0)
+        + (weights['tier_W'] if n in t[2] else 0)
+        + (weights['tier_C'] if n in t[3] else 0)
+    )
 
-# ================= PARAMETER SPACE =================
-# candidate decade cap variants
-DECADE_CAP_OPTIONS = [
-    {'0s': 6, '10s': 3, '20s': 3, '30s': 3},
-    {'0s': 6, '10s': 4, '20s': 4, '30s': 3},
-    {'0s': 5, '10s': 4, '20s': 4, '30s': 3},
-    {'0s': 7, '10s': 3, '20s': 3, '30s': 3},
-]
-
-def random_params():
-    return {
-        'mult_freq_no40_10': random.uniform(0.5, 3.5),
-        'mult_freq_no40_20': random.uniform(0.2, 2.5),
-        'mult_gap_no40': random.uniform(-2.0, 2.0),
-        'mult_cross_14d': random.uniform(-2.0, 0.5),
-        'eh_cap': random.choice([2, 3]),
-        'h_cap': random.choice([2, 3]),
-        'w_cap': random.choice([6, 7]),
-        'decade_caps': random.choice(DECADE_CAP_OPTIONS),
-        'max_prev': random.choice([1, 2]),
-    }
-
-# ================= SCORE FUNCTION =================
 def tier_of(n, t):
-    if n in t[0]:
-        return 'EH'
-    if n in t[1]:
-        return 'H'
-    if n in t[2]:
-        return 'W'
+    if n in t[0]: return 'EH'
+    if n in t[1]: return 'H'
+    if n in t[2]: return 'W'
     return 'C'
 
-def build_weighted_score(f, t, params):
-    weights = BASE_WEIGHTS.copy()
-
-    # Apply learned multipliers
-    weights['freq_no40_10'] = params['mult_freq_no40_10']
-    weights['freq_no40_20'] = params['mult_freq_no40_20']
-    weights['gap_no40'] = params['mult_gap_no40']
-    weights['cross_total_14d'] = params['mult_cross_14d']
-
-    # Keep freq_no40_3/5/7 from base (zero)
-    def score(n):
-        return (
-            weights['freq5'] * f['freq5'].get(n, 0)
-            + weights['freq10'] * f['freq10'].get(n, 0)
-            + weights['freq20'] * f['freq20'].get(n, 0)
-            + weights['freq50'] * f['freq50'].get(n, 0)
-            + weights['freq100'] * f['freq100'].get(n, 0)
-            + weights['gap'] * f['gap'].get(n, 0)
-            + weights['pos_score'] * f['pos_score'].get(n, 0)
-            + weights['cross_total_1w'] * f['cross_total_1w'].get(n, 0)
-            + weights['cross_sfl_1w'] * f['cross_sfl_1w'].get(n, 0)
-            + weights['cross_other_1w'] * f['cross_other_1w'].get(n, 0)
-            + weights['cross_total_14d'] * f['cross_total_14d'].get(n, 0)
-            + weights['cross_total_28d'] * f['cross_total_28d'].get(n, 0)
-            + weights['freq_no40_3'] * f['freq_no40_3'].get(n, 0)
-            + weights['freq_no40_5'] * f['freq_no40_5'].get(n, 0)
-            + weights['freq_no40_7'] * f['freq_no40_7'].get(n, 0)
-            + weights['freq_no40_10'] * f['freq_no40_10'].get(n, 0)
-            + weights['freq_no40_20'] * f['freq_no40_20'].get(n, 0)
-            + weights['freq_no40_50'] * f['freq_no40_50'].get(n, 0)
-            + weights['gap_no40'] * f['gap_no40'].get(n, 0)
-            + weights['last_digit_freq'] * f['last_digit_freq'].get(n % 10, 0)
-            + weights['decade_freq'] * f['decade_freq'].get(dec(n), 0)
-            + (weights['tier_EH'] if n in t[0] else 0)
-            + (weights['tier_H'] if n in t[1] else 0)
-            + (weights['tier_W'] if n in t[2] else 0)
-            + (weights['tier_C'] if n in t[3] else 0)
-        )
-
-    return score
-
-# ================= POOL BUILDER =================
-def build_pool_from_score(score_func, f, t, last_draw_nums, decade_caps, max_prev, tier_caps):
+def build_pool(score_func, f, t, last_draw_nums, caps, max_prev):
     eligible = [n for n in range(1, 46) if dec(n) != "40s"]
-
     hot_sorted = sorted(eligible, key=score_func, reverse=True)
     cold_sorted = sorted(eligible, key=lambda n: f['gap'].get(n, 0), reverse=True)
 
-    hot_count = 7
-    medium_count = 4
-    cold_count = 6
-    odd_even_cap = 8
-    ld_cap = 3
-    run_cap = 3
-
-    hot_picks = hot_sorted[:hot_count]
+    hot_picks = hot_sorted[:BEST_HOT]
     hot_set = set(hot_picks)
 
     cold_picks = []
@@ -334,7 +275,7 @@ def build_pool_from_score(score_func, f, t, last_draw_nums, decade_caps, max_pre
         if n in hot_set:
             continue
         cold_picks.append(n)
-        if len(cold_picks) == cold_count:
+        if len(cold_picks) == BEST_COLD:
             break
 
     selected_set = hot_set | set(cold_picks)
@@ -343,7 +284,7 @@ def build_pool_from_score(score_func, f, t, last_draw_nums, decade_caps, max_pre
         if n in selected_set:
             continue
         medium_picks.append(n)
-        if len(medium_picks) == medium_count:
+        if len(medium_picks) == BEST_MED:
             break
 
     priority = hot_picks + medium_picks + cold_picks
@@ -377,19 +318,18 @@ def build_pool_from_score(score_func, f, t, last_draw_nums, decade_caps, max_pre
             return False
         if n in last_draw_nums and prev_total >= max_prev:
             return False
-        if n % 2 == 1 and odd_count >= odd_even_cap:
+        if n % 2 == 1 and odd_count >= BEST_OE:
             return False
-        if n % 2 == 0 and even_count >= odd_even_cap:
+        if n % 2 == 0 and even_count >= BEST_OE:
             return False
-        if decade_counts[dec(n)] >= decade_caps.get(dec(n), 4):
+        if decade_counts[dec(n)] >= caps.get(dec(n), 4):
             return False
-        if ld_counts[n % 10] >= ld_cap:
+        if ld_counts[n % 10] >= BEST_LD:
             return False
-        if run_len_if_add(n) > run_cap:
+        if run_len_if_add(n) > BEST_RUN:
             return False
-
         tier = tier_of(n, t)
-        if tier_counts[tier] >= tier_caps.get(tier, 99):
+        if tier_counts[tier] >= BEST_TIER_CAPS.get(tier, 99):
             return False
         return True
 
@@ -433,175 +373,94 @@ def build_pool_from_score(score_func, f, t, last_draw_nums, decade_caps, max_pre
         for n in hot_sorted:
             if len(pool) >= 15:
                 break
-            if n not in pool_set and can_add(n):
+            if n not in pool_set:
                 add(n)
 
     return sorted(pool)
 
-# ================= EVALUATE PARAMS ON TRAINING WINDOW =================
-def evaluate_params_on_entries(params, entries):
-    six = 0
-    five = 0
-    four = 0
+def build_legacy_vote(f, t, last_draw):
+    caps = {'0s':6,'10s':3,'20s':3,'30s':3}
+    pool1 = build_pool(lambda n: legacy_score(n, f, t, BEST_WEIGHTS), f, t, last_draw, caps, BEST_PREV)
+    pool2 = build_pool(lambda n: legacy_score(n, f, t, BEST_WEIGHTS), f, t, last_draw, caps, 2)
+    caps_capsearch = {'0s':5,'10s':4,'20s':3,'30s':2}
+    pool3 = build_pool(lambda n: legacy_score(n, f, t, BEST_WEIGHTS), f, t, last_draw, caps_capsearch, 2)
 
-    tier_caps = {
-        'EH': params['eh_cap'],
-        'H': params['h_cap'],
-        'W': params['w_cap'],
-        'C': 1,
-    }
+    freq = Counter()
+    for p in [pool1, pool2, pool3]:
+        freq.update(p)
 
-    for entry in entries:
-        f = entry['features']
-        t = entry['tiers']
-        real = entry['real_nums']
-        last_draw = f['last_draw_nums']
+    final_score = lambda n: 100.0 * freq.get(n,0) + legacy_score(n, f, t, BEST_WEIGHTS)
+    return build_pool(final_score, f, t, last_draw, caps, BEST_PREV)
 
-        score_func = build_weighted_score(f, t, params)
-        pool = build_pool_from_score(
-            score_func,
-            f,
-            t,
-            last_draw,
-            params['decade_caps'],
-            params['max_prev'],
-            tier_caps
+def build_original_corrected(f, t, last_draw):
+    caps = {'0s':6,'10s':3,'20s':3,'30s':3}
+    return build_pool(lambda n: legacy_score(n, f, t, BEST_WEIGHTS), f, t, last_draw, caps, BEST_PREV)
+
+def build_recent_pool(f, t, last_draw):
+    def recent_score(n):
+        return (
+            3.0 * f['freq_no40_10'].get(n,0)
+            + 2.0 * f['freq_no40_20'].get(n,0)
+            + 1.0 * f['freq_no40_50'].get(n,0)
+            - 0.15 * f['gap_no40'].get(n,0)
         )
+    caps = {'0s':6,'10s':3,'20s':3,'30s':3}
+    return build_pool(recent_score, f, t, last_draw, caps, BEST_PREV)
 
-        hits = len(set(pool) & real)
-        if hits >= 6:
-            six += 1
-        if hits >= 5:
-            five += 1
-        if hits >= 4:
-            four += 1
-
-    return six, five, four
-
-# ================= RANDOM SEARCH ON TRAINING WINDOW =================
-def random_search_train(train_entries):
-    best_params = None
-    best_score = (-1, -1, -1)
-
-    for _ in range(SEARCH_ITERATIONS):
-        params = random_params()
-        six, five, four = evaluate_params_on_entries(params, train_entries)
-
-        # Score: prioritize 6/6, then 5+, then 4+
-        score = (six, five, four)
-
-        if score > best_score:
-            best_score = score
-            best_params = params
-
-    return best_params
-
-# ================= PRECOMPUTE CACHE =================
-def precompute_cache():
-    print("Precomputing features for all no-40 draws...")
-    cache = []
-    for _, target_row in no40_df.iterrows():
-        target_date = target_row["Date_dt"]
-        real_nums = set(target_row["nums"])
-        prior_sat = sat_df[sat_df["Date_dt"] < target_date]
-        if prior_sat.empty:
-            continue
-        features = compute_expanded_features(target_date, prior_sat)
-        tiers = get_tiers_saturday_to_friday(target_date)
-        if tiers is None:
-            continue
-        cache.append({
-            'date': target_date,
-            'real_nums': real_nums,
-            'features': features,
-            'tiers': tiers,
-        })
-    print(f"Cached {len(cache)} no-40 draws.\n")
-    return cache
-
-# ================= WALK-FORWARD EVALUATION =================
-def walk_forward_backtest(cache, n_test=TEST_N_DRAWS, train_window=TRAIN_WINDOW):
-    target_cache = cache[-n_test:]
-
-    total_five = 0
-    total_six = 0
-    total_four = 0
-    total_cov = 0
-    high_draws = []
-
-    print(f"Walk-forward learning backtest on last {n_test} no-40 draws")
-    print(f"Training window: {train_window}\n")
-    print("=" * 90)
-
-    for idx, entry in enumerate(target_cache, 1):
-        target_date = entry['date']
-        real = entry['real_nums']
-        f = entry['features']
-        t = entry['tiers']
-        last_draw = f['last_draw_nums']
-
-        # Training set: previous draws before target
-        train_entries = [e for e in cache if e['date'] < target_date][-train_window:]
-
-        if len(train_entries) < 5:
-            print(f"Skip {pd.to_datetime(target_date).strftime('%d-%b-%Y')}: insufficient training draws")
-            continue
-
-        # Learn best params from training window
-        best_params = random_search_train(train_entries)
-
-        tier_caps = {
-            'EH': best_params['eh_cap'],
-            'H': best_params['h_cap'],
-            'W': best_params['w_cap'],
-            'C': 1,
-        }
-
-        score_func = build_weighted_score(f, t, best_params)
-        pool = build_pool_from_score(
-            score_func,
-            f,
-            t,
-            last_draw,
-            best_params['decade_caps'],
-            best_params['max_prev'],
-            tier_caps
-        )
-
-        captured = set(pool) & real
-        cov = len(captured)
-        total_cov += cov
-
-        if cov >= 6:
-            total_six += 1
-        if cov >= 5:
-            total_five += 1
-            high_draws.append((target_date, sorted(captured), pool))
-        if cov >= 4:
-            total_four += 1
-
-        print(f"Target {idx:2d}/{n_test}: {pd.to_datetime(target_date).strftime('%d-%b-%Y')} | "
-              f"{cov}/6 -> {sorted(captured)} | pool={pool}")
-
-    avg_cov = total_cov / n_test
-    random_exp = 15 * 6 / 39
-
-    print("\n" + "=" * 90)
-    print("WALK-FORWARD LEARNING BACKTEST RESULT")
-    print("=" * 90)
-    print(f"5+ traps : {total_five}/{n_test}")
-    print(f"6/6 traps: {total_six}/{n_test}")
-    print(f"4+ traps : {total_four}/{n_test}")
-    print(f"Average captured per draw : {avg_cov:.3f}")
-    print(f"Random expectation          : {random_exp:.3f}")
-
-    if high_draws:
-        print("\nHigh-capture draws (5+):")
-        for date, cap, pool in high_draws:
-            print(f"  {pd.to_datetime(date).strftime('%d-%b-%Y')}: {len(cap)}/6 -> {cap} | pool={pool}")
-
-# ================= MAIN =================
-if __name__ == "__main__":
+def build_brute_force_pool(target_date):
+    train_draws = no40_df[no40_df["Date_dt"] < target_date].tail(TRAIN_DRAWS)["nums"].tolist()
     random.seed(RANDOM_SEED)
-    cache = precompute_cache()
-    walk_forward_backtest(cache, n_test=TEST_N_DRAWS, train_window=TRAIN_WINDOW)
+
+    def count_six(pool):
+        pool_set = set(pool)
+        return sum(1 for nums in train_draws if set(nums).issubset(pool_set))
+
+    freq = Counter()
+    for nums in train_draws:
+        freq.update(nums)
+    best_pool = [n for n, _ in freq.most_common(15)]
+    best_six = count_six(best_pool)
+
+    for _ in range(N_ITERATIONS):
+        candidate = best_pool.copy()
+        for _ in range(random.randint(1,2)):
+            if candidate:
+                remove_n = random.choice(candidate)
+                add_n = random.choice([n for n in range(1,40) if n not in candidate])
+                candidate.remove(remove_n)
+                candidate.append(add_n)
+        cand_six = count_six(candidate)
+        if cand_six > best_six:
+            best_six = cand_six
+            best_pool = candidate.copy()
+
+    return sorted(best_pool)
+
+# ================= PREDICT =================
+target_date = pd.to_datetime(PREDICT_DATE, format="%a %d-%b-%Y")
+
+prior_sat = sat_df[sat_df["Date_dt"] < target_date]
+if prior_sat.empty:
+    raise SystemExit("No prior Saturday data")
+
+f = compute_features(target_date)
+tiers = get_tiers_saturday_to_friday(target_date)
+if tiers is None:
+    tiers = (set(), set(), set(), set())
+
+last_draw = f['last_draw_nums']
+
+pool_legacy = build_legacy_vote(f, tiers, last_draw)
+pool_original = build_original_corrected(f, tiers, last_draw)
+pool_recent = build_recent_pool(f, tiers, last_draw)
+pool_brute = build_brute_force_pool(target_date)
+pool_random1 = sorted(random.sample(range(1,40), 15))
+pool_random2 = sorted(random.sample(range(1,40), 15))
+
+print(f"Predicted pools for {PREDICT_DATE}:")
+print(f"1. Legacy Vote:   {pool_legacy}")
+print(f"2. Original:      {pool_original}")
+print(f"3. Recent:        {pool_recent}")
+print(f"4. Brute Force:   {pool_brute}")
+print(f"5. Random A:      {pool_random1}")
+print(f"6. Random B:      {pool_random2}")
