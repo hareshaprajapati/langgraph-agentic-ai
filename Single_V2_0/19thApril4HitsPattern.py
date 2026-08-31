@@ -4,6 +4,7 @@ from datetime import datetime
 
 CSV_FILE = "cross_lotto_data_backup.csv"
 OUTPUT_LAST_N = 60*60
+FUTURE_DATE_STR = "Sat 29-Aug-2026"   # <-- Set your future Saturday here
 
 def parse_date(s):
     return datetime.strptime(s[4:], '%d-%b-%Y')
@@ -25,6 +26,35 @@ def extract_main6(others_cell):
     """Return the first 6 numbers (main) from the Others column."""
     main_part = others_cell.split(']')[0].replace('[', '').strip()
     return [int(x.strip()) for x in main_part.split(',') if x.strip()]
+
+def predict_counts(eh_pool, h_pool, w_pool, c_pool):
+    """
+    Predict EH/H/W/C based on pool sizes using proportional allocation,
+    with rounding to nearest integer and adjustment to total 6.
+    """
+    sizes = [eh_pool, h_pool, w_pool, c_pool]
+    total = 45
+    raw = [size * 6 / total for size in sizes]
+    # Round to nearest integer
+    rounded = [round(x) for x in raw]   # Python's round uses banker's rounding; we'll handle below
+    # Override banker's rounding for .5 cases: round up
+    for i in range(4):
+        frac = raw[i] - int(raw[i])
+        if abs(frac - 0.5) < 1e-9:
+            rounded[i] = int(raw[i]) + 1
+    # Adjust sum to 6
+    diff = 6 - sum(rounded)
+    if diff > 0:
+        # Add to largest pool first
+        order = sorted(range(4), key=lambda i: sizes[i], reverse=True)
+        for i in order[:diff]:
+            rounded[i] += 1
+    elif diff < 0:
+        # Subtract from smallest pool first
+        order = sorted(range(4), key=lambda i: sizes[i])
+        for i in order[:-diff]:
+            rounded[i] -= 1
+    return rounded[0], rounded[1], rounded[2], rounded[3]
 
 # Read all data
 all_rows = []   # (date_str, dt, is_saturday, all_numbers, raw_others_cell)
@@ -54,11 +84,11 @@ for date_str, dt, is_sat, _, others_cell in all_rows:
         main6 = extract_main6(others_cell)
         saturdays.append((date_str, dt, main6))
 
-# Analysis
+# Analysis for historical Saturdays
 results = []
 for i in range(1, len(saturdays)):
     target_date_str, target_dt, target_main = saturdays[i]
-    prev_sat_date_str, prev_sat_dt, prev_main = saturdays[i-1]   # legacy set
+    prev_sat_date_str, prev_sat_dt, prev_main = saturdays[i-1]
 
     # Window: previous Saturday (inclusive) to Friday before target
     window_nums = []
@@ -88,14 +118,13 @@ for i in range(1, len(saturdays)):
     w_count = counts['W']
     profile = "Breadth" if w_count >= 4 else "Depth"
 
-    # Legacy numbers (previous Saturday main numbers that appear in this draw)
     legacy_hits = [n for n in target_main if n in prev_main]
 
     results.append((target_date_str, profile, counts,
                     eh_pool_size, h_pool_size, w_pool_size, c_pool_size,
                     eh_h_pool_size, legacy_hits))
 
-# Print
+# Print historical table
 n = min(OUTPUT_LAST_N, len(results))
 print(f"Last {n} Saturday Lotto draws analysis:\n")
 print(f"{'Date':<20} {'Profile':<10} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
@@ -110,3 +139,57 @@ for (date_str, profile, counts,
           f"{counts['W']:<4} {counts['C']:<4} "
           f"{eh_pool:<8} {h_pool:<8} {w_pool:<8} {c_pool:<8} "
           f"{eh_h_pool:<10} {legacy_str}")
+
+# ------------------------------------------------------------
+# Prediction for a future Saturday
+# ------------------------------------------------------------
+print("\n" + "="*90)
+print(f"Prediction for {FUTURE_DATE_STR}")
+print("="*90)
+
+# Parse future date
+future_dt = parse_date(FUTURE_DATE_STR)
+# Find previous Saturday (the Saturday immediately before future_dt)
+prev_sat = None
+for date_str, dt, _ in saturdays:
+    if dt < future_dt:
+        prev_sat = (date_str, dt)
+    else:
+        break
+
+if prev_sat is None:
+    print("No previous Saturday found in data.")
+else:
+    prev_sat_date_str, prev_sat_dt = prev_sat
+    # Build window from previous Saturday up to Friday before future date
+    window_nums = []
+    for date_str, dt, is_sat, nums, _ in all_rows:
+        if prev_sat_dt <= dt < future_dt:
+            window_nums.extend(nums)
+
+    counter = Counter(window_nums)
+    eh = {n for n, cnt in counter.items() if cnt >= 4}
+    h  = {n for n, cnt in counter.items() if cnt == 3}
+    w  = {n for n, cnt in counter.items() if 1 <= cnt <= 2}
+    c  = {n for n in range(1,46) if counter[n] == 0}
+
+    eh_pool = len(eh)
+    h_pool = len(h)
+    w_pool = len(w)
+    c_pool = len(c)
+
+    print(f"Previous Saturday used for window: {prev_sat_date_str}")
+    print(f"Window: {prev_sat_date_str} to Friday before {FUTURE_DATE_STR}")
+    print("\nPool details:")
+    print(f"EH {sorted(eh)}  EH-Pool-Size: {eh_pool}")
+    print(f"H  {sorted(h)}  H-Pool-Size: {h_pool}")
+    print(f"W  {sorted(w)}  W-Pool-Size: {w_pool}")
+    print(f"C  {sorted(c)}  C-Pool-Size: {c_pool}")
+    print(f"EH+H Pool Size: {eh_pool + h_pool}")
+
+    # Predict EH/H/W/C
+    pred_eh, pred_h, pred_w, pred_c = predict_counts(eh_pool, h_pool, w_pool, c_pool)
+    profile = "Breadth" if pred_w >= 4 else "Depth"
+
+    print(f"\nPredicted EH/H/W/C: {pred_eh} / {pred_h} / {pred_w} / {pred_c}")
+    print(f"Predicted Profile : {profile}")
