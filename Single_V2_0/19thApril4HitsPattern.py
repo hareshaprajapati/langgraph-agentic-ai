@@ -1,6 +1,7 @@
 import csv
 from collections import Counter, defaultdict
 from datetime import datetime
+import math
 
 CSV_FILE = "cross_lotto_data_backup.csv"
 OUTPUT_LAST_N = 60*60
@@ -31,29 +32,36 @@ def extract_main6(others_cell):
     main_part = others_cell.split(']')[0].replace('[', '').strip()
     return [int(x.strip()) for x in main_part.split(',') if x.strip()]
 
+def round_to_sum6(raw):
+    """
+    Round a list of 4 non‑negative floats to integers that sum to 6.
+    Uses the largest remainder method with a lower bound of 0.
+    """
+    raw = [max(0.0, x) for x in raw]
+    total = sum(raw)
+    if total == 0:
+        # fallback to proportional? But should not happen.
+        return (0,0,0,0)
+    # Initial floors
+    floors = [int(x) for x in raw]
+    remainders = [(raw[i] - floors[i], i) for i in range(4)]
+    current_sum = sum(floors)
+    # Add 1 to the largest remainders until sum = 6
+    remainders.sort(reverse=True)
+    for i in range(6 - current_sum):
+        idx = remainders[i % 4][1]
+        floors[idx] += 1
+    # If current_sum > 6 (can't happen because raw sum <= 6 if raw from pool sizes? Actually raw sum may >6 if rates >1, but rates <1, so sum <=6)
+    return tuple(floors)
+
 def predict_counts_proportional(eh_pool, h_pool, w_pool, c_pool):
     sizes = [eh_pool, h_pool, w_pool, c_pool]
     raw = [size * 6 / 45 for size in sizes]
-    rounded = [round(x) for x in raw]
-    for i in range(4):
-        frac = raw[i] - int(raw[i])
-        if abs(frac - 0.5) < 1e-9:
-            rounded[i] = int(raw[i]) + 1
-    diff = 6 - sum(rounded)
-    if diff > 0:
-        order = sorted(range(4), key=lambda i: sizes[i], reverse=True)
-        for i in order[:diff]:
-            rounded[i] += 1
-    elif diff < 0:
-        order = sorted(range(4), key=lambda i: sizes[i])
-        for i in order[:-diff]:
-            rounded[i] -= 1
-    return tuple(rounded)
+    return round_to_sum6(raw)
 
 def predict_counts_mode(eh_pool, h_pool, w_pool, c_pool, history, k=K_NEIGHBORS):
     """
-    Conditional Mode predictor:
-    Find the k nearest historical draws (by pool size Euclidean distance),
+    Conditional Mode predictor: find k nearest historical draws (by pool size Euclidean distance),
     return the most frequent EH/H/W/C tuple among them.
     If no history, fallback to proportional.
     """
@@ -69,15 +77,13 @@ def predict_counts_mode(eh_pool, h_pool, w_pool, c_pool, history, k=K_NEIGHBORS)
     distances.sort(key=lambda x: x[0])
     neighbors = distances[:k]
 
-    # Count frequency of each outcome
     freq = Counter(cnt for _, cnt in neighbors)
-    # Find most common outcome(s)
     max_freq = max(freq.values())
     modes = [cnt for cnt, f in freq.items() if f == max_freq]
     if len(modes) == 1:
         return modes[0]
     else:
-        # Tie: choose the one with smallest average distance to target
+        # tie: choose the one with smallest average distance
         best_mode = None
         best_avg_dist = float('inf')
         for mode in modes:
@@ -87,6 +93,100 @@ def predict_counts_mode(eh_pool, h_pool, w_pool, c_pool, history, k=K_NEIGHBORS)
                 best_avg_dist = avg
                 best_mode = mode
         return best_mode
+
+def predict_counts_time_weighted_rate(eh_pool, h_pool, w_pool, c_pool, history, decay=0.95):
+    """
+    Time‑weighted rate model: uses exponential decay to give more weight to recent draws.
+    Returns tuple of integers summing to 6.
+    """
+    if not history:
+        return predict_counts_proportional(eh_pool, h_pool, w_pool, c_pool)
+
+    total_pool = [0.0]*4
+    total_count = [0.0]*4
+    weight_sum = 0.0
+    # Process history in chronological order (history is appended sequentially)
+    for i, (h_eh, h_h, h_w, h_c, h_counts) in enumerate(history):
+        weight = decay ** (len(history)-1 - i)  # more recent gets higher weight
+        pools = [h_eh, h_h, h_w, h_c]
+        counts = h_counts
+        for j in range(4):
+            total_pool[j] += weight * pools[j]
+            total_count[j] += weight * counts[j]
+        weight_sum += weight
+
+    if weight_sum == 0:
+        return predict_counts_proportional(eh_pool, h_pool, w_pool, c_pool)
+
+    rates = []
+    for j in range(4):
+        if total_pool[j] > 0:
+            rates.append(total_count[j] / total_pool[j])
+        else:
+            rates.append(0.0)
+
+    sizes = [eh_pool, h_pool, w_pool, c_pool]
+    raw = [sizes[i] * rates[i] for i in range(4)]
+    return round_to_sum6(raw)
+
+def predict_counts_ensemble(eh_pool, h_pool, w_pool, c_pool, history, k=K_NEIGHBORS, decay=0.95):
+    """
+    Ensemble: average continuous expectations from proportional, time‑weighted rate, and
+    distance‑weighted conditional mode, then round.
+    """
+    # 1. Proportional continuous
+    sizes = [eh_pool, h_pool, w_pool, c_pool]
+    raw_prop = [size * 6 / 45 for size in sizes]
+
+    # 2. Time-weighted rate continuous (if history non-empty)
+    if history:
+        total_pool = [0.0]*4
+        total_count = [0.0]*4
+        for i, (h_eh, h_h, h_w, h_c, h_counts) in enumerate(history):
+            weight = decay ** (len(history)-1 - i)
+            pools = [h_eh, h_h, h_w, h_c]
+            counts = h_counts
+            for j in range(4):
+                total_pool[j] += weight * pools[j]
+                total_count[j] += weight * counts[j]
+        rates = []
+        for j in range(4):
+            if total_pool[j] > 0:
+                rates.append(total_count[j] / total_pool[j])
+            else:
+                rates.append(0.0)
+        raw_rate = [sizes[i] * rates[i] for i in range(4)]
+    else:
+        raw_rate = raw_prop
+
+    # 3. Distance-weighted average of neighbor counts (conditional mode continuous)
+    if history:
+        target = (eh_pool, h_pool, w_pool, c_pool)
+        distances = []
+        for h_eh, h_h, h_w, h_c, h_counts in history:
+            dist = ((eh_pool - h_eh)**2 + (h_pool - h_h)**2 +
+                    (w_pool - h_w)**2 + (c_pool - h_c)**2) ** 0.5
+            distances.append((dist, h_counts))
+        distances.sort(key=lambda x: x[0])
+        neighbors = distances[:k]
+        # Inverse distance weights
+        if neighbors:
+            eps = 1e-6
+            inv_dists = [1.0/(d+eps) for d, _ in neighbors]
+            total_inv = sum(inv_dists)
+            weighted_counts = [0.0]*4
+            for (d, cnt), w in zip(neighbors, inv_dists):
+                for j in range(4):
+                    weighted_counts[j] += w * cnt[j] / total_inv
+            raw_mode = weighted_counts
+        else:
+            raw_mode = raw_prop
+    else:
+        raw_mode = raw_prop
+
+    # Average the three continuous vectors
+    raw_ens = [(raw_prop[i] + raw_rate[i] + raw_mode[i]) / 3.0 for i in range(4)]
+    return round_to_sum6(raw_ens)
 
 # Read all data
 all_rows = []
@@ -187,56 +287,70 @@ for outcome, freq in outcome_freq.most_common():
     print(f"  {outcome}  ->  {freq} times  ({freq/total_draws:.1%})")
 
 # ------------------------------------------------------------
-# Backtest comparison: Proportional vs Conditional Mode
+# Backtest comparison: Proportional vs Conditional Mode vs Time-Weighted Rate vs Ensemble
 # ------------------------------------------------------------
 if RUN_BACKTEST:
     print("\n" + "="*100)
     print(f"Backtest comparison over last {BACKTEST_N} draws:")
     print("="*100)
-    print(f"{'Date':<20} {'Pool Sizes':<15} {'Prop Pred':<15} {'Mode Pred':<15} {'Actual':<12} {'Prop Err':<8} {'Mode Err':<8}")
+    print(f"{'Date':<20} {'Pool Sizes':<15} {'Prop Pred':<15} {'Mode Pred':<15} {'TW-Rate Pred':<15} {'Ensemble Pred':<15} {'Actual':<12} {'Prop Err':<8} {'Mode Err':<8} {'TW-Rate Err':<8} {'Ens Err':<8}")
     print("-" * 100)
 
     history = []
     total_results = len(results)
     start_idx = total_results - BACKTEST_N
 
-    prop_exact = 0
-    mode_exact = 0
-    prop_abs_err = 0
-    mode_abs_err = 0
+    # Metrics
+    prop_exact = mode_exact = twrate_exact = ens_exact = 0
+    prop_abs_err = mode_abs_err = twrate_abs_err = ens_abs_err = 0
 
     for idx in range(total_results):
         r = results[idx]
         if idx >= start_idx:
-            # Proportional prediction
-            prop_pred = predict_counts_proportional(*r['pools_tuple'])
-            # Mode prediction (using only history before this draw)
-            mode_pred = predict_counts_mode(*r['pools_tuple'], history, k=K_NEIGHBORS)
-
+            peh, ph, pw, pc = r['pools_tuple']
             actual = r['counts_tuple']
+
+            # Predictions
+            prop_pred = predict_counts_proportional(peh, ph, pw, pc)
+            mode_pred = predict_counts_mode(peh, ph, pw, pc, history, k=K_NEIGHBORS)
+            twrate_pred = predict_counts_time_weighted_rate(peh, ph, pw, pc, history)
+            ens_pred = predict_counts_ensemble(peh, ph, pw, pc, history, k=K_NEIGHBORS)
+
+            # Errors
             prop_err = sum(abs(p - a) for p, a in zip(prop_pred, actual))
             mode_err = sum(abs(p - a) for p, a in zip(mode_pred, actual))
+            twrate_err = sum(abs(p - a) for p, a in zip(twrate_pred, actual))
+            ens_err = sum(abs(p - a) for p, a in zip(ens_pred, actual))
 
-            if prop_pred == actual:
-                prop_exact += 1
-            if mode_pred == actual:
-                mode_exact += 1
+            # Exact match counts
+            if prop_pred == actual: prop_exact += 1
+            if mode_pred == actual: mode_exact += 1
+            if twrate_pred == actual: twrate_exact += 1
+            if ens_pred == actual: ens_exact += 1
+
             prop_abs_err += prop_err
             mode_abs_err += mode_err
+            twrate_abs_err += twrate_err
+            ens_abs_err += ens_err
 
-            peh, ph, pw, pc = r['pools_tuple']
             pool_str = f"{peh}/{ph}/{pw}/{pc}"
             prop_str = f"{prop_pred[0]}/{prop_pred[1]}/{prop_pred[2]}/{prop_pred[3]}"
             mode_str = f"{mode_pred[0]}/{mode_pred[1]}/{mode_pred[2]}/{mode_pred[3]}"
+            twrate_str = f"{twrate_pred[0]}/{twrate_pred[1]}/{twrate_pred[2]}/{twrate_pred[3]}"
+            ens_str = f"{ens_pred[0]}/{ens_pred[1]}/{ens_pred[2]}/{ens_pred[3]}"
             actual_str = f"{actual[0]}/{actual[1]}/{actual[2]}/{actual[3]}"
-            print(f"{r['date']:<20} {pool_str:<15} {prop_str:<15} {mode_str:<15} {actual_str:<12} {prop_err:<8} {mode_err:<8}")
 
-        # Always add to history after prediction
+            print(f"{r['date']:<20} {pool_str:<15} {prop_str:<15} {mode_str:<15} {twrate_str:<15} {ens_str:<15} {actual_str:<12} "
+                  f"{prop_err:<8} {mode_err:<8} {twrate_err:<8} {ens_err:<8}")
+
+        # Append to history after predictions (walk‑forward)
         history.append((*r['pools_tuple'], r['counts_tuple']))
 
     print("-" * 100)
     print(f"Proportional model: Exact matches = {prop_exact}/{BACKTEST_N} ({prop_exact/BACKTEST_N:.0%}), Avg abs error = {prop_abs_err/BACKTEST_N:.2f}")
     print(f"Conditional Mode  : Exact matches = {mode_exact}/{BACKTEST_N} ({mode_exact/BACKTEST_N:.0%}), Avg abs error = {mode_abs_err/BACKTEST_N:.2f}")
+    print(f"Time‑Weighted Rate: Exact matches = {twrate_exact}/{BACKTEST_N} ({twrate_exact/BACKTEST_N:.0%}), Avg abs error = {twrate_abs_err/BACKTEST_N:.2f}")
+    print(f"Ensemble Model    : Exact matches = {ens_exact}/{BACKTEST_N} ({ens_exact/BACKTEST_N:.0%}), Avg abs error = {ens_abs_err/BACKTEST_N:.2f}")
 
 # ------------------------------------------------------------
 # Future date prediction
@@ -288,7 +402,11 @@ else:
 
     prop_pred = predict_counts_proportional(eh_pool, h_pool, w_pool, c_pool)
     mode_pred = predict_counts_mode(eh_pool, h_pool, w_pool, c_pool, full_history, k=K_NEIGHBORS)
+    twrate_pred = predict_counts_time_weighted_rate(eh_pool, h_pool, w_pool, c_pool, full_history)
+    ens_pred = predict_counts_ensemble(eh_pool, h_pool, w_pool, c_pool, full_history, k=K_NEIGHBORS)
 
     print("\nProportional prediction:", prop_pred)
     print("Conditional mode prediction:", mode_pred)
-    print("(Use the one that performed better in backtest)")
+    print("Time‑Weighted Rate prediction:", twrate_pred)
+    print("Ensemble prediction:", ens_pred)
+    print("(Use the one that performed best in backtest)")
