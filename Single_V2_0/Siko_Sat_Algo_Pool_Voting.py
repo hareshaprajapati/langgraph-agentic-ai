@@ -2,7 +2,7 @@ import pandas as pd
 from collections import Counter
 
 # ================= CONFIGURATION =================
-MODE = "backtest"          # "backtest" or "predict"
+MODE = "predict"          # "backtest" or "predict"
 NO_OF_BACKTEST_DRAWS = 10
 POOL_SIZE=15
 PREDICT_DATE = "Sat 05-Sep-2026"   # used only if MODE = "predict"
