@@ -1,184 +1,276 @@
-import pandas as pd
-import ast
-from collections import defaultdict, Counter
-import itertools
+import csv
+import re
+from datetime import datetime, timedelta
+from collections import Counter, defaultdict
 
-# ---------- POOLS ----------
-EH = [1, 2, 5, 11, 14, 15, 17, 22, 27, 28, 32, 34, 43]
-H  = [16, 18, 19, 30, 38, 39, 40, 42, 44]
-W  = [3, 4, 7, 8, 9, 10, 12, 13, 20, 21, 23, 24, 25, 26, 29, 35, 36, 37, 41, 45, 46]
-C  = [6, 31, 33, 47]
-ALL_NUMS = set(range(1, 48))
+CSV_FILE = 'cross_lotto_data_backup.csv'
+TARGET_DATE_STR = "Thu 10-Sep-2026"
 
-def parse_main_numbers(cell):
-    if pd.isna(cell) or cell == '':
+# ----------------------------------------------------------------------
+# HELPERS
+# ----------------------------------------------------------------------
+def parse_date(s):
+    """'Thu 10-Sep-2026' -> datetime."""
+    return datetime.strptime(s[4:], '%d-%b-%Y')
+
+
+def extract_all_numbers(cell):
+    """Extract every integer in a cell (main + supplementary, all brackets)."""
+    if not cell:
         return []
-    start = cell.find('[')
-    if start == -1:
+    nums = []
+    for part in cell.split(']'):
+        part = part.replace('[', '').strip()
+        if part:
+            for tok in part.split(','):
+                tok = tok.strip()
+                if tok:
+                    try:
+                        nums.append(int(tok))
+                    except ValueError:
+                        pass
+    return nums
+
+
+def extract_main_numbers(cell):
+    """Extract only the first bracketed list (main numbers)."""
+    if not cell:
         return []
-    end = cell.find(']', start)
-    if end == -1:
-        return []
-    try:
-        nums = ast.literal_eval(cell[start:end+1])
-        if isinstance(nums, list):
-            return [int(x) for x in nums if 1 <= x <= 47]
-    except:
-        return []
-    return []
+    main_part = cell.split(']')[0].replace('[', '').strip()
+    return [int(x.strip()) for x in main_part.split(',') if x.strip().isdigit()]
 
-# ---------- READ DATA ----------
-df = pd.read_csv('cross_lotto_data_backup.csv', encoding='utf-8')
-others_col = [c for c in df.columns if 'others' in c.lower()][0]
-df['Others_main'] = df[others_col].apply(parse_main_numbers)
-df = df[df['Others_main'].apply(len) == 7].copy()
-df['Date'] = pd.to_datetime(df['Date'], format='%a %d-%b-%Y')
-df = df.sort_values('Date').reset_index(drop=True)
 
-# Filter only Tuesdays
-tuesdays = df[df['Date'].dt.day_name() == 'Tuesday'].copy().reset_index(drop=True)
-print(f"Total Tuesday draws: {len(tuesdays)}")
+def extract_powerball(cell):
+    """Extract the single number in the last bracket (Powerball)."""
+    if not cell:
+        return None
+    brackets = re.findall(r'\[([^\]]+)\]', cell)
+    if len(brackets) < 2:
+        return None
+    toks = [int(x.strip()) for x in brackets[-1].split(',') if x.strip().isdigit()]
+    return toks[0] if toks else None
 
-# ---------- BACKTEST LOOP ----------
-results = []
-for i in range(1, len(tuesdays)):
-    seed_draw = tuesdays.iloc[i-1]['Others_main']
-    actual_draw = tuesdays.iloc[i]['Others_main']
-    seed_date = tuesdays.iloc[i-1]['Date']
 
-    # ---- Build Co-occurrence & Transition from PAST data only ----
-    past_tuesdays = tuesdays[tuesdays['Date'] < seed_date]
-    cooc_counter = Counter()
-    trans_counter = defaultdict(Counter)
+# ----------------------------------------------------------------------
+# BUILD POOLS — EXACT RULE FROM YOUR SCRIPT
+# ----------------------------------------------------------------------
+def build_pools(window_rows, max_num):
+    """
+    Rule (verbatim from import csv.txt):
+        EH : freq >= 4
+        H  : freq == 3
+        W  : 1 <= freq <= 2
+        C  : freq == 0
+    """
+    freq = Counter()
+    for _, _, all_nums in window_rows:
+        for n in all_nums:
+            if 1 <= n <= max_num:
+                freq[n] += 1
 
-    # Co-occurrence
-    for _, row in past_tuesdays.iterrows():
-        nums = row['Others_main']
-        for pair in itertools.combinations(sorted(nums), 2):
-            cooc_counter[pair] += 1
+    pools = {'EH': [], 'H': [], 'W': [], 'C': []}
+    for n in range(1, max_num + 1):
+        c = freq[n]
+        if c >= 4:
+            pools['EH'].append(n)
+        elif c == 3:
+            pools['H'].append(n)
+        elif c >= 1:
+            pools['W'].append(n)
+        else:
+            pools['C'].append(n)
+    return pools, freq
 
-    # Unigram transitions (Tuesday -> next Tuesday)
-    for j in range(len(past_tuesdays)-1):
-        curr = past_tuesdays.iloc[j]['Others_main']
-        nxt = past_tuesdays.iloc[j+1]['Others_main']
-        for num in curr:
-            for nxt_num in nxt:
-                trans_counter[num][nxt_num] += 1
 
-    # ---- Score candidates ----
-    candidate_scores = defaultdict(float)
-    for seed_num in seed_draw:
-        # Transitions
-        for nxt_num, cnt in trans_counter.get(seed_num, {}).items():
-            candidate_scores[nxt_num] += cnt * 1.0  # weight 1
-        # Co-occurrence: find pairs that contain seed_num
-        for (a, b), cnt in cooc_counter.items():
-            if a == seed_num:
-                candidate_scores[b] += cnt * 0.7  # weight 0.7
-            elif b == seed_num:
-                candidate_scores[a] += cnt * 0.7
+# ----------------------------------------------------------------------
+# READ CSV
+# ----------------------------------------------------------------------
+def load_rows():
+    """Return all_rows = [(date_str, dt, day_abbr, all_nums)] and Thursday draws."""
+    all_rows = []
+    with open(CSV_FILE, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.reader(f)
+        next(reader)
+        for row in reader:
+            if len(row) < 2:
+                continue
+            date_str = row[0].strip()
+            try:
+                dt = parse_date(date_str)
+            except Exception:
+                continue
+            sfl    = extract_all_numbers(row[1]) if len(row) > 1 else []
+            others = extract_all_numbers(row[2]) if len(row) > 2 and row[2] else []
+            all_rows.append((date_str, dt, date_str[:3], sfl + others))
+    all_rows.sort(key=lambda x: x[1])
 
-    # ---- Select top candidates per pool ----
-    eh_candidates = [(n, s) for n, s in candidate_scores.items() if n in EH]
-    h_candidates  = [(n, s) for n, s in candidate_scores.items() if n in H]
-    w_candidates  = [(n, s) for n, s in candidate_scores.items() if n in W]
-    # (ignore C)
+    # Thursday Powerball draws (main numbers + powerball)
+    thursday_draws = []
+    with open(CSV_FILE, 'r', encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f)
+        others_col = next(
+            k for k in reader.fieldnames
+            if k.strip().lstrip('\ufeff').lower().startswith('others')
+        )
+        for row in reader:
+            ds = (row.get('Date') or '').strip()
+            if not ds.startswith('Thu'):
+                continue
+            cell = row.get(others_col)
+            if not cell:
+                continue
+            mains = extract_main_numbers(cell)
+            pb    = extract_powerball(cell)
+            if not mains or pb is None:
+                continue
+            thursday_draws.append((ds, parse_date(ds), mains, pb))
+    thursday_draws.sort(key=lambda x: x[1])
+    return all_rows, thursday_draws
 
-    eh_candidates.sort(key=lambda x: -x[1])
-    h_candidates.sort(key=lambda x: -x[1])
-    w_candidates.sort(key=lambda x: -x[1])
 
-    # Fallback if not enough candidates
-    if len(eh_candidates) < 3:
-        for n in EH:
-            if n not in [x[0] for x in eh_candidates]:
-                eh_candidates.append((n, 0))
-    if not h_candidates:
-        for n in H:
-            h_candidates.append((n, 0))
-    if len(w_candidates) < 3:
-        for n in W:
-            if n not in [x[0] for x in w_candidates]:
-                w_candidates.append((n, 0))
+# ----------------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------------
+def main():
+    all_rows, thursday_draws = load_rows()
+    MAX_NUM = 35
 
-    # ---- Generate 6 tickets (varying choices) ----
-    top_eh = [x[0] for x in eh_candidates[:5]]
-    top_h = [x[0] for x in h_candidates[:3]]
-    top_w = [x[0] for x in w_candidates[:6]]
+    # ------------------------------------------------------------------
+    # Historical: for each Thursday draw, build the 7-day window ending
+    # on that date and classify the actual Powerball.
+    # ------------------------------------------------------------------
+    print("=" * 90)
+    print("HISTORICAL: Thursday Powerball → which pool?")
+    print("=" * 90)
+    print(f"{'Date':<14} {'PB':<4} {'Pool':<5} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
+          f"{'Prev PB':<8} {'Same?':<6}")
+    print("-" * 90)
 
-    # Fallback: ensure at least 3 EH, 1 H, 3 W
-    if len(top_eh) < 3:
-        for n in EH:
-            if n not in top_eh:
-                top_eh.append(n)
-                if len(top_eh) == 3:
-                    break
-    if not top_h:
-        top_h = [x for x in H if x in seed_draw][:1] or [30]  # fallback H
-    if len(top_w) < 3:
-        for n in W:
-            if n not in top_w:
-                top_w.append(n)
-                if len(top_w) == 3:
-                    break
+    pool_hits   = Counter()
+    transition  = defaultdict(Counter)
+    successor   = defaultdict(Counter)
+    prev_pb, prev_pool = None, None
 
-    tickets = []
-    for ticket_idx in range(6):
-        # Pick EH trio (rotate for variety)
-        eh_choice = sorted(top_eh[ticket_idx % len(top_eh):] + top_eh[:ticket_idx % len(top_eh)])[:3]
-        # Pick H (cycle)
-        h_choice = top_h[ticket_idx % len(top_h)]
-        # Pick 3 W (cycle)
-        w_choices = top_w[ticket_idx % len(top_w):] + top_w[:ticket_idx % len(top_w)]
-        w_choice = w_choices[:3]
-        if len(w_choice) < 3:
-            w_choice = [x for x in seed_draw if x in W][:3]
-        ticket = sorted(set(eh_choice + [h_choice] + w_choice))
-        # Ensure 7 numbers (if duplicates or short, pad with seed numbers)
-        while len(ticket) < 7:
-            for n in seed_draw:
-                if n not in ticket:
-                    ticket.append(n)
-                    break
-            else:
-                # fallback to top_w[0]
-                ticket.append(top_w[0])
-        ticket = sorted(ticket[:7])
-        tickets.append(ticket)
+    for ds, dt, mains, pb in thursday_draws:
+        # window = [previous Thursday, this Thursday)
+        prior = [d for d in thursday_draws if d[1] < dt]
+        if not prior:
+            prev_pb = pb
+            continue
+        prev_thu_dt = prior[-1][1]
 
-    # ---- Evaluate ----
-    max_hits = 0
-    best_ticket = tickets[0] if tickets else sorted(seed_draw)  # fallback
-    for ticket in tickets:
-        hits = len(set(ticket) & set(actual_draw))
-        if hits > max_hits:
-            max_hits = hits
-            best_ticket = ticket
+        # collect numbers from every lottery in [prev_thu_dt, dt)
+        window_rows = [(s, d, nums) for s, d, _, nums in all_rows
+                       if prev_thu_dt <= d < dt]
+        pools, _ = build_pools(window_rows, MAX_NUM)
 
-    results.append({
-        'seed_date': seed_date.strftime('%d-%b-%Y'),
-        'actual': sorted(actual_draw),
-        'best_ticket': sorted(best_ticket),
-        'max_hits': max_hits
-    })
+        pool = '?'
+        for name, nums in pools.items():
+            if pb in nums:
+                pool = name
+                break
 
-# ---------- PRINT RESULTS ----------
-print("\n" + "="*70)
-print("BACKTEST RESULTS: Hybrid Method (Transitions + Co-occurrence)")
-print("="*70)
+        pool_hits[pool] += 1
+        if prev_pool:
+            transition[prev_pool][pool] += 1
+        if prev_pb is not None:
+            successor[prev_pb][pb] += 1
 
-total_hits = 0
-jackpots = []
-for r in results:
-    total_hits += r['max_hits']
-    if r['max_hits'] >= 6:
-        jackpots.append(r)
-    print(f"{r['seed_date']} -> {r['actual']} | Best: {r['best_ticket']} | Hits: {r['max_hits']}")
+        same = "YES" if pool == prev_pool else "no"
+        sizes = (len(pools['EH']), len(pools['H']),
+                 len(pools['W']), len(pools['C']))
+        print(f"{ds:<14} {pb:<4} {pool:<5} {sizes[0]:<4} {sizes[1]:<4} "
+              f"{sizes[2]:<4} {sizes[3]:<4} {str(prev_pb):<8} {same:<6}")
 
-avg_hits = total_hits / len(results)
-print("\n" + "="*70)
-print(f"Total transitions tested: {len(results)}")
-print(f"Average Max Hits per draw: {avg_hits:.2f} (Random expectation: ~1.09)")
-print(f"Jackpots (6 or 7 hits): {len(jackpots)} times")
-for r in jackpots:
-    print(f"  - {r['seed_date']}: {r['max_hits']} hits -> Actual: {r['actual']}")
+        prev_pb, prev_pool = pb, pool
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 90)
+    print("Summary")
+    print("=" * 90)
+    total = sum(pool_hits.values()) or 1
+    for p in ['EH', 'H', 'W', 'C']:
+        print(f"  {p:<3}  {pool_hits[p]:>4}  ({pool_hits[p]/total*100:5.1f}%)")
+
+    print("\nTransition matrix (prev pool → next pool):")
+    for p in ['EH', 'H', 'W', 'C']:
+        if transition[p]:
+            row = ", ".join(f"{k}={v}" for k, v in transition[p].most_common())
+            print(f"  {p:<3} -> {row}")
+
+    # ------------------------------------------------------------------
+    # Predict for TARGET_DATE_STR
+    # ------------------------------------------------------------------
+    target_dt = parse_date(TARGET_DATE_STR)
+
+    # previous Thursday before target
+    prev_thu = max((d for d in thursday_draws if d[1] < target_dt),
+                   key=lambda x: x[1])
+    prev_ds, prev_thu_dt, _, prev_pb_num = prev_thu
+
+    # window = [prev Thursday, target date)
+    window_rows = [(s, d, nums) for s, d, _, nums in all_rows
+                   if prev_thu_dt <= d < target_dt]
+    pools, freq = build_pools(window_rows, MAX_NUM)
+
+    print("\n" + "=" * 90)
+    print(f"PREDICTION for {TARGET_DATE_STR}")
+    print("=" * 90)
+    print(f"Window: {prev_ds}  →  {TARGET_DATE_STR} (exclusive)")
+    print(f"Numbers contributing to window: {sum(len(n) for _, _, n in window_rows)}")
+
+    print("\nPool details (using rule from import csv.txt):")
+    print(f"  EH ({len(pools['EH']):>2}): {sorted(pools['EH'])}")
+    print(f"  H  ({len(pools['H']):>2}): {sorted(pools['H'])}")
+    print(f"  W  ({len(pools['W']):>2}): {sorted(pools['W'])}")
+    print(f"  C  ({len(pools['C']):>2}): {sorted(pools['C'])}")
+
+    # ---- Reasoning ----
+    # 1. Dominant pool
+    dominant = pool_hits.most_common(1)[0][0]
+
+    # 2. Last PB → its pool → most likely next pool
+    last_pb_pool = None
+    for name, nums in pools.items():
+        if prev_pb_num in nums:
+            last_pb_pool = name
+            break
+    # Find what pool the *previous* Thursday's PB was actually in (from history)
+    # We recompute it the same way the loop did.
+    prev_window_rows = []
+    if len(thursday_draws) >= 2:
+        prev_prev_dt = sorted([d[1] for d in thursday_draws if d[1] < prev_thu_dt])[-1]
+        prev_window_rows = [(s, d, nums) for s, d, _, nums in all_rows
+                            if prev_prev_dt <= d < prev_thu_dt]
+    prev_pools, _ = build_pools(prev_window_rows, MAX_NUM)
+    prev_pool_name = next((name for name, nums in prev_pools.items()
+                           if prev_pb_num in nums), None)
+
+    if prev_pool_name and transition[prev_pool_name]:
+        next_pool = transition[prev_pool_name].most_common(1)[0][0]
+    else:
+        next_pool = dominant
+
+    candidates = pools[next_pool]
+    succ = [n for n, _ in successor[prev_pb_num].most_common()] \
+        if successor[prev_pb_num] else []
+    filtered = [n for n in succ if n in candidates] or candidates
+
+    print("\n--- Reasoning ---")
+    print(f"  Last Thursday PB           : {prev_pb_num}  (pool: {prev_pool_name})")
+    print(f"  Dominant pool historically : {dominant}")
+    print(f"  Transition {prev_pool_name} -> {next_pool}")
+    print(f"  Successors of {prev_pb_num}         : {succ}")
+    print(f"  Candidates in {next_pool} pool    : {candidates}")
+
+    print("\n--- FINAL PREDICTION ---")
+    print(f"  Predicted Pool : {next_pool}")
+    print(f"  Ranked PB picks: {filtered}")
+    if filtered:
+        print(f"  Best single    : {filtered[0]}")
+
+
+if __name__ == '__main__':
+    main()

@@ -5,7 +5,7 @@ import math
 
 # ---------- CONFIGURATION ----------
 CSV_FILE = "cross_lotto_data_backup.csv"
-OUTPUT_LAST_N = 20          # rows shown in historical tables
+OUTPUT_LAST_N = 40          # rows shown in historical tables
 
 # Backtest settings (applied per lottery)
 RUN_BACKTEST = False
@@ -14,9 +14,7 @@ K_NEIGHBORS = 10            # for conditional mode predictor
 
 # Set this to a specific date to predict only that day's lottery.
 # Leave empty to predict the next draw for ALL lotteries.
-# FUTURE_DATE_STR = "Sat 05-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
-FUTURE_DATE_STR = "Tue 08-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
-# FUTURE_DATE_STR = "Mon 31-Aug-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+FUTURE_DATE_STR = "Sat 12-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # FUTURE_DATE_STR = ""                # uncomment to process all lotteries
 
 # Lottery definitions: day abbreviation -> (name, max number, main count)
@@ -74,6 +72,86 @@ def round_to_sum(raw, target_sum):
         idx = remainders[i % len(raw)][1]
         floors[idx] += 1
     return tuple(floors)
+
+# ---------- WEEK TABLE FUNCTION ----------
+def print_week_table(future_dt, all_rows, draws_by_day):
+    """
+    Print a table showing the pool composition for each day in the week
+    preceding the future date, in the same format as the historical table.
+    """
+    # Collect all draws (with Others data) that are < future_dt
+    all_draws = []
+    for date_str, dt, day_abbr, _, others_cell in all_rows:
+        if dt < future_dt and day_abbr in LOTTERY_CONFIG and others_cell:
+            main_nums = extract_main_numbers(others_cell)
+            if main_nums:
+                all_draws.append((date_str, dt, day_abbr, main_nums))
+    # Sort by date descending, take the most recent up to 7
+    all_draws.sort(key=lambda x: x[1], reverse=True)
+    week_draws = all_draws[:100]
+
+    if not week_draws:
+        print("\nNo recent draws found for the week table.")
+        return
+
+    # Sort chronologically for printing
+    week_draws.sort(key=lambda x: x[1])
+
+    print("\n" + "="*80)
+    print("Week Table: Pool composition for each day in the preceding week")
+    print("="*80)
+    print(f"{'Date':<20} {'Profile':<10} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
+          f"{'EH-Pool':<8} {'H-Pool':<8} {'W-Pool':<8} {'C-Pool':<8} "
+          f"{'EH+H-Pool':<10} {'Legacy Hits'}")
+    print("-" * 90)
+
+    for date_str, dt, day_abbr, main_nums in week_draws:
+        # Find the previous draw of the same day
+        prev_draw = None
+        for prev_date, prev_dt, prev_main in draws_by_day.get(day_abbr, []):
+            if prev_dt < dt:
+                prev_draw = (prev_date, prev_dt, prev_main)
+            else:
+                break
+        if prev_draw is None:
+            # No previous draw, skip
+            continue
+        prev_date_str, prev_dt, prev_main = prev_draw
+        max_num = LOTTERY_CONFIG[day_abbr][1]
+        main_count = LOTTERY_CONFIG[day_abbr][2]
+
+        # Build the window: from prev_dt to dt (inclusive of prev_dt, exclusive of dt)
+        window_nums = []
+        for _, d, _, all_nums, _ in all_rows:
+            if prev_dt <= d < dt:
+                valid_nums = [n for n in all_nums if 1 <= n <= max_num]
+                window_nums.extend(valid_nums)
+
+        counter = Counter(window_nums)
+        eh = {n for n, cnt in counter.items() if cnt >= 4}
+        h  = {n for n, cnt in counter.items() if cnt == 3}
+        w  = {n for n, cnt in counter.items() if 1 <= cnt <= 2}
+        c  = {n for n in range(1, max_num+1) if counter[n] == 0}
+
+        eh_pool = len(eh)
+        h_pool = len(h)
+        w_pool = len(w)
+        c_pool = len(c)
+
+        # Actual counts in the draw
+        eh_count = sum(1 for n in main_nums if n in eh)
+        h_count  = sum(1 for n in main_nums if n in h)
+        w_count  = sum(1 for n in main_nums if n in w)
+        c_count  = sum(1 for n in main_nums if n in c)
+
+        profile = "Breadth" if w_count >= (main_count // 2 + 1) else "Depth"
+        eh_h_pool = eh_pool + h_pool
+        legacy_hits = [n for n in main_nums if n in prev_main]
+        legacy_str = str(legacy_hits) if legacy_hits else "None"
+
+        print(f"{date_str:<20} {profile:<10} {eh_count:<4} {h_count:<4} {w_count:<4} {c_count:<4} "
+              f"{eh_pool:<8} {h_pool:<8} {w_pool:<8} {c_pool:<8} "
+              f"{eh_h_pool:<10} {legacy_str}")
 
 # ---------- PREDICTION FUNCTIONS ----------
 def predict_counts_proportional(pools, total_numbers, main_count):
@@ -160,7 +238,7 @@ def predict_counts_ensemble(pools, history, total_numbers, main_count, k=K_NEIGH
     return round_to_sum(raw_ens, main_count)
 
 # ---------- PROCESSING FUNCTION FOR A GIVEN LOTTERY ----------
-def process_lottery(day_abbr, draws, all_rows, max_num, main_count, lottery_name,
+def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name,
                     future_date=None):
     """
     Process one lottery type.
@@ -362,6 +440,10 @@ def process_lottery(day_abbr, draws, all_rows, max_num, main_count, lottery_name
     print(f"C  {sorted(c)}  C-Pool-Size: {c_pool}")
     print(f"EH+H Pool Size: {eh_pool + h_pool}")
 
+    # ---------- PRINT WEEK TABLE ----------
+    if future_date is not None:
+        print_week_table(future_date, all_rows, draws_by_day)
+
     full_history = [(r['pools_tuple'], r['counts_tuple']) for r in results]
 
     prop_pred = predict_counts_proportional((eh_pool, h_pool, w_pool, c_pool), max_num, main_count)
@@ -418,13 +500,13 @@ if FUTURE_DATE_STR:
         if not draws:
             print(f"No draws found for {day_abbr}.")
         else:
-            process_lottery(day_abbr, draws, all_rows, max_num, main_count, lottery_name, future_dt)
+            process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name, future_dt)
 else:
     # Process all lotteries and predict the next draw for each
     for day_abbr, config in LOTTERY_CONFIG.items():
         lottery_name, max_num, main_count = config
         draws = draws_by_day.get(day_abbr, [])
         if draws:
-            process_lottery(day_abbr, draws, all_rows, max_num, main_count, lottery_name, future_date=None)
+            process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name, future_date=None)
         else:
             print(f"\n{lottery_name} ({day_abbr}): No draws found. Skipping.")
