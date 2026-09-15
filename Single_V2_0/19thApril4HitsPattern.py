@@ -12,6 +12,18 @@ RUN_BACKTEST = False
 BACKTEST_N = 10             # number of most recent draws to backtest (per lottery)
 K_NEIGHBORS = 10            # for conditional mode predictor
 
+# Trajectory analysis settings
+# These do NOT replace the existing EH/H/W/C model. They add a second layer that
+# tracks how each number moves between C -> W -> H -> EH (and back) day by day.
+PRINT_DAILY_SNAPSHOT_POOLS = True
+PRINT_TRAJECTORY_TABLE = True
+RUN_TRAJECTORY_HISTORY = True
+PRINT_RECENT_WINNER_TRAJECTORIES = True
+
+TRAJECTORY_TOP_N = 12
+TRAJECTORY_MIN_SAMPLES = 5
+TRAJECTORY_RECENT_DRAWS = 8
+
 # Set this to a specific date to predict only that day's lottery.
 # Leave empty to predict the next draw for ALL lotteries.
 FUTURE_DATE_STR = "Tue 15-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
@@ -72,6 +84,483 @@ def round_to_sum(raw, target_sum):
         idx = remainders[i % len(raw)][1]
         floors[idx] += 1
     return tuple(floors)
+
+
+# ---------- POOL / TRAJECTORY HELPERS ----------
+POOL_NAMES = ("EH", "H", "W", "C")
+
+
+def build_pools(counter, max_num):
+    """
+    Convert a frequency Counter into EH/H/W/C pools.
+
+    EH = frequency >= 4
+    H  = frequency == 3
+    W  = frequency 1..2
+    C  = frequency == 0
+    """
+    eh = {n for n in range(1, max_num + 1) if counter[n] >= 4}
+    h = {n for n in range(1, max_num + 1) if counter[n] == 3}
+    w = {n for n in range(1, max_num + 1) if 1 <= counter[n] <= 2}
+    c = {n for n in range(1, max_num + 1) if counter[n] == 0}
+
+    return {
+        "EH": eh,
+        "H": h,
+        "W": w,
+        "C": c,
+    }
+
+
+def pool_state(number, pools):
+    """Return EH/H/W/C for a number in a pool dictionary."""
+    for state in POOL_NAMES:
+        if number in pools[state]:
+            return state
+    raise ValueError(f"Number {number} is not present in any pool.")
+
+
+def compress_trajectory(states):
+    """
+    Remove consecutive duplicate states.
+
+    Example:
+        W, W, H, EH, EH, EH -> W→H→EH
+    """
+    if not states:
+        return ""
+
+    compressed = [states[0]]
+    for state in states[1:]:
+        if state != compressed[-1]:
+            compressed.append(state)
+
+    return "→".join(compressed)
+
+
+def build_rolling_snapshot(snapshot_dt, all_rows, max_num, lookback_days=7):
+    """
+    Build an EH/H/W/C snapshot for ONE calendar date.
+
+    IMPORTANT:
+    - The number universe is fixed to the TARGET lottery's max_num.
+    - The same lookback length is used for every calendar-day snapshot.
+    - The snapshot excludes draws occurring on snapshot_dt itself.
+    - Therefore Sunday can be represented even though there is no 'Others'
+      lottery on Sunday.
+    """
+    window_start = snapshot_dt - timedelta(days=lookback_days)
+    window_nums = []
+
+    for _, dt, _, all_nums, _ in all_rows:
+        if window_start <= dt < snapshot_dt:
+            window_nums.extend(n for n in all_nums if 1 <= n <= max_num)
+
+    counter = Counter(window_nums)
+    pools = build_pools(counter, max_num)
+
+    return {
+        "date": snapshot_dt,
+        "window_start": window_start,
+        "counter": counter,
+        "pools": pools,
+        "sizes": tuple(len(pools[state]) for state in POOL_NAMES),
+    }
+
+
+def build_daily_trajectory_snapshots(prev_target_dt, target_dt, all_rows, max_num):
+    """
+    Build one rolling snapshot for every calendar day from the previous target
+    draw through the target date, inclusive.
+
+    Example for Tuesday Oz Lotto:
+        Tue 08, Wed 09, Thu 10, Fri 11, Sat 12, Sun 13, Mon 14, Tue 15(final)
+
+    The lookback length is the actual gap between the two target draws
+    (normally 7 days).
+    """
+    lookback_days = max(1, (target_dt - prev_target_dt).days)
+
+    snapshots = []
+    dt = prev_target_dt
+    while dt <= target_dt:
+        snapshots.append(
+            build_rolling_snapshot(
+                snapshot_dt=dt,
+                all_rows=all_rows,
+                max_num=max_num,
+                lookback_days=lookback_days,
+            )
+        )
+        dt += timedelta(days=1)
+
+    return snapshots
+
+
+def number_trajectory(number, snapshots):
+    """Return the full daily state sequence for one number."""
+    return [pool_state(number, snapshot["pools"]) for snapshot in snapshots]
+
+
+def print_daily_snapshot_pools(prev_target_dt, target_dt, all_rows, max_num, lottery_name):
+    """
+    Print the actual pool members for every daily rolling snapshot.
+    Sunday is included.
+    """
+    snapshots = build_daily_trajectory_snapshots(
+        prev_target_dt, target_dt, all_rows, max_num
+    )
+
+    lookback_days = max(1, (target_dt - prev_target_dt).days)
+
+    print("\n" + "=" * 120)
+    print(
+        f"Daily Rolling Pool Snapshots for {lottery_name} "
+        f"(fixed target universe 1-{max_num}, {lookback_days}-day rolling window)"
+    )
+    print("Sunday is included. Each snapshot excludes that calendar day's draws.")
+    print("=" * 120)
+
+    for snapshot in snapshots:
+        dt = snapshot["date"]
+        pools = snapshot["pools"]
+        sizes = snapshot["sizes"]
+
+        suffix = "  <-- FINAL TARGET POOL" if dt == target_dt else ""
+        print(
+            f"\n{dt.strftime('%a %d-%b-%Y')}  "
+            f"Window: {snapshot['window_start'].strftime('%a %d-%b-%Y')} "
+            f"to {dt.strftime('%a %d-%b-%Y')} (exclusive)"
+            f"{suffix}"
+        )
+        print(
+            f"  Pool sizes: EH={sizes[0]}  H={sizes[1]}  "
+            f"W={sizes[2]}  C={sizes[3]}"
+        )
+        print(f"  EH: {sorted(pools['EH'])}")
+        print(f"  H : {sorted(pools['H'])}")
+        print(f"  W : {sorted(pools['W'])}")
+        print(f"  C : {sorted(pools['C'])}")
+
+
+def print_number_trajectory_table(prev_target_dt, target_dt, all_rows, max_num, lottery_name):
+    """
+    Print one row per number showing how its EH/H/W/C state transforms day by day.
+    """
+    snapshots = build_daily_trajectory_snapshots(
+        prev_target_dt, target_dt, all_rows, max_num
+    )
+
+    labels = [s["date"].strftime("%a%d") for s in snapshots]
+    if labels:
+        labels[-1] = "FINAL"
+
+    print("\n" + "=" * 140)
+    print(
+        f"Number-by-Number EH/H/W/C Trajectories for {lottery_name} "
+        f"(target universe 1-{max_num})"
+    )
+    print(
+        f"Previous target draw: {prev_target_dt.strftime('%a %d-%b-%Y')}  |  "
+        f"Target: {target_dt.strftime('%a %d-%b-%Y')}"
+    )
+    print("=" * 140)
+
+    header = f"{'No':<4}"
+    for label in labels:
+        header += f"{label:<8}"
+    header += f"{'Compressed trajectory'}"
+    print(header)
+    print("-" * max(100, len(header)))
+
+    for number in range(1, max_num + 1):
+        states = number_trajectory(number, snapshots)
+        signature = compress_trajectory(states)
+
+        row = f"{number:<4}"
+        for state in states:
+            row += f"{state:<8}"
+        row += signature
+        print(row)
+
+
+def collect_trajectory_pattern_stats(draws, all_rows, max_num, cutoff_dt=None):
+    """
+    Historical non-cheating trajectory statistics.
+
+    For every historical target draw BEFORE cutoff_dt:
+      1. Rebuild the daily rolling snapshots using only data available before
+         each snapshot.
+      2. Compute every number's compressed trajectory.
+      3. Count candidate-number instances for each (final pool, trajectory).
+      4. Count how many of those candidate instances became main-number winners.
+
+    cutoff_dt:
+      If supplied, a target draw on cutoff_dt is deliberately excluded. This is
+      important when backtesting a date whose result already exists in the CSV.
+
+    Returns:
+      stats          dict keyed by (final_state, compressed_pattern)
+      winner_records one record per historical winning main number
+      analyzed_draws number of target draws included
+    """
+    stats = defaultdict(lambda: {"candidates": 0, "winners": 0})
+    winner_records = []
+    analyzed_draws = 0
+
+    if not all_rows:
+        return stats, winner_records, analyzed_draws
+
+    earliest_dt = min(row[1] for row in all_rows)
+
+    for i in range(1, len(draws)):
+        target_date_str, target_dt, target_main = draws[i]
+        _, prev_dt, _ = draws[i - 1]
+
+        if cutoff_dt is not None and target_dt >= cutoff_dt:
+            continue
+
+        lookback_days = max(1, (target_dt - prev_dt).days)
+
+        # We need one complete lookback window BEFORE the previous target draw
+        # to construct the first state in the trajectory without partial data.
+        if prev_dt - timedelta(days=lookback_days) < earliest_dt:
+            continue
+
+        snapshots = build_daily_trajectory_snapshots(
+            prev_dt, target_dt, all_rows, max_num
+        )
+
+        target_main_set = {
+            n for n in target_main
+            if 1 <= n <= max_num
+        }
+
+        for number in range(1, max_num + 1):
+            states = number_trajectory(number, snapshots)
+            final_state = states[-1]
+            signature = compress_trajectory(states)
+            key = (final_state, signature)
+
+            stats[key]["candidates"] += 1
+
+            if number in target_main_set:
+                stats[key]["winners"] += 1
+                winner_records.append({
+                    "date": target_date_str,
+                    "dt": target_dt,
+                    "number": number,
+                    "final_state": final_state,
+                    "signature": signature,
+                    "full_states": states,
+                })
+
+        analyzed_draws += 1
+
+    return stats, winner_records, analyzed_draws
+
+
+def print_trajectory_pattern_history(
+    draws,
+    all_rows,
+    max_num,
+    main_count,
+    lottery_name,
+    cutoff_dt=None,
+):
+    """
+    Print historical trajectory-pattern performance and return the stats so the
+    same non-cheating history can be used to annotate the current candidates.
+    """
+    stats, winner_records, analyzed_draws = collect_trajectory_pattern_stats(
+        draws=draws,
+        all_rows=all_rows,
+        max_num=max_num,
+        cutoff_dt=cutoff_dt,
+    )
+
+    print("\n" + "=" * 120)
+    if cutoff_dt is None:
+        print(f"Historical Trajectory Pattern Analysis - {lottery_name}")
+    else:
+        print(
+            f"Historical Trajectory Pattern Analysis - {lottery_name} "
+            f"(STRICTLY BEFORE {cutoff_dt.strftime('%a %d-%b-%Y')})"
+        )
+    print("=" * 120)
+
+    if analyzed_draws == 0:
+        print("Not enough complete historical windows to analyse trajectories.")
+        return stats, winner_records
+
+    baseline = main_count / max_num
+    print(f"Historical target draws analysed: {analyzed_draws}")
+    print(
+        f"Unconditional per-number main-draw baseline: "
+        f"{main_count}/{max_num} = {baseline:.2%}"
+    )
+    print(
+        "Hit Rate below = historical winning main-number instances / "
+        "candidate-number instances with that same final pool + trajectory."
+    )
+
+    for final_state in POOL_NAMES:
+        rows = []
+        for (state, signature), values in stats.items():
+            if state != final_state:
+                continue
+
+            candidates = values["candidates"]
+            winners = values["winners"]
+
+            if candidates < TRAJECTORY_MIN_SAMPLES:
+                continue
+
+            hit_rate = winners / candidates if candidates else 0.0
+            rows.append((signature, candidates, winners, hit_rate))
+
+        rows.sort(
+            key=lambda x: (
+                -x[2],       # winner count
+                -x[3],       # hit rate
+                -x[1],       # sample size
+                x[0],
+            )
+        )
+
+        print(f"\nFinal pool = {final_state}")
+        if not rows:
+            print(
+                f"  No patterns have at least "
+                f"{TRAJECTORY_MIN_SAMPLES} candidate instances."
+            )
+            continue
+
+        print(
+            f"  {'Compressed trajectory':<34} "
+            f"{'Candidates':>10} {'Winners':>9} {'Hit Rate':>10}"
+        )
+        print("  " + "-" * 68)
+
+        for signature, candidates, winners, hit_rate in rows[:TRAJECTORY_TOP_N]:
+            print(
+                f"  {signature:<34} "
+                f"{candidates:>10} {winners:>9} {hit_rate:>9.2%}"
+            )
+
+    if PRINT_RECENT_WINNER_TRAJECTORIES and winner_records:
+        distinct_dates = sorted(
+            {r["dt"] for r in winner_records}
+        )
+        keep_dates = set(distinct_dates[-TRAJECTORY_RECENT_DRAWS:])
+
+        print("\n" + "-" * 120)
+        print(
+            f"Winning-number trajectories from the most recent "
+            f"{min(TRAJECTORY_RECENT_DRAWS, len(distinct_dates))} "
+            f"historical {lottery_name} draws used above"
+        )
+        print("-" * 120)
+        print(
+            f"{'Date':<20} {'No':<4} {'Final':<6} "
+            f"{'Compressed':<30} {'Full daily states'}"
+        )
+
+        for record in winner_records:
+            if record["dt"] not in keep_dates:
+                continue
+            full_path = "→".join(record["full_states"])
+            print(
+                f"{record['date']:<20} "
+                f"{record['number']:<4} "
+                f"{record['final_state']:<6} "
+                f"{record['signature']:<30} "
+                f"{full_path}"
+            )
+
+    return stats, winner_records
+
+
+def print_current_trajectory_groups(
+    prev_target_dt,
+    target_dt,
+    all_rows,
+    max_num,
+    stats,
+    lottery_name,
+):
+    """
+    Group the current target pool by compressed trajectory and annotate each
+    group with its historical non-cheating candidate/winner counts.
+    """
+    snapshots = build_daily_trajectory_snapshots(
+        prev_target_dt, target_dt, all_rows, max_num
+    )
+
+    groups = defaultdict(list)
+
+    for number in range(1, max_num + 1):
+        states = number_trajectory(number, snapshots)
+        final_state = states[-1]
+        signature = compress_trajectory(states)
+        groups[(final_state, signature)].append(number)
+
+    print("\n" + "=" * 120)
+    print(f"Current {lottery_name} Pool Grouped by Trajectory Pattern")
+    print(
+        "Historical figures are based only on target draws before the current "
+        "target date, so the current result cannot leak into the score."
+    )
+    print("=" * 120)
+
+    for final_state in POOL_NAMES:
+        rows = []
+
+        for (state, signature), numbers in groups.items():
+            if state != final_state:
+                continue
+
+            hist = stats.get(
+                (state, signature),
+                {"candidates": 0, "winners": 0},
+            )
+            candidates = hist["candidates"]
+            winners = hist["winners"]
+            hit_rate = winners / candidates if candidates else 0.0
+
+            rows.append(
+                (
+                    signature,
+                    sorted(numbers),
+                    candidates,
+                    winners,
+                    hit_rate,
+                )
+            )
+
+        rows.sort(
+            key=lambda x: (
+                -x[4],   # historical hit rate
+                -x[3],   # historical winners
+                -x[2],   # sample size
+                x[0],
+            )
+        )
+
+        print(f"\nFinal pool = {final_state}")
+        print(
+            f"  {'Trajectory':<30} {'Current numbers':<38} "
+            f"{'Hist N':>7} {'Wins':>6} {'Rate':>9}"
+        )
+        print("  " + "-" * 98)
+
+        for signature, numbers, candidates, winners, hit_rate in rows:
+            number_str = str(numbers)
+            print(
+                f"  {signature:<30} {number_str:<38} "
+                f"{candidates:>7} {winners:>6} {hit_rate:>8.2%}"
+            )
+
 
 # ---------- WEEK TABLE FUNCTION ----------
 def print_week_table(future_dt, all_rows, draws_by_day):
@@ -152,6 +641,15 @@ def print_week_table(future_dt, all_rows, draws_by_day):
         print(f"{date_str:<20} {profile:<10} {eh_count:<4} {h_count:<4} {w_count:<4} {c_count:<4} "
               f"{eh_pool:<8} {h_pool:<8} {w_pool:<8} {c_pool:<8} "
               f"{eh_h_pool:<10} {legacy_str}")
+        eh_hits = sorted(n for n in main_nums if n in eh)
+        h_hits = sorted(n for n in main_nums if n in h)
+        w_hits = sorted(n for n in main_nums if n in w)
+        c_hits = sorted(n for n in main_nums if n in c)
+        print(f"    EH Pool Numbers: {sorted(eh)}   -> Hits: {eh_hits}")
+        print(f"    H  Pool Numbers: {sorted(h)}   -> Hits: {h_hits}")
+        print(f"    W  Pool Numbers: {sorted(w)}   -> Hits: {w_hits}")
+        print(f"    C  Pool Numbers: {sorted(c)}   -> Hits: {c_hits}")
+        print("-" * 90)
 
 # ---------- PREDICTION FUNCTIONS ----------
 def predict_counts_proportional(pools, total_numbers, main_count):
@@ -290,6 +788,7 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
 
         results.append({
             'date': target_date_str,
+            'dt': target_dt,
             'profile': profile,
             'counts_tuple': (counts['EH'], counts['H'], counts['W'], counts['C']),
             'pools_tuple': (eh_pool, h_pool, w_pool, c_pool),
@@ -381,52 +880,78 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         print(f"Ensemble Model    : Exact matches = {ens_exact}/{BACKTEST_N} ({ens_exact/BACKTEST_N:.0%}), Avg abs error = {ens_abs_err/BACKTEST_N:.2f}")
 
     # ---------- PREDICTION ----------
+    prediction_prev_dt = None
+    prediction_target_dt = None
+
     if future_date is not None:
-        # Predict for the given future date
+        # Predict for the given future date.
+        # If that result already exists in the CSV, the target draw itself is
+        # still EXCLUDED from every prediction/history calculation below.
         future_dt = future_date
-        # find the previous occurrence of this day before future_dt
+
+        # Find the previous occurrence of this same target day before future_dt.
         prev_draw = None
         for date_str, dt, main_nums in draws:
             if dt < future_dt:
                 prev_draw = (date_str, dt, main_nums)
             else:
                 break
+
         if prev_draw is None:
             print("No previous draw found for this day before the given future date.")
             return
+
         prev_date_str, prev_dt, _ = prev_draw
+        prediction_prev_dt = prev_dt
+        prediction_target_dt = future_dt
+
         target_date_str = future_dt.strftime('%a %d-%b-%Y')
         print(f"\nPrediction for {lottery_name} on {target_date_str}")
-        print("="*90)
-        # Window from prev_dt to future_dt (exclusive)
+        print("=" * 90)
+
+        # Target pool window: previous same-day target draw -> future target draw.
         window_nums = []
         for date_str, dt, day_abbr2, all_nums, _ in all_rows:
             if prev_dt <= dt < future_dt:
                 valid_nums = [n for n in all_nums if 1 <= n <= max_num]
                 window_nums.extend(valid_nums)
-        print(f"Window: {prev_date_str} to {future_dt.strftime('%a %d-%b-%Y')}")
+
+        print(
+            f"Window: {prev_date_str} to "
+            f"{future_dt.strftime('%a %d-%b-%Y')}"
+        )
+
     else:
-        # Predict next occurrence
+        # Predict the next occurrence.
         last_date_str, last_dt, last_main = draws[-1]
         next_date = last_dt + timedelta(days=1)
+
         while next_date.strftime('%a')[:3] != day_abbr:
             next_date += timedelta(days=1)
+
+        prediction_prev_dt = last_dt
+        prediction_target_dt = next_date
+
         target_date_str = next_date.strftime('%a %d-%b-%Y')
         print(f"\nPrediction for next {lottery_name} draw: {target_date_str}")
-        print("="*90)
-        # Window from last draw to next_date
+        print("=" * 90)
+
         window_nums = []
         for date_str, dt, day_abbr2, all_nums, _ in all_rows:
             if last_dt <= dt < next_date:
                 valid_nums = [n for n in all_nums if 1 <= n <= max_num]
                 window_nums.extend(valid_nums)
+
         print(f"Window: {last_date_str} to {target_date_str}")
 
+    # Build the final target pool.
     counter = Counter(window_nums)
-    eh = {n for n, cnt in counter.items() if cnt >= 4}
-    h  = {n for n, cnt in counter.items() if cnt == 3}
-    w  = {n for n, cnt in counter.items() if 1 <= cnt <= 2}
-    c  = {n for n in range(1, max_num+1) if counter[n] == 0}
+    target_pools = build_pools(counter, max_num)
+
+    eh = target_pools["EH"]
+    h = target_pools["H"]
+    w = target_pools["W"]
+    c = target_pools["C"]
 
     eh_pool = len(eh)
     h_pool = len(h)
@@ -440,20 +965,97 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
     print(f"C  {sorted(c)}  C-Pool-Size: {c_pool}")
     print(f"EH+H Pool Size: {eh_pool + h_pool}")
 
-    # ---------- PRINT WEEK TABLE ----------
+    # ---------- EXISTING NATIVE-GAME WEEK TABLE ----------
+    # This keeps your original table and its actual historical hits.
+    # Sunday is intentionally handled by the NEW daily trajectory section,
+    # because Sunday has no "Others" target lottery draw to score.
     if future_date is not None:
         print_week_table(future_date, all_rows, draws_by_day)
 
-    full_history = [(r['pools_tuple'], r['counts_tuple']) for r in results]
+    # ---------- NEW DAILY SNAPSHOTS / TRAJECTORIES ----------
+    if PRINT_DAILY_SNAPSHOT_POOLS:
+        print_daily_snapshot_pools(
+            prev_target_dt=prediction_prev_dt,
+            target_dt=prediction_target_dt,
+            all_rows=all_rows,
+            max_num=max_num,
+            lottery_name=lottery_name,
+        )
 
-    prop_pred = predict_counts_proportional((eh_pool, h_pool, w_pool, c_pool), max_num, main_count)
-    mode_pred = predict_counts_mode((eh_pool, h_pool, w_pool, c_pool), full_history, max_num, main_count, k=K_NEIGHBORS)
-    twrate_pred = predict_counts_time_weighted_rate((eh_pool, h_pool, w_pool, c_pool), full_history, max_num, main_count)
-    ens_pred = predict_counts_ensemble((eh_pool, h_pool, w_pool, c_pool), full_history, max_num, main_count, k=K_NEIGHBORS)
+    if PRINT_TRAJECTORY_TABLE:
+        print_number_trajectory_table(
+            prev_target_dt=prediction_prev_dt,
+            target_dt=prediction_target_dt,
+            all_rows=all_rows,
+            max_num=max_num,
+            lottery_name=lottery_name,
+        )
+
+    # Historical trajectory pattern analysis.
+    # cutoff_dt makes this non-cheating even when FUTURE_DATE_STR points to a
+    # date whose winning result is already present in the CSV.
+    trajectory_stats = {}
+    if RUN_TRAJECTORY_HISTORY:
+        trajectory_stats, _ = print_trajectory_pattern_history(
+            draws=draws,
+            all_rows=all_rows,
+            max_num=max_num,
+            main_count=main_count,
+            lottery_name=lottery_name,
+            cutoff_dt=prediction_target_dt,
+        )
+
+        print_current_trajectory_groups(
+            prev_target_dt=prediction_prev_dt,
+            target_dt=prediction_target_dt,
+            all_rows=all_rows,
+            max_num=max_num,
+            stats=trajectory_stats,
+            lottery_name=lottery_name,
+        )
+
+    # ---------- ORIGINAL EH/H/W/C COUNT PREDICTIONS ----------
+    # IMPORTANT: only use outcomes strictly BEFORE the target date.
+    # This fixes leakage if the target result already exists in the CSV.
+    model_results = [
+        r for r in results
+        if r['dt'] < prediction_target_dt
+    ]
+
+    full_history = [
+        (r['pools_tuple'], r['counts_tuple'])
+        for r in model_results
+    ]
+
+    prop_pred = predict_counts_proportional(
+        (eh_pool, h_pool, w_pool, c_pool),
+        max_num,
+        main_count,
+    )
+    mode_pred = predict_counts_mode(
+        (eh_pool, h_pool, w_pool, c_pool),
+        full_history,
+        max_num,
+        main_count,
+        k=K_NEIGHBORS,
+    )
+    twrate_pred = predict_counts_time_weighted_rate(
+        (eh_pool, h_pool, w_pool, c_pool),
+        full_history,
+        max_num,
+        main_count,
+    )
+    ens_pred = predict_counts_ensemble(
+        (eh_pool, h_pool, w_pool, c_pool),
+        full_history,
+        max_num,
+        main_count,
+        k=K_NEIGHBORS,
+    )
 
     print("\nProportional prediction:", prop_pred)
     print("Conditional mode prediction:", mode_pred)
-    print("Time‑Weighted Rate prediction:", twrate_pred)
+    print("Time-Weighted Rate prediction:", twrate_pred)
     print("Ensemble prediction:", ens_pred)
     print("(Use the one that performed best in backtest)")
 
