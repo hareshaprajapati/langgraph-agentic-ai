@@ -14,7 +14,7 @@ K_NEIGHBORS = 10            # for conditional mode predictor
 
 # Set this to a specific date to predict only that day's lottery.
 # Leave empty to predict the next draw for ALL lotteries.
-FUTURE_DATE_STR = "Mon 14-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+FUTURE_DATE_STR = "Tue 15-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # FUTURE_DATE_STR = ""                # uncomment to process all lotteries
 
 # Lottery definitions: day abbreviation -> (name, max number, main count)
