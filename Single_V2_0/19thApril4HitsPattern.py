@@ -5,7 +5,15 @@ import math
 
 # ---------- CONFIGURATION ----------
 CSV_FILE = "cross_lotto_data_backup.csv"
-OUTPUT_LAST_N = 40          # rows shown in historical tables
+OUTPUT_LAST_N = 30          # rows shown in historical tables
+FUTURE_DATE_STR = "Wed 23-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+# Locked EH/H/W/C profile for conditional winning-trajectory analysis.
+# Example: EH=2, H=1, W=3, C=0. (2, 1, 3, 0)
+LOCKED_PROFILE = (1, 0, 5, 0)
+LOCKED_PROFILE = ""
+LOCKED_TRAJECTORY_TOP_N = 30
+WEEK_TABLE_DAYS = 30
+POOL_LOOKBACK_DAYS = 30
 
 # Backtest settings (applied per lottery)
 RUN_BACKTEST = False
@@ -20,13 +28,15 @@ PRINT_TRAJECTORY_TABLE = True
 RUN_TRAJECTORY_HISTORY = True
 PRINT_RECENT_WINNER_TRAJECTORIES = True
 
-TRAJECTORY_TOP_N = 12
+TRAJECTORY_TOP_N = 30
 TRAJECTORY_MIN_SAMPLES = 5
-TRAJECTORY_RECENT_DRAWS = 8
+TRAJECTORY_RECENT_DRAWS = 30
+
+
+
 
 # Set this to a specific date to predict only that day's lottery.
 # Leave empty to predict the next draw for ALL lotteries.
-FUTURE_DATE_STR = "Tue 15-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # FUTURE_DATE_STR = ""                # uncomment to process all lotteries
 
 # Lottery definitions: day abbreviation -> (name, max number, main count)
@@ -563,93 +573,972 @@ def print_current_trajectory_groups(
 
 
 # ---------- WEEK TABLE FUNCTION ----------
-def print_week_table(future_dt, all_rows, draws_by_day):
+def print_week_table(
+    future_dt,
+    all_rows,
+    draws_by_day,
+    target_max_num,
+    target_lottery_name,
+    table_days=WEEK_TABLE_DAYS,
+    pool_lookback_days=7,
+):
     """
-    Print a table showing the pool composition for each day in the week
-    preceding the future date, in the same format as the historical table.
+    Print the preceding 7 CALENDAR DAYS in two formats:
+
+    1. Detailed:
+       row + EH/H/W/C pool members + actual hits where an Others draw exists.
+
+    2. Compact:
+       same information as the old Week Table, one row per calendar day.
+
+    Sunday is included.
+
+    IMPORTANT:
+    - Pool snapshots use the TARGET lottery number universe consistently.
+      Example:
+          Weekday Windfall -> 1..45
+          Oz Lotto         -> 1..47
+    - Each day's snapshot uses [day - lookback_days, day), therefore it does
+      not use that day's result to build its pool.
+    - Sunday has no Others draw, so its actual Profile / EH/H/W/C hit counts
+      are shown as "-".  Its pool sizes and members are still valid.
     """
-    # Collect all draws (with Others data) that are < future_dt
-    all_draws = []
-    for date_str, dt, day_abbr, _, others_cell in all_rows:
-        if dt < future_dt and day_abbr in LOTTERY_CONFIG and others_cell:
-            main_nums = extract_main_numbers(others_cell)
-            if main_nums:
-                all_draws.append((date_str, dt, day_abbr, main_nums))
-    # Sort by date descending, take the most recent up to 7
-    all_draws.sort(key=lambda x: x[1], reverse=True)
-    week_draws = all_draws[:100]
 
-    if not week_draws:
-        print("\nNo recent draws found for the week table.")
-        return
+    start_dt = future_dt - timedelta(days=table_days)
 
-    # Sort chronologically for printing
-    week_draws.sort(key=lambda x: x[1])
+    # ------------------------------------------------------------
+    # Helper: locate the CSV row for one calendar date
+    # ------------------------------------------------------------
+    rows_by_date = {
+        dt.date(): (date_str, dt, day_abbr, all_nums, others_cell)
+        for date_str, dt, day_abbr, all_nums, others_cell in all_rows
+    }
 
-    print("\n" + "="*80)
-    print("Week Table: Pool composition for each day in the preceding week")
-    print("="*80)
-    print(f"{'Date':<20} {'Profile':<10} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
-          f"{'EH-Pool':<8} {'H-Pool':<8} {'W-Pool':<8} {'C-Pool':<8} "
-          f"{'EH+H-Pool':<10} {'Legacy Hits'}")
-    print("-" * 90)
+    week_rows = []
 
-    for date_str, dt, day_abbr, main_nums in week_draws:
-        # Find the previous draw of the same day
-        prev_draw = None
-        for prev_date, prev_dt, prev_main in draws_by_day.get(day_abbr, []):
-            if prev_dt < dt:
-                prev_draw = (prev_date, prev_dt, prev_main)
-            else:
-                break
-        if prev_draw is None:
-            # No previous draw, skip
-            continue
-        prev_date_str, prev_dt, prev_main = prev_draw
-        max_num = LOTTERY_CONFIG[day_abbr][1]
-        main_count = LOTTERY_CONFIG[day_abbr][2]
+    dt = start_dt
+    while dt < future_dt:
 
-        # Build the window: from prev_dt to dt (inclusive of prev_dt, exclusive of dt)
-        window_nums = []
-        for _, d, _, all_nums, _ in all_rows:
-            if prev_dt <= d < dt:
-                valid_nums = [n for n in all_nums if 1 <= n <= max_num]
-                window_nums.extend(valid_nums)
+        # Build pool BEFORE this calendar day's results.
+        snapshot = build_rolling_snapshot(
+            snapshot_dt=dt,
+            all_rows=all_rows,
+            max_num=target_max_num,
+            lookback_days=pool_lookback_days,
+        )
 
-        counter = Counter(window_nums)
-        eh = {n for n, cnt in counter.items() if cnt >= 4}
-        h  = {n for n, cnt in counter.items() if cnt == 3}
-        w  = {n for n, cnt in counter.items() if 1 <= cnt <= 2}
-        c  = {n for n in range(1, max_num+1) if counter[n] == 0}
+        pools = snapshot["pools"]
+
+        eh = pools["EH"]
+        h = pools["H"]
+        w = pools["W"]
+        c = pools["C"]
 
         eh_pool = len(eh)
         h_pool = len(h)
         w_pool = len(w)
         c_pool = len(c)
-
-        # Actual counts in the draw
-        eh_count = sum(1 for n in main_nums if n in eh)
-        h_count  = sum(1 for n in main_nums if n in h)
-        w_count  = sum(1 for n in main_nums if n in w)
-        c_count  = sum(1 for n in main_nums if n in c)
-
-        profile = "Breadth" if w_count >= (main_count // 2 + 1) else "Depth"
         eh_h_pool = eh_pool + h_pool
-        legacy_hits = [n for n in main_nums if n in prev_main]
-        legacy_str = str(legacy_hits) if legacy_hits else "None"
 
-        print(f"{date_str:<20} {profile:<10} {eh_count:<4} {h_count:<4} {w_count:<4} {c_count:<4} "
-              f"{eh_pool:<8} {h_pool:<8} {w_pool:<8} {c_pool:<8} "
-              f"{eh_h_pool:<10} {legacy_str}")
-        eh_hits = sorted(n for n in main_nums if n in eh)
-        h_hits = sorted(n for n in main_nums if n in h)
-        w_hits = sorted(n for n in main_nums if n in w)
-        c_hits = sorted(n for n in main_nums if n in c)
-        print(f"    EH Pool Numbers: {sorted(eh)}   -> Hits: {eh_hits}")
-        print(f"    H  Pool Numbers: {sorted(h)}   -> Hits: {h_hits}")
-        print(f"    W  Pool Numbers: {sorted(w)}   -> Hits: {w_hits}")
-        print(f"    C  Pool Numbers: {sorted(c)}   -> Hits: {c_hits}")
-        print("-" * 90)
+        day_abbr = dt.strftime("%a")[:3]
+        date_str = dt.strftime("%a %d-%b-%Y")
+
+        # --------------------------------------------------------
+        # Actual "Others" result for this date, if one exists.
+        #
+        # Sunday normally has no Others result, therefore main_nums
+        # stays empty and the row becomes a snapshot-only row.
+        # --------------------------------------------------------
+        main_nums = []
+        others_cell = None
+
+        source_row = rows_by_date.get(dt.date())
+
+        if source_row is not None:
+            _, _, source_day, _, others_cell = source_row
+
+            if others_cell:
+                main_nums = [
+                    n for n in extract_main_numbers(others_cell)
+                    if 1 <= n <= target_max_num
+                ]
+
+        if main_nums:
+
+            eh_hits = sorted(n for n in main_nums if n in eh)
+            h_hits = sorted(n for n in main_nums if n in h)
+            w_hits = sorted(n for n in main_nums if n in w)
+            c_hits = sorted(n for n in main_nums if n in c)
+
+            eh_count = len(eh_hits)
+            h_count = len(h_hits)
+            w_count = len(w_hits)
+            c_count = len(c_hits)
+
+            # Use actual number of main numbers on that date.
+            actual_main_count = len(main_nums)
+
+            profile = (
+                "Breadth"
+                if w_count >= (actual_main_count // 2 + 1)
+                else "Depth"
+            )
+
+            # Previous same-weekday Others draw, for Legacy Hits.
+            prev_main = None
+
+            for prev_date, prev_dt, prev_nums in draws_by_day.get(day_abbr, []):
+                if prev_dt < dt:
+                    prev_main = prev_nums
+                else:
+                    break
+
+            if prev_main is not None:
+                legacy_hits = sorted(
+                    n for n in main_nums
+                    if n in prev_main
+                )
+                legacy_str = str(legacy_hits) if legacy_hits else "None"
+            else:
+                legacy_str = "None"
+
+        else:
+            # Sunday / no Others result.
+            profile = "Snapshot"
+
+            eh_count = None
+            h_count = None
+            w_count = None
+            c_count = None
+
+            eh_hits = []
+            h_hits = []
+            w_hits = []
+            c_hits = []
+
+            legacy_str = "-"
+
+        week_rows.append({
+            "date": date_str,
+            "dt": dt,
+            "profile": profile,
+
+            "eh_count": eh_count,
+            "h_count": h_count,
+            "w_count": w_count,
+            "c_count": c_count,
+
+            "eh_pool": eh_pool,
+            "h_pool": h_pool,
+            "w_pool": w_pool,
+            "c_pool": c_pool,
+            "eh_h_pool": eh_h_pool,
+
+            "legacy": legacy_str,
+
+            "eh": sorted(eh),
+            "h": sorted(h),
+            "w": sorted(w),
+            "c": sorted(c),
+
+            "eh_hits": eh_hits,
+            "h_hits": h_hits,
+            "w_hits": w_hits,
+            "c_hits": c_hits,
+
+            "has_result": bool(main_nums),
+        })
+
+        dt += timedelta(days=1)
+
+    # ============================================================
+    # FORMAT 1 - DETAILED
+    # ============================================================
+
+    print("\n" + "=" * 100)
+    print(
+        f"Week Table - Detailed Pool Composition "
+        f"({target_lottery_name}, universe 1-{target_max_num})"
+    )
+    print("=" * 100)
+
+    print(
+        f"{'Date':<20} "
+        f"{'Profile':<10} "
+        f"{'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
+        f"{'EH-Pool':<8} {'H-Pool':<8} "
+        f"{'W-Pool':<8} {'C-Pool':<8} "
+        f"{'EH+H-Pool':<10} "
+        f"{'Legacy Hits'}"
+    )
+
+    print("-" * 100)
+
+    for r in week_rows:
+
+        eh_count = "-" if r["eh_count"] is None else r["eh_count"]
+        h_count = "-" if r["h_count"] is None else r["h_count"]
+        w_count = "-" if r["w_count"] is None else r["w_count"]
+        c_count = "-" if r["c_count"] is None else r["c_count"]
+
+        print(
+            f"{r['date']:<20} "
+            f"{r['profile']:<10} "
+            f"{str(eh_count):<4} "
+            f"{str(h_count):<4} "
+            f"{str(w_count):<4} "
+            f"{str(c_count):<4} "
+            f"{r['eh_pool']:<8} "
+            f"{r['h_pool']:<8} "
+            f"{r['w_pool']:<8} "
+            f"{r['c_pool']:<8} "
+            f"{r['eh_h_pool']:<10} "
+            f"{r['legacy']}"
+        )
+
+        if r["has_result"]:
+
+            print(
+                f"    EH Pool Numbers: {r['eh']}   "
+                f"-> Hits: {r['eh_hits']}"
+            )
+            print(
+                f"    H  Pool Numbers: {r['h']}   "
+                f"-> Hits: {r['h_hits']}"
+            )
+            print(
+                f"    W  Pool Numbers: {r['w']}   "
+                f"-> Hits: {r['w_hits']}"
+            )
+            print(
+                f"    C  Pool Numbers: {r['c']}   "
+                f"-> Hits: {r['c_hits']}"
+            )
+
+        else:
+            # Sunday
+            print(
+                f"    EH Pool Numbers: {r['eh']}   "
+                f"-> Hits: N/A (no Others draw)"
+            )
+            print(
+                f"    H  Pool Numbers: {r['h']}   "
+                f"-> Hits: N/A (no Others draw)"
+            )
+            print(
+                f"    W  Pool Numbers: {r['w']}   "
+                f"-> Hits: N/A (no Others draw)"
+            )
+            print(
+                f"    C  Pool Numbers: {r['c']}   "
+                f"-> Hits: N/A (no Others draw)"
+            )
+
+        print("-" * 100)
+
+    # ============================================================
+    # FORMAT 2 - COMPACT / COUNTS ONLY
+    # ============================================================
+
+    print("\n" + "=" * 100)
+    print("Week Table: Pool composition for each day in the preceding week")
+    print("=" * 100)
+
+    print(
+        f"{'Date':<20} "
+        f"{'Profile':<10} "
+        f"{'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
+        f"{'EH-Pool':<8} {'H-Pool':<8} "
+        f"{'W-Pool':<8} {'C-Pool':<8} "
+        f"{'EH+H-Pool':<10} "
+        f"{'Legacy Hits'}"
+    )
+
+    print("-" * 100)
+
+    for r in week_rows:
+
+        eh_count = "-" if r["eh_count"] is None else r["eh_count"]
+        h_count = "-" if r["h_count"] is None else r["h_count"]
+        w_count = "-" if r["w_count"] is None else r["w_count"]
+        c_count = "-" if r["c_count"] is None else r["c_count"]
+
+        print(
+            f"{r['date']:<20} "
+            f"{r['profile']:<10} "
+            f"{str(eh_count):<4} "
+            f"{str(h_count):<4} "
+            f"{str(w_count):<4} "
+            f"{str(c_count):<4} "
+            f"{r['eh_pool']:<8} "
+            f"{r['h_pool']:<8} "
+            f"{r['w_pool']:<8} "
+            f"{r['c_pool']:<8} "
+            f"{r['eh_h_pool']:<10} "
+            f"{r['legacy']}"
+        )
+
+    return week_rows
+
+
+# ---------- POOL-SIZE -> MOST-COMMON HIT ANALYSIS ----------
+def print_pool_size_common_hit_table(
+    current_pools,
+    historical_results,
+    week_rows,
+    cutoff_dt,
+    recent_n=OUTPUT_LAST_N,
+):
+    """
+    For each CURRENT pool size (EH/H/W/C):
+
+      1. Look at the same historical rows shown in the "Last N ... draws analysis"
+         table, strictly before cutoff_dt.
+      2. Also look at result-bearing rows from the printed Week Table.
+      3. If ANY historical pool (EH/H/W/C) has the same pool size, collect the
+         ACTUAL hit count from that SAME historical pool.
+      4. Report the most common hit count (mode).
+
+    Example:
+        Current EH pool size = 12.
+
+        Historical matches may include:
+          - EH-Pool = 12 -> collect that row's EH hit count
+          - H-Pool  = 12 -> collect that row's H hit count
+          - W-Pool  = 12 -> collect that row's W hit count
+          - C-Pool  = 12 -> collect that row's C hit count
+
+    Duplicate protection:
+        A Saturday can appear in both the Last-N table and Week Table.
+        The same (date, pool-name) observation is counted only once.
+
+    IMPORTANT:
+        Each current pool is analysed independently. Therefore the four modal
+        values do NOT necessarily sum to the lottery's main-count.
+    """
+    current_sizes = {
+        "EH": len(current_pools["EH"]),
+        "H": len(current_pools["H"]),
+        "W": len(current_pools["W"]),
+        "C": len(current_pools["C"]),
+    }
+
+    # size -> list of observations with that historical pool size
+    by_size = defaultdict(list)
+    seen = set()
+
+    def add_observation(date_str, dt, pool_name, pool_size, hit_count, source):
+        if dt is not None and cutoff_dt is not None and dt >= cutoff_dt:
+            return
+
+        # Prevent double-counting the same Saturday/pool when it appears
+        # in both the Last-N table and Week Table.
+        dedupe_key = (date_str, pool_name)
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+
+        by_size[pool_size].append({
+            "date": date_str,
+            "dt": dt,
+            "pool": pool_name,
+            "hits": hit_count,
+            "source": source,
+        })
+
+    # ------------------------------------------------------------
+    # SOURCE 1: exactly the historical rows corresponding to the
+    # displayed "Last N ... draws analysis" table, before target.
+    # ------------------------------------------------------------
+    eligible_results = [
+        r for r in historical_results
+        if cutoff_dt is None or r["dt"] < cutoff_dt
+    ]
+    recent_results = eligible_results[-recent_n:]
+
+    for r in recent_results:
+        for idx, pool_name in enumerate(POOL_NAMES):
+            add_observation(
+                date_str=r["date"],
+                dt=r["dt"],
+                pool_name=pool_name,
+                pool_size=r["pools_tuple"][idx],
+                hit_count=r["counts_tuple"][idx],
+                source="Last-N",
+            )
+
+    # ------------------------------------------------------------
+    # SOURCE 2: result-bearing rows in the printed Week Table.
+    # Sunday/snapshot-only rows are intentionally ignored.
+    # ------------------------------------------------------------
+    for r in week_rows or []:
+        if not r.get("has_result"):
+            continue
+
+        sizes = {
+            "EH": r["eh_pool"],
+            "H": r["h_pool"],
+            "W": r["w_pool"],
+            "C": r["c_pool"],
+        }
+        hits = {
+            "EH": r["eh_count"],
+            "H": r["h_count"],
+            "W": r["w_count"],
+            "C": r["c_count"],
+        }
+
+        for pool_name in POOL_NAMES:
+            if hits[pool_name] is None:
+                continue
+
+            add_observation(
+                date_str=r["date"],
+                dt=r["dt"],
+                pool_name=pool_name,
+                pool_size=sizes[pool_name],
+                hit_count=hits[pool_name],
+                source="Week",
+            )
+
+    print("\n" + "=" * 125)
+    print("Current Pool Size -> Historical Most-Common Actual Hit Count")
+    print(
+        "Matches ANY historical EH/H/W/C pool having the same pool size; "
+        "duplicate date+pool observations are counted once."
+    )
+    print("=" * 125)
+
+    print(
+        f"{'Current':<8}"
+        f"{'Pool Size':<11}"
+        f"{'Matches':<9}"
+        f"{'Hit-count distribution':<35}"
+        f"{'Most common':<16}"
+        f"{'Mode %':<10}"
+        f"{'Matched historical pools'}"
+    )
+    print("-" * 125)
+
+    predictions = {}
+
+    for current_pool_name in POOL_NAMES:
+        size = current_sizes[current_pool_name]
+        observations = by_size.get(size, [])
+
+        hit_freq = Counter(obs["hits"] for obs in observations)
+        source_pool_freq = Counter(obs["pool"] for obs in observations)
+
+        if not observations:
+            predictions[current_pool_name] = None
+            print(
+                f"{current_pool_name:<8}"
+                f"{size:<11}"
+                f"{0:<9}"
+                f"{'No matches':<35}"
+                f"{'-':<16}"
+                f"{'-':<10}"
+                f"-"
+            )
+            continue
+
+        max_freq = max(hit_freq.values())
+        modes = sorted(
+            hit_count
+            for hit_count, freq in hit_freq.items()
+            if freq == max_freq
+        )
+
+        # Do not invent a winner if there is a tie.
+        if len(modes) == 1:
+            mode_text = str(modes[0])
+            predictions[current_pool_name] = modes[0]
+        else:
+            mode_text = "TIE:" + "/".join(str(x) for x in modes)
+            predictions[current_pool_name] = tuple(modes)
+
+        distribution_text = ", ".join(
+            f"{hits}:{freq}"
+            for hits, freq in sorted(hit_freq.items())
+        )
+
+        pool_source_text = ", ".join(
+            f"{pool}:{source_pool_freq.get(pool, 0)}"
+            for pool in POOL_NAMES
+            if source_pool_freq.get(pool, 0) > 0
+        )
+
+        mode_pct = max_freq / len(observations)
+
+        print(
+            f"{current_pool_name:<8}"
+            f"{size:<11}"
+            f"{len(observations):<9}"
+            f"{distribution_text:<35}"
+            f"{mode_text:<16}"
+            f"{mode_pct:<10.1%}"
+            f"{pool_source_text}"
+        )
+
+    numeric_predictions = [
+        v for v in predictions.values()
+        if isinstance(v, int)
+    ]
+
+    if len(numeric_predictions) == len(POOL_NAMES):
+        raw_sum = sum(numeric_predictions)
+        print(
+            f"\nIndependent modal profile: "
+            f"{predictions['EH']}/{predictions['H']}/"
+            f"{predictions['W']}/{predictions['C']} "
+            f"(sum={raw_sum})"
+        )
+        if raw_sum != 6:
+            print(
+                "NOTE: These are independent pool-size modes, so the raw profile "
+                "is diagnostic only and is NOT forced to sum to 6."
+            )
+    else:
+        print(
+            "\nIndependent modal profile contains at least one tie/no-match; "
+            "no single combined profile is asserted."
+        )
+
+    return predictions, by_size
+
+
+def print_locked_profile_winning_trajectories_from_tables(
+    locked_profile,
+    historical_results,
+    week_rows,
+    all_rows,
+    max_num,
+    cutoff_dt=None,
+    recent_n=OUTPUT_LAST_N,
+    top_n=LOCKED_TRAJECTORY_TOP_N,
+    lookback_days=7,
+):
+    """
+    Locked-profile trajectory analysis using ONLY the TWO tables printed above:
+
+      1) "Last N <lottery> draws analysis" (for this target: Saturday Lotto)
+      2) "Week Table: Pool composition for each day in the preceding week"
+
+    The two sources are UNIONED and duplicate calendar dates are counted once.
+    A Saturday that appears in both tables therefore cannot double-weight the result.
+
+    Example LOCKED_PROFILE = (2, 1, 3, 0):
+      - EH=2: among the selected table rows, use every draw whose ACTUAL EH hit
+              count is exactly 2. H/W/C in that same draw do not matter.
+              Count the trajectories of the winning EH numbers only.
+      - H=1 : same idea independently.
+      - W=3 : same idea independently.
+      - C=0 : count matching draws; there are no winning C trajectories by definition.
+
+    Pool/trajectory construction matches the Week Table:
+      * fixed target universe 1..max_num
+      * 7-day rolling pool before each selected calendar date
+      * the draw on that date is excluded from its own pool
+      * numbers outside the target universe are ignored
+
+    A trajectory for draw date D uses daily snapshots D-7 through D inclusive.
+    """
+    if len(locked_profile) != 4:
+        # raise ValueError("LOCKED_PROFILE must contain exactly four values: EH/H/W/C.")
+        return;
+
+    target_hits = dict(zip(POOL_NAMES, locked_profile))
+    earliest_dt = min((row[1] for row in all_rows), default=None)
+
+    # ------------------------------------------------------------------
+    # Select rows from ONLY the two displayed sources.
+    # Key by calendar date so overlap (especially Saturdays) is deduped.
+    # ------------------------------------------------------------------
+    selected_dates = {}
+
+    visible_history = [
+        r for r in historical_results
+        if cutoff_dt is None or r['dt'] < cutoff_dt
+    ][-recent_n:]
+
+    for r in visible_history:
+        key = r['dt'].date()
+        entry = selected_dates.setdefault(key, {
+            'dt': r['dt'],
+            'date': r['date'],
+            'sources': set(),
+        })
+        entry['sources'].add('SaturdayAnalysis')
+
+    for r in week_rows:
+        if not r.get('has_result'):
+            continue
+        if cutoff_dt is not None and r['dt'] >= cutoff_dt:
+            continue
+        key = r['dt'].date()
+        entry = selected_dates.setdefault(key, {
+            'dt': r['dt'],
+            'date': r['date'],
+            'sources': set(),
+        })
+        entry['sources'].add('WeekTable')
+
+    rows_by_date = {
+        dt.date(): (date_str, dt, day_abbr, all_nums, others_cell)
+        for date_str, dt, day_abbr, all_nums, others_cell in all_rows
+    }
+
+    draw_records = []
+
+    for key in sorted(selected_dates):
+        selected = selected_dates[key]
+        source_row = rows_by_date.get(key)
+        if source_row is None:
+            continue
+
+        date_str, dt, day_abbr, _all_nums, others_cell = source_row
+        if not others_cell:
+            continue
+
+        main_nums = [
+            n for n in extract_main_numbers(others_cell)
+            if 1 <= n <= max_num
+        ]
+        if not main_nums:
+            continue
+
+        # First trajectory snapshot is at D-7, and that snapshot itself needs
+        # the prior 7 days. Skip only if the source history is incomplete.
+        if earliest_dt is not None and dt - timedelta(days=2 * lookback_days) < earliest_dt:
+            continue
+
+        prev_dt = dt - timedelta(days=lookback_days)
+        snapshots = build_daily_trajectory_snapshots(
+            prev_target_dt=prev_dt,
+            target_dt=dt,
+            all_rows=all_rows,
+            max_num=max_num,
+        )
+
+        final_pools = snapshots[-1]['pools']
+        counts = {state: 0 for state in POOL_NAMES}
+        winning_records = []
+
+        for number in main_nums:
+            state = pool_state(number, final_pools)
+            counts[state] += 1
+
+            states = number_trajectory(number, snapshots)
+            winning_records.append({
+                'number': number,
+                'final_state': state,
+                'signature': compress_trajectory(states),
+                'full_states': states,
+            })
+
+        draw_records.append({
+            'date': date_str,
+            'dt': dt,
+            'day': day_abbr,
+            'counts': counts,
+            'winners': winning_records,
+            'sources': set(selected['sources']),
+        })
+
+    sat_only = sum(1 for r in draw_records if r['sources'] == {'SaturdayAnalysis'})
+    week_only = sum(1 for r in draw_records if r['sources'] == {'WeekTable'})
+    overlap = sum(1 for r in draw_records if len(r['sources']) > 1)
+
+    print("\n" + "=" * 165)
+    print(
+        "Locked EH/H/W/C Hit Count -> Most-Frequent WINNING Trajectory "
+        "(Saturday analysis table + Week Table only)"
+    )
+    print(
+        f"Locked profile: EH/H/W/C = "
+        f"{locked_profile[0]}/{locked_profile[1]}/{locked_profile[2]}/{locked_profile[3]}"
+    )
+    print(
+        f"Unique source rows analysed: {len(draw_records)}  "
+        f"Saturday-analysis only={sat_only}, Week-Table only={week_only}, overlap/deduped={overlap}"
+    )
+    print(
+        "For each pool, ONLY that pool's actual hit count must match; "
+        "the other three pool counts in the same draw are ignored."
+    )
+    print("=" * 165)
+
+    print(
+        f"{'Pool':<6} {'Target':<8} {'Matching draws':<15} {'Winner inst.':<14} "
+        f"{'Most frequent trajectory':<38} {'Count':<8} {'Share':<10} "
+        f"{'Draw presence':<18} {'Days':<28} {'Sources'}"
+    )
+    print("-" * 165)
+
+    details = {}
+
+    for state in POOL_NAMES:
+        wanted = target_hits[state]
+
+        matching_draws = [
+            rec for rec in draw_records
+            if rec['counts'][state] == wanted
+        ]
+
+        matching_winners = [
+            winner
+            for rec in matching_draws
+            for winner in rec['winners']
+            if winner['final_state'] == state
+        ]
+
+        traj_freq = Counter(w['signature'] for w in matching_winners)
+        traj_draws = defaultdict(set)
+        day_freq = Counter(rec['day'] for rec in matching_draws)
+        source_freq = Counter()
+
+        for rec in matching_draws:
+            for src_name in rec['sources']:
+                source_freq[src_name] += 1
+
+            seen_here = set()
+            for winner in rec['winners']:
+                if winner['final_state'] != state:
+                    continue
+                sig = winner['signature']
+                if sig not in seen_here:
+                    traj_draws[sig].add(rec['date'])
+                    seen_here.add(sig)
+
+        actual_instances = len(matching_winners)
+        expected_instances = len(matching_draws) * wanted
+        warning = None
+        if actual_instances != expected_instances:
+            warning = (
+                f"Expected {expected_instances} winner instances from "
+                f"{len(matching_draws)} draws x {wanted}, found {actual_instances}."
+            )
+
+        days_str = ",".join(
+            f"{d}:{day_freq[d]}"
+            for d in ('Mon','Tue','Wed','Thu','Fri','Sat')
+            if day_freq[d]
+        )
+        sources_str = ",".join(
+            f"{name}:{source_freq[name]}"
+            for name in ('SaturdayAnalysis', 'WeekTable')
+            if source_freq[name]
+        )
+
+        if wanted == 0:
+            print(
+                f"{state:<6} {wanted:<8} {len(matching_draws):<15} {0:<14} "
+                f"{'N/A (zero winners by definition)':<38} {'-':<8} {'-':<10} "
+                f"{'-':<18} {days_str:<28} {sources_str}"
+            )
+            details[state] = {
+                'target_hits': wanted,
+                'matching_draws': len(matching_draws),
+                'winner_instances': 0,
+                'trajectory_freq': Counter(),
+                'day_freq': day_freq,
+                'source_freq': source_freq,
+                'warning': warning,
+            }
+            continue
+
+        if not traj_freq:
+            print(
+                f"{state:<6} {wanted:<8} {len(matching_draws):<15} {actual_instances:<14} "
+                f"{'No trajectory records':<38} {'-':<8} {'-':<10} "
+                f"{'-':<18} {days_str:<28} {sources_str}"
+            )
+            details[state] = {
+                'target_hits': wanted,
+                'matching_draws': len(matching_draws),
+                'winner_instances': actual_instances,
+                'trajectory_freq': traj_freq,
+                'day_freq': day_freq,
+                'source_freq': source_freq,
+                'warning': warning,
+            }
+            continue
+
+        ranked = sorted(
+            traj_freq.items(),
+            key=lambda kv: (-kv[1], -len(traj_draws[kv[0]]), kv[0]),
+        )
+        best_sig, best_count = ranked[0]
+        best_share = best_count / actual_instances if actual_instances else 0.0
+        best_draw_count = len(traj_draws[best_sig])
+        best_draw_share = best_draw_count / len(matching_draws) if matching_draws else 0.0
+
+        print(
+            f"{state:<6} {wanted:<8} {len(matching_draws):<15} {actual_instances:<14} "
+            f"{best_sig:<38} {best_count:<8} {best_share:<10.2%} "
+            f"{best_draw_count}/{len(matching_draws)} ({best_draw_share:.1%})".ljust(123)
+            + f" {days_str:<28} {sources_str}"
+        )
+
+        print(f"    Top winning trajectories for {state}={wanted} from the TWO tables:")
+        print(
+            f"    {'Trajectory':<38} {'Instances':>10} {'Share':>10} "
+            f"{'Draws':>9} {'Draw %':>10}"
+        )
+        print("    " + "-" * 82)
+
+        for sig, count in ranked[:top_n]:
+            draw_count = len(traj_draws[sig])
+            share = count / actual_instances if actual_instances else 0.0
+            draw_share = draw_count / len(matching_draws) if matching_draws else 0.0
+            print(
+                f"    {sig:<38} {count:>10} {share:>9.2%} "
+                f"{draw_count:>9} {draw_share:>9.2%}"
+            )
+
+        # --------------------------------------------------------------
+        # SAME-DRAW TRAJECTORY COMBINATIONS / PARTNERS
+        # --------------------------------------------------------------
+        # This answers questions such as:
+        #   "If EH=2 and W→H→EH is the most-common winning EH trajectory,
+        #    what trajectory did the OTHER EH winner have in the same draw?"
+        #
+        # We preserve multiplicity. Therefore:
+        #   (W→H→EH, W→H→EH) means BOTH winners had that trajectory.
+        #   (EH, W→H→EH) means one winner had each trajectory.
+        combo_freq = Counter()
+        combo_dates = defaultdict(list)
+
+        if wanted >= 2:
+            for rec in matching_draws:
+                sigs = sorted(
+                    winner['signature']
+                    for winner in rec['winners']
+                    if winner['final_state'] == state
+                )
+                if len(sigs) != wanted:
+                    continue
+
+                combo = tuple(sigs)
+                combo_freq[combo] += 1
+                combo_dates[combo].append(rec['date'])
+
+            if combo_freq:
+                ranked_combos = sorted(
+                    combo_freq.items(),
+                    key=lambda kv: (-kv[1], kv[0]),
+                )
+
+                print(
+                    f"    Same-draw winning trajectory combinations for "
+                    f"{state}={wanted}:"
+                )
+                print(
+                    f"    {'Trajectory combination':<72} "
+                    f"{'Draws':>7} {'Share':>9}  Dates"
+                )
+                print("    " + "-" * 120)
+
+                for combo, combo_count in ranked_combos[:top_n]:
+                    combo_text = " + ".join(combo)
+                    combo_share = (
+                        combo_count / len(matching_draws)
+                        if matching_draws else 0.0
+                    )
+                    dates_text = ", ".join(combo_dates[combo])
+                    print(
+                        f"    {combo_text:<72} "
+                        f"{combo_count:>7} {combo_share:>8.2%}  {dates_text}"
+                    )
+
+                # Anchor-partner analysis: use the most-frequent individual
+                # winning trajectory as the first-slot/anchor trajectory.
+                # Remove ONE occurrence of the anchor from each matching draw;
+                # the remaining trajectory/trajectories are its co-winner(s).
+                anchor = best_sig
+                partner_freq = Counter()
+                partner_draws = defaultdict(set)
+                anchor_draw_dates = []
+                anchor_draw_count = 0
+                both_anchor_draws = 0
+
+                for rec in matching_draws:
+                    sigs = [
+                        winner['signature']
+                        for winner in rec['winners']
+                        if winner['final_state'] == state
+                    ]
+                    if len(sigs) != wanted or anchor not in sigs:
+                        continue
+
+                    anchor_draw_count += 1
+                    anchor_draw_dates.append(rec['date'])
+
+                    remaining = list(sigs)
+                    remaining.remove(anchor)  # remove ONE anchor occurrence
+
+                    if anchor in remaining:
+                        both_anchor_draws += 1
+
+                    for partner in remaining:
+                        partner_freq[partner] += 1
+                        partner_draws[partner].add(rec['date'])
+
+                if anchor_draw_count:
+                    print(
+                        f"    Partner analysis when anchor trajectory "
+                        f"'{anchor}' is present:"
+                    )
+                    print(
+                        f"      Anchor appeared in {anchor_draw_count}/"
+                        f"{len(matching_draws)} matching draws "
+                        f"({anchor_draw_count/len(matching_draws):.1%})."
+                    )
+                    print(
+                        f"      Draws where another winner ALSO had "
+                        f"'{anchor}': {both_anchor_draws}"
+                    )
+                    print(
+                        f"      {'Partner trajectory':<44} "
+                        f"{'Instances':>10} {'Draws':>8} {'Draw %':>9}  Dates"
+                    )
+                    print("      " + "-" * 110)
+
+                    ranked_partners = sorted(
+                        partner_freq.items(),
+                        key=lambda kv: (
+                            -kv[1],
+                            -len(partner_draws[kv[0]]),
+                            kv[0],
+                        ),
+                    )
+
+                    for partner, partner_count in ranked_partners[:top_n]:
+                        draw_count = len(partner_draws[partner])
+                        draw_share = draw_count / anchor_draw_count
+                        dates_text = ", ".join(sorted(partner_draws[partner]))
+                        print(
+                            f"      {partner:<44} "
+                            f"{partner_count:>10} {draw_count:>8} "
+                            f"{draw_share:>8.2%}  {dates_text}"
+                        )
+
+        if warning:
+            print(f"    WARNING: {warning}")
+
+        details[state] = {
+            'target_hits': wanted,
+            'matching_draws': len(matching_draws),
+            'winner_instances': actual_instances,
+            'trajectory_freq': traj_freq,
+            'trajectory_draws': {k: len(v) for k, v in traj_draws.items()},
+            'day_freq': day_freq,
+            'source_freq': source_freq,
+            'warning': warning,
+        }
+
+    return details
+
 
 # ---------- PREDICTION FUNCTIONS ----------
 def predict_counts_proportional(pools, total_numbers, main_count):
@@ -969,8 +1858,30 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
     # This keeps your original table and its actual historical hits.
     # Sunday is intentionally handled by the NEW daily trajectory section,
     # because Sunday has no "Others" target lottery draw to score.
+    week_rows = []
     if future_date is not None:
-        print_week_table(future_date, all_rows, draws_by_day)
+        week_rows = print_week_table(
+            future_dt=future_date,
+            all_rows=all_rows,
+            draws_by_day=draws_by_day,
+            target_max_num=max_num,
+            target_lottery_name=lottery_name,
+            table_days=WEEK_TABLE_DAYS,
+            pool_lookback_days=7,
+        )
+
+    # ---------- CURRENT POOL-SIZE -> HISTORICAL COMMON HIT COUNTS ----------
+    # Example:
+    #   current EH size = 12
+    #   search BOTH displayed history sources for ANY pool-size = 12,
+    #   collect the corresponding actual hit count, then print its mode.
+    print_pool_size_common_hit_table(
+        current_pools=target_pools,
+        historical_results=results,
+        week_rows=week_rows,
+        cutoff_dt=prediction_target_dt,
+        recent_n=OUTPUT_LAST_N,
+    )
 
     # ---------- NEW DAILY SNAPSHOTS / TRAJECTORIES ----------
     if PRINT_DAILY_SNAPSHOT_POOLS:
@@ -995,8 +1906,9 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
     # cutoff_dt makes this non-cheating even when FUTURE_DATE_STR points to a
     # date whose winning result is already present in the CSV.
     trajectory_stats = {}
+    trajectory_winner_records = []
     if RUN_TRAJECTORY_HISTORY:
-        trajectory_stats, _ = print_trajectory_pattern_history(
+        trajectory_stats, trajectory_winner_records = print_trajectory_pattern_history(
             draws=draws,
             all_rows=all_rows,
             max_num=max_num,
@@ -1014,9 +1926,26 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             lottery_name=lottery_name,
         )
 
+        # ---------- LOCKED PROFILE -> WINNING TRAJECTORY MODES ----------
+        # Each component is conditioned independently using ONLY the two
+        # printed sources above: Last-N Saturday analysis + Week Table.
+        # Overlapping Saturdays are deduplicated by calendar date.
+        print_locked_profile_winning_trajectories_from_tables(
+            locked_profile=LOCKED_PROFILE,
+            historical_results=results,
+            week_rows=week_rows,
+            all_rows=all_rows,
+            max_num=max_num,
+            cutoff_dt=prediction_target_dt,
+            recent_n=OUTPUT_LAST_N,
+            top_n=LOCKED_TRAJECTORY_TOP_N,
+            lookback_days=7,
+        )
+
     # ---------- ORIGINAL EH/H/W/C COUNT PREDICTIONS ----------
-    # IMPORTANT: only use outcomes strictly BEFORE the target date.
-    # This fixes leakage if the target result already exists in the CSV.
+    # Keep the original four prediction models in the output.
+    # IMPORTANT: only use outcomes strictly BEFORE the target date so the
+    # target result cannot leak into the prediction when backtesting a known date.
     model_results = [
         r for r in results
         if r['dt'] < prediction_target_dt
@@ -1027,26 +1956,28 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         for r in model_results
     ]
 
+    current_pool_sizes = (eh_pool, h_pool, w_pool, c_pool)
+
     prop_pred = predict_counts_proportional(
-        (eh_pool, h_pool, w_pool, c_pool),
+        current_pool_sizes,
         max_num,
         main_count,
     )
     mode_pred = predict_counts_mode(
-        (eh_pool, h_pool, w_pool, c_pool),
+        current_pool_sizes,
         full_history,
         max_num,
         main_count,
         k=K_NEIGHBORS,
     )
     twrate_pred = predict_counts_time_weighted_rate(
-        (eh_pool, h_pool, w_pool, c_pool),
+        current_pool_sizes,
         full_history,
         max_num,
         main_count,
     )
     ens_pred = predict_counts_ensemble(
-        (eh_pool, h_pool, w_pool, c_pool),
+        current_pool_sizes,
         full_history,
         max_num,
         main_count,
