@@ -282,3 +282,16 @@ W transition: 25 strongest, then 39 / 5 / 35 / 38
 | **T2 — Strong alternate** | **5, 10, 25, 32, 34, 43** | 32 `W→H→EH` + 43 `EH` | 34 | 10 `W` + 25 `W→H→W` + 5 `W→C→W` |
 | **T3 — EH hedge**         | **1, 11, 25, 32, 34, 39** | 1 + 32, both `W→H→EH` | 34 | 11 `W` + 25 `W→H→W` + 39 `C→W`  |
 
+[7, 24, 30, 39, 41, 44]
+
+
+==========
+ Thu 24-Sep-2026
+
+Pool details:
+EH [1, 6, 7, 17, 21, 24, 32, 33]  EH-Pool-Size: 8
+H  [4, 19, 20, 22, 26, 30, 34]  H-Pool-Size: 7
+W  [2, 3, 5, 8, 9, 10, 12, 13, 14, 15, 16, 18, 23, 25, 27, 28, 31, 35]  W-Pool-Size: 18
+C  [11, 29]  C-Pool-Size: 2
+EH+H Pool Size: 15
+
