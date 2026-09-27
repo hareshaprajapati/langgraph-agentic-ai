@@ -11,7 +11,7 @@ FUTURE_DATE_STR = "Sat 26-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-
 # Locked EH/H/W/C profile for conditional winning-trajectory analysis.
 # Example: EH=2, H=1, W=3, C=0. (2, 1, 3, 0)
 # LOCKED_PROFILE = (1, 0, 5, 0)
-LOCKED_PROFILE = ""
+LOCKED_PROFILE = (1, 2, 3, 0)
 LOCKED_TRAJECTORY_TOP_N = 30
 
 # All-history locked-profile trajectory analysis.
@@ -23,8 +23,8 @@ LOCKED_TRAJECTORY_TOP_N = 30
 #                       (for 6-number targets this includes Mon/Wed/Fri/Sat)
 #   "all_others"     -> every Others draw (use cautiously when games have
 #                       different main-ball counts/universes)
-LOCKED_EXACT_SCOPE = "same_main_count"
-LOCKED_INDEPENDENT_SCOPE = "same_main_count"
+LOCKED_EXACT_SCOPE = "same_weekday"
+LOCKED_INDEPENDENT_SCOPE = "same_weekday"
 PRINT_ALL_HISTORY_EXACT_PROFILE = True
 PRINT_ALL_HISTORY_INDEPENDENT_COUNTS = True
 PRINT_LOCKED_MATCHING_DRAW_DETAILS = True
@@ -43,6 +43,11 @@ K_NEIGHBORS = 10            # for conditional mode predictor
 # tracks how each number moves between C -> W -> H -> EH (and back) day by day.
 PRINT_DAILY_SNAPSHOT_POOLS = True
 PRINT_TRAJECTORY_TABLE = True
+
+# Immediate previous-day -> FINAL transition analysis.
+# This is the primary Fresh/Stable rule table. It does NOT compress trajectories.
+PRINT_IMMEDIATE_TRANSITION_TABLE = True
+
 RUN_TRAJECTORY_HISTORY = True
 PRINT_RECENT_WINNER_TRAJECTORIES = True
 
@@ -358,6 +363,325 @@ def print_number_trajectory_table(prev_target_dt, target_dt, all_rows, max_num, 
         for state in states:
             row += f"{state:<8}"
         print(row)
+
+
+def _immediate_transition_label(prev_state, final_state):
+    """
+    Give a purely descriptive label to the immediate previous-day -> FINAL move.
+
+    IMPORTANT:
+    - No compressed trajectory is used.
+    - "Stable" means only prev_state == final_state.
+    - "Fresh into X from Y" means the number changed from Y yesterday to X today.
+    """
+    if prev_state == final_state:
+        return f"Stable {final_state}"
+    return f"Fresh into {final_state} from {prev_state}"
+
+
+def collect_immediate_transition_stats(
+    draws,
+    all_rows,
+    max_num,
+    cutoff_dt=None,
+):
+    """
+    Historical, no-leakage immediate-transition statistics.
+
+    For each historical target draw strictly before cutoff_dt:
+      1. Rebuild the daily rolling snapshots.
+      2. For every candidate number, keep ONLY:
+             previous-day state -> FINAL state
+         i.e. states[-2] -> states[-1].
+      3. Count candidate exposures and main-number winners for that transition.
+
+    This intentionally ignores compressed trajectories.  It answers questions like:
+      - How have H->EH candidates performed historically?
+      - How have EH->EH (stable EH) candidates performed historically?
+      - How have W->W (stable W) candidates performed historically?
+
+    Returns
+    -------
+    stats:
+        dict keyed by (previous_state, final_state), with candidates/winners.
+    analyzed_draws:
+        number of historical target draws included.
+    """
+    stats = defaultdict(lambda: {"candidates": 0, "winners": 0})
+    analyzed_draws = 0
+
+    if not all_rows:
+        return stats, analyzed_draws
+
+    earliest_dt = min(row[1] for row in all_rows)
+
+    for i in range(1, len(draws)):
+        _target_date_str, target_dt, target_main = draws[i]
+        _, prev_target_dt, _ = draws[i - 1]
+
+        if cutoff_dt is not None and target_dt >= cutoff_dt:
+            continue
+
+        lookback_days = max(1, (target_dt - prev_target_dt).days)
+
+        # The first snapshot at prev_target_dt itself needs one full lookback window.
+        if prev_target_dt - timedelta(days=lookback_days) < earliest_dt:
+            continue
+
+        snapshots = build_daily_trajectory_snapshots(
+            prev_target_dt=prev_target_dt,
+            target_dt=target_dt,
+            all_rows=all_rows,
+            max_num=max_num,
+        )
+
+        if len(snapshots) < 2:
+            continue
+
+        target_main_set = {
+            n for n in target_main
+            if 1 <= n <= max_num
+        }
+
+        for number in range(1, max_num + 1):
+            states = number_trajectory(number, snapshots)
+            prev_state = states[-2]
+            final_state = states[-1]
+
+            key = (prev_state, final_state)
+            stats[key]["candidates"] += 1
+
+            if number in target_main_set:
+                stats[key]["winners"] += 1
+
+        analyzed_draws += 1
+
+    return stats, analyzed_draws
+
+
+def print_immediate_transition_analysis(
+    prev_target_dt,
+    target_dt,
+    draws,
+    all_rows,
+    max_num,
+    main_count,
+    lottery_name,
+    cutoff_dt=None,
+):
+    """
+    Print the clean Fresh/Stable rule table.
+
+    Historical evidence is grouped ONLY by the immediate transition:
+        previous-day state -> FINAL state
+
+    For each FINAL pool, Lift is relative to that FINAL pool's own historical
+    candidate-normalized baseline.  This prevents a large/small pool from making
+    a transition look strong merely because of pool prevalence.
+
+    The current numbers are mapped to the same transition categories so the
+    historical rule and today's candidates appear in one place.
+    """
+    stats, analyzed_draws = collect_immediate_transition_stats(
+        draws=draws,
+        all_rows=all_rows,
+        max_num=max_num,
+        cutoff_dt=cutoff_dt,
+    )
+
+    current_snapshots = build_daily_trajectory_snapshots(
+        prev_target_dt=prev_target_dt,
+        target_dt=target_dt,
+        all_rows=all_rows,
+        max_num=max_num,
+    )
+
+    current_groups = defaultdict(list)
+    if len(current_snapshots) >= 2:
+        for number in range(1, max_num + 1):
+            states = number_trajectory(number, current_snapshots)
+            current_groups[(states[-2], states[-1])].append(number)
+
+    print("\n" + "=" * 145)
+    print(
+        f"IMMEDIATE PREVIOUS-DAY -> FINAL TRANSITION ANALYSIS - {lottery_name}"
+    )
+    if cutoff_dt is not None:
+        print(
+            f"Historical evidence is STRICTLY BEFORE "
+            f"{cutoff_dt.strftime('%a %d-%b-%Y')}"
+        )
+    print(
+        "PRIMARY Fresh/Stable rule table: uses ONLY yesterday's state -> FINAL state. "
+        "No compressed trajectory is used."
+    )
+    print(
+        "Rate = winners / candidate exposures. "
+        "Lift = transition rate / historical baseline of the same FINAL pool."
+    )
+    print(f"Historical target draws analysed: {analyzed_draws}")
+    print("=" * 145)
+
+    results = {}
+
+    for final_state in POOL_NAMES:
+        # Pool-specific baseline across every immediate transition ending here.
+        final_candidates = sum(
+            values["candidates"]
+            for (prev_state, state), values in stats.items()
+            if state == final_state
+        )
+        final_winners = sum(
+            values["winners"]
+            for (prev_state, state), values in stats.items()
+            if state == final_state
+        )
+        final_baseline = (
+            final_winners / final_candidates
+            if final_candidates else 0.0
+        )
+
+        rows = []
+        for prev_state in POOL_NAMES:
+            key = (prev_state, final_state)
+            hist = stats.get(key, {"candidates": 0, "winners": 0})
+            candidates = hist["candidates"]
+            winners = hist["winners"]
+            rate = winners / candidates if candidates else 0.0
+            lift = rate / final_baseline if final_baseline else 0.0
+            current_numbers = sorted(current_groups.get(key, []))
+
+            rows.append({
+                "prev_state": prev_state,
+                "final_state": final_state,
+                "transition": f"{prev_state}->{final_state}",
+                "label": _immediate_transition_label(prev_state, final_state),
+                "candidates": candidates,
+                "winners": winners,
+                "rate": rate,
+                "lift": lift,
+                "current_numbers": current_numbers,
+            })
+
+        # Show every possible source state.  Sort by historical rate, then sample
+        # size, but DO NOT hide low-rate transitions: visibility avoids cherry-picking.
+        rows.sort(
+            key=lambda r: (
+                -r["rate"],
+                -r["candidates"],
+                r["prev_state"],
+            )
+        )
+
+        print(
+            f"\nFINAL pool = {final_state} | "
+            f"pool baseline={final_baseline:.2%} "
+            f"({final_winners}/{final_candidates})"
+        )
+        print(
+            f"  {'Immediate move':<16} {'Rule label':<28} "
+            f"{'Cand N':>8} {'Wins':>7} {'Rate':>9} {'Lift':>8} "
+            f"{'Current numbers'}"
+        )
+        print("  " + "-" * 125)
+
+        for row in rows:
+            current_text = str(row["current_numbers"]) if row["current_numbers"] else "-"
+            print(
+                f"  {row['transition']:<16} {row['label']:<28} "
+                f"{row['candidates']:>8} {row['winners']:>7} "
+                f"{row['rate']:>8.2%} {row['lift']:>7.2f}x "
+                f"{current_text}"
+            )
+
+        # A separate stable-vs-fresh aggregate makes the top-level rule explicit.
+        stable_candidates = sum(
+            r["candidates"] for r in rows
+            if r["prev_state"] == final_state
+        )
+        stable_winners = sum(
+            r["winners"] for r in rows
+            if r["prev_state"] == final_state
+        )
+        fresh_candidates = sum(
+            r["candidates"] for r in rows
+            if r["prev_state"] != final_state
+        )
+        fresh_winners = sum(
+            r["winners"] for r in rows
+            if r["prev_state"] != final_state
+        )
+
+        stable_rate = (
+            stable_winners / stable_candidates
+            if stable_candidates else 0.0
+        )
+        fresh_rate = (
+            fresh_winners / fresh_candidates
+            if fresh_candidates else 0.0
+        )
+        stable_lift = (
+            stable_rate / final_baseline
+            if final_baseline else 0.0
+        )
+        fresh_lift = (
+            fresh_rate / final_baseline
+            if final_baseline else 0.0
+        )
+
+        stable_current = sorted(
+            n
+            for (prev_state, state), nums in current_groups.items()
+            if state == final_state and prev_state == final_state
+            for n in nums
+        )
+        fresh_current = sorted(
+            n
+            for (prev_state, state), nums in current_groups.items()
+            if state == final_state and prev_state != final_state
+            for n in nums
+        )
+
+        print(
+            f"  {'Stable aggregate':<16} {'prev == FINAL':<28} "
+            f"{stable_candidates:>8} {stable_winners:>7} "
+            f"{stable_rate:>8.2%} {stable_lift:>7.2f}x "
+            f"{stable_current if stable_current else '-'}"
+        )
+        print(
+            f"  {'Fresh aggregate':<16} {'prev != FINAL':<28} "
+            f"{fresh_candidates:>8} {fresh_winners:>7} "
+            f"{fresh_rate:>8.2%} {fresh_lift:>7.2f}x "
+            f"{fresh_current if fresh_current else '-'}"
+        )
+
+        results[final_state] = {
+            "baseline": final_baseline,
+            "rows": rows,
+            "stable": {
+                "candidates": stable_candidates,
+                "winners": stable_winners,
+                "rate": stable_rate,
+                "lift": stable_lift,
+                "current_numbers": stable_current,
+            },
+            "fresh": {
+                "candidates": fresh_candidates,
+                "winners": fresh_winners,
+                "rate": fresh_rate,
+                "lift": fresh_lift,
+                "current_numbers": fresh_current,
+            },
+        }
+
+    print(
+        "\nInterpretation rule: compare transitions primarily by candidate-normalized "
+        "Rate/Lift AND sample size. A tiny-N high rate is evidence to inspect, not a "
+        "standalone rule."
+    )
+
+    return results
+
 
 def collect_trajectory_pattern_stats(draws, all_rows, max_num, cutoff_dt=None):
     """
@@ -1190,6 +1514,9 @@ def print_locked_profile_winning_trajectories_from_tables(
     The two sources are UNIONED and duplicate calendar dates are counted once.
     A target-day row that appears in both tables therefore cannot double-weight the result.
 
+    IMPORTANT: only rows from the SAME WEEKDAY as the current target are kept
+    from both sources. For a Saturday target this section is therefore Saturday-only.
+
     Example LOCKED_PROFILE = (2, 1, 3, 0):
       - EH=2: among the selected table rows, use every draw whose ACTUAL EH hit
               count is exactly 2. H/W/C in that same draw do not matter.
@@ -1213,15 +1540,25 @@ def print_locked_profile_winning_trajectories_from_tables(
     target_hits = dict(zip(POOL_NAMES, locked_profile))
     earliest_dt = min((row[1] for row in all_rows), default=None)
 
+    # Restrict this legacy/two-table analysis to the SAME weekday as the
+    # current target. This prevents Week Table rows from other weekdays from
+    # contaminating a Saturday trajectory rule.
+    target_day_abbr = (
+        cutoff_dt.strftime('%a')
+        if cutoff_dt is not None
+        else (historical_results[-1]['dt'].strftime('%a') if historical_results else None)
+    )
+
     # ------------------------------------------------------------------
     # Select rows from ONLY the two displayed sources.
-    # Key by calendar date so overlap (especially Saturdays) is deduped.
+    # Key by calendar date so overlap is deduped. SAME-WEEKDAY ONLY.
     # ------------------------------------------------------------------
     selected_dates = {}
 
     visible_history = [
         r for r in historical_results
-        if cutoff_dt is None or r['dt'] < cutoff_dt
+        if (cutoff_dt is None or r['dt'] < cutoff_dt)
+        and (target_day_abbr is None or r['dt'].strftime('%a') == target_day_abbr)
     ][-recent_n:]
 
     for r in visible_history:
@@ -1237,6 +1574,8 @@ def print_locked_profile_winning_trajectories_from_tables(
         if not r.get('has_result'):
             continue
         if cutoff_dt is not None and r['dt'] >= cutoff_dt:
+            continue
+        if target_day_abbr is not None and r['dt'].strftime('%a') != target_day_abbr:
             continue
         key = r['dt'].date()
         entry = selected_dates.setdefault(key, {
@@ -1315,13 +1654,14 @@ def print_locked_profile_winning_trajectories_from_tables(
     print("\n" + "=" * 165)
     print(
         "Locked EH/H/W/C Hit Count -> Most-Frequent WINNING Trajectory "
-        "(Last-N target-day analysis + Week Table only)"
+        "(Last-N target-day + Week Table, SAME-WEEKDAY ONLY)"
     )
     print(
         f"Locked profile: EH/H/W/C = "
         f"{locked_profile[0]}/{locked_profile[1]}/{locked_profile[2]}/{locked_profile[3]}"
     )
     print(
+        f"Weekday filter: {target_day_abbr or '-'} ONLY | "
         f"Unique source rows analysed: {len(draw_records)}  "
         f"Last-N-target-day only={lastn_only}, Week-Table only={week_only}, overlap/deduped={overlap}"
     )
@@ -1766,6 +2106,166 @@ def collect_all_history_locked_records(
     return records
 
 
+def _print_conditional_immediate_transition_analysis(
+    title,
+    state,
+    wanted,
+    matching_draws,
+    current_transition_groups,
+):
+    """
+    Candidate-normalized immediate previous-day -> FINAL transition analysis
+    inside an already-conditioned historical set of draws.
+
+    Example for INDEPENDENT EH=1 on Saturdays:
+      * keep only Saturdays where actual EH hits == 1
+      * compare EH->EH, H->EH, W->EH, C->EH candidate exposures
+      * denominator is ALL candidate exposures in that transition, not winners only
+
+    This is the clean rule layer used before exact 8-day full trajectories.
+    """
+    print("\n" + "~" * 150)
+    print(title)
+    print("~" * 150)
+
+    if not matching_draws:
+        print("No matching historical draws.")
+        return
+
+    if wanted == 0:
+        print(
+            f"{state} target hit count is 0. Matching draws: {len(matching_draws)}. "
+            f"No winning {state} immediate transitions exist by definition."
+        )
+        return
+
+    candidate_freq = Counter()
+    winner_freq = Counter()
+    winner_draws = defaultdict(set)
+    total_candidates = 0
+    total_winners = 0
+
+    for rec in matching_draws:
+        state_candidates = [
+            c for c in rec["candidates"]
+            if c["final_state"] == state
+        ]
+        state_winners = [
+            w for w in rec["winners"]
+            if w["final_state"] == state
+        ]
+
+        total_candidates += len(state_candidates)
+        total_winners += len(state_winners)
+
+        for c in state_candidates:
+            states = c["full_states"]
+            if len(states) < 2:
+                continue
+            transition = (states[-2], states[-1])
+            candidate_freq[transition] += 1
+
+        seen_here = set()
+        for w in state_winners:
+            states = w["full_states"]
+            if len(states) < 2:
+                continue
+            transition = (states[-2], states[-1])
+            winner_freq[transition] += 1
+            if transition not in seen_here:
+                winner_draws[transition].add(rec["date"])
+                seen_here.add(transition)
+
+    baseline = total_winners / total_candidates if total_candidates else 0.0
+
+    print(
+        f"Matching draws={len(matching_draws)} | winner instances={total_winners} | "
+        f"candidate instances={total_candidates} | conditional pool baseline={baseline:.2%}"
+    )
+    print(
+        f"  {'Immediate move':<18} {'Rule label':<30} {'Cand N':>8} {'Wins':>7} "
+        f"{'Rate':>9} {'Lift':>8} {'Win Share':>10} {'Draws':>7} {'Draw %':>9}  Current numbers"
+    )
+    print("  " + "-" * 145)
+
+    current_for_state = {
+        transition: sorted(nums)
+        for (final_state, transition), nums in current_transition_groups.items()
+        if final_state == state
+    }
+
+    all_transitions = set(candidate_freq) | set(winner_freq) | set(current_for_state)
+    rows = []
+    for transition in all_transitions:
+        prev_state, final_state = transition
+        cand_n = candidate_freq.get(transition, 0)
+        wins = winner_freq.get(transition, 0)
+        rate = wins / cand_n if cand_n else 0.0
+        lift = rate / baseline if baseline else 0.0
+        win_share = wins / total_winners if total_winners else 0.0
+        draws_n = len(winner_draws.get(transition, set()))
+        draw_pct = draws_n / len(matching_draws) if matching_draws else 0.0
+        nums = current_for_state.get(transition, [])
+        label = (
+            f"Stable {state}"
+            if prev_state == final_state
+            else f"Fresh into {state} from {prev_state}"
+        )
+        rows.append((
+            transition, label, cand_n, wins, rate, lift,
+            win_share, draws_n, draw_pct, nums,
+        ))
+
+    # Rate/Lift are the rule signal; sample size remains visible so a tiny-N
+    # rate cannot be mistaken for a robust rule.
+    rows.sort(key=lambda x: (-x[4], -x[2], -x[3], x[0]))
+
+    for transition, label, cand_n, wins, rate, lift, win_share, draws_n, draw_pct, nums in rows:
+        move = f"{transition[0]}->{transition[1]}"
+        nums_text = str(nums) if nums else "-"
+        print(
+            f"  {move:<18} {label:<30} {cand_n:>8} {wins:>7} "
+            f"{rate:>8.2%} {lift:>7.2f}x {win_share:>9.2%} {draws_n:>7} {draw_pct:>8.2%}  {nums_text}"
+        )
+
+    # Directly test the old Fresh-vs-Stable rule without compressed trajectories.
+    stable_transitions = [t for t in all_transitions if t[0] == t[1]]
+    fresh_transitions = [t for t in all_transitions if t[0] != t[1]]
+
+    def _aggregate(transitions):
+        cand_n = sum(candidate_freq.get(t, 0) for t in transitions)
+        wins = sum(winner_freq.get(t, 0) for t in transitions)
+        rate = wins / cand_n if cand_n else 0.0
+        lift = rate / baseline if baseline else 0.0
+        nums = sorted(
+            n
+            for t in transitions
+            for n in current_for_state.get(t, [])
+        )
+        return cand_n, wins, rate, lift, nums
+
+    stable = _aggregate(stable_transitions)
+    fresh = _aggregate(fresh_transitions)
+
+    print("\n  Stable vs Fresh aggregate inside this locked-count condition:")
+    print(
+        f"  {'Group':<18} {'Cand N':>8} {'Wins':>7} {'Rate':>9} "
+        f"{'Lift':>8}  Current numbers"
+    )
+    print("  " + "-" * 90)
+    for label, values in (("Stable", stable), ("Fresh", fresh)):
+        cand_n, wins, rate, lift, nums = values
+        print(
+            f"  {label:<18} {cand_n:>8} {wins:>7} {rate:>8.2%} "
+            f"{lift:>7.2f}x  {str(nums) if nums else '-'}"
+        )
+
+    print(
+        "  Rule note: compare Rate/Lift first, then Cand N. "
+        "A tiny-N high rate is evidence to inspect, not a standalone rule."
+    )
+
+
 def _print_conditional_state_analysis(
     title,
     state,
@@ -2049,10 +2549,14 @@ def print_all_history_locked_profile_analysis(
         max_num=max_num,
     )
     current_groups = defaultdict(list)
+    current_transition_groups = defaultdict(list)
 
     for number in range(1, max_num + 1):
         states = number_trajectory(number, current_snapshots)
         current_groups[(states[-1], tuple(states))].append(number)
+        if len(states) >= 2:
+            transition = (states[-2], states[-1])
+            current_transition_groups[(states[-1], transition)].append(number)
 
     results = {}
 
@@ -2187,8 +2691,22 @@ def print_all_history_locked_profile_analysis(
                 f"| days={days_text or '-'}"
             )
 
+            # PRIMARY RULE LAYER: immediate yesterday -> FINAL transition
+            # conditioned only on this pool's locked hit count.
+            _print_conditional_immediate_transition_analysis(
+                title=(
+                    f"INDEPENDENT {state}={wanted} - IMMEDIATE TRANSITION RULE "
+                    f"(same-weekday scope={independent_scope})"
+                ),
+                state=state,
+                wanted=wanted,
+                matching_draws=matching,
+                current_transition_groups=current_transition_groups,
+            )
+
+            # SECONDARY REFINEMENT: exact full 8-day trajectory.
             _print_conditional_state_analysis(
-                title=f"INDEPENDENT {state}={wanted}",
+                title=f"INDEPENDENT {state}={wanted} - FULL 8-DAY TRAJECTORY",
                 state=state,
                 wanted=wanted,
                 matching_draws=matching,
@@ -2891,6 +3409,21 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             all_rows=all_rows,
             max_num=max_num,
             lottery_name=lottery_name,
+        )
+
+    # ---------- PRIMARY FRESH / STABLE RULE TABLE ----------
+    # Aggregate ONLY the immediate previous-day state -> FINAL state.
+    # No compressed trajectory is used here.
+    if PRINT_IMMEDIATE_TRANSITION_TABLE:
+        print_immediate_transition_analysis(
+            prev_target_dt=prediction_prev_dt,
+            target_dt=prediction_target_dt,
+            draws=draws,
+            all_rows=all_rows,
+            max_num=max_num,
+            main_count=main_count,
+            lottery_name=lottery_name,
+            cutoff_dt=prediction_target_dt,
         )
 
     # Historical full daily trajectory analysis.
