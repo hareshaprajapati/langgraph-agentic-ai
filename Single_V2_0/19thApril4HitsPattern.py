@@ -12,6 +12,7 @@ FUTURE_DATE_STR = "Sat 26-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-
 # Example: EH=2, H=1, W=3, C=0. (2, 1, 3, 0)
 # LOCKED_PROFILE = (1, 0, 5, 0)
 LOCKED_PROFILE = (1, 2, 3, 0)
+# LOCKED_PROFILE = (2, 1, 2, 1)
 LOCKED_TRAJECTORY_TOP_N = 30
 
 # All-history locked-profile trajectory analysis.
