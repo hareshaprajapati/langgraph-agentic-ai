@@ -3,16 +3,18 @@ import os
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 import math
+import io
+from contextlib import redirect_stdout
 
 # ---------- CONFIGURATION ----------
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto_data_backup.csv")
-OUTPUT_LAST_N = 30          # rows shown in historical tables
-FUTURE_DATE_STR = "Sat 26-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+OUTPUT_LAST_N = 30          # retained for pool-size evidence
+FUTURE_DATE_STR = "Sat 12-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # Locked EH/H/W/C profile for conditional winning-trajectory analysis.
 # Example: EH=2, H=1, W=3, C=0. (2, 1, 3, 0)
 # LOCKED_PROFILE = (1, 0, 5, 0)
-LOCKED_PROFILE = (1, 2, 3, 0)
-# LOCKED_PROFILE = (2, 1, 2, 1)
+# LOCKED_PROFILE = (1, 2, 3, 0)
+LOCKED_PROFILE = (1, 1, 4, 0)
 LOCKED_TRAJECTORY_TOP_N = 30
 
 # All-history locked-profile trajectory analysis.
@@ -39,18 +41,29 @@ RUN_BACKTEST = False
 BACKTEST_N = 10             # number of most recent draws to backtest (per lottery)
 K_NEIGHBORS = 10            # for conditional mode predictor
 
+# ---------- MANUAL DECISION OUTPUT ----------
+# True = concise evidence-only output for manually building tickets.
+# No ticket generation is performed.
+MANUAL_DECISION_MODE = True
+MANUAL_RECENT_PROFILE_N = 12
+MANUAL_TRANSITION_COMBO_TOP_N = 8
+MANUAL_SHRINKAGE_K = 20.0
+MANUAL_COMPRESSED_WEIGHT = 0.65
+MANUAL_NUMBER_WEIGHT = 0.35
+MANUAL_HISTORY_SCOPE = "same_weekday"
+
 # Trajectory analysis settings
 # These do NOT replace the existing EH/H/W/C model. They add a second layer that
 # tracks how each number moves between C -> W -> H -> EH (and back) day by day.
-PRINT_DAILY_SNAPSHOT_POOLS = True
-PRINT_TRAJECTORY_TABLE = True
+PRINT_DAILY_SNAPSHOT_POOLS = False
+PRINT_TRAJECTORY_TABLE = False
 
 # Immediate previous-day -> FINAL transition analysis.
 # This is the primary Fresh/Stable rule table. It does NOT compress trajectories.
-PRINT_IMMEDIATE_TRANSITION_TABLE = True
+PRINT_IMMEDIATE_TRANSITION_TABLE = False
 
-RUN_TRAJECTORY_HISTORY = True
-PRINT_RECENT_WINNER_TRAJECTORIES = True
+RUN_TRAJECTORY_HISTORY = False
+PRINT_RECENT_WINNER_TRAJECTORIES = False
 
 TRAJECTORY_TOP_N = 30
 TRAJECTORY_MIN_SAMPLES = 5
@@ -2727,6 +2740,441 @@ def print_all_history_locked_profile_analysis(
 
 
 
+
+# ---------- MANUAL TICKET DECISION HELPERS ----------
+def compress_trajectory(states):
+    """
+    Collapse consecutive duplicate EH/H/W/C states.
+
+    Example:
+        W,W,W,H,H,EH,EH -> W,H,EH
+
+    The immediate transition remains the PRIMARY grouping signal.
+    Compressed trajectory is used only as a secondary discriminator
+    between numbers inside the same immediate-transition family.
+    """
+    out = []
+    for state in states:
+        if not out or state != out[-1]:
+            out.append(state)
+    return tuple(out)
+
+
+def _manual_shrunk_rate(wins, candidates, prior_rate, k=MANUAL_SHRINKAGE_K):
+    """Shrink a small-sample rate toward its immediate-family rate."""
+    if candidates < 0:
+        candidates = 0
+    return (wins + k * prior_rate) / (candidates + k) if (candidates + k) else prior_rate
+
+
+def _move_text(states):
+    if len(states) < 2:
+        return "-"
+    return f"{states[-2]}->{states[-1]}"
+
+
+def print_manual_profile_board(
+    results,
+    current_pool_sizes,
+    pool_size_predictions,
+    target_dt,
+    max_num,
+    main_count,
+):
+    """
+    Concise profile evidence board.
+
+    Keeps:
+      * Pool-size -> common-hit mode result
+      * four existing profile models
+      * recent and all-history same-weekday profile frequency
+
+    Nothing here generates tickets.
+    """
+    eligible = [r for r in results if r["dt"] < target_dt]
+    history = [(r["pools_tuple"], r["counts_tuple"]) for r in eligible]
+
+    prop = predict_counts_proportional(current_pool_sizes, max_num, main_count)
+    mode = predict_counts_mode(current_pool_sizes, history, max_num, main_count, k=K_NEIGHBORS)
+    tw = predict_counts_time_weighted_rate(current_pool_sizes, history, max_num, main_count)
+    ens = predict_counts_ensemble(current_pool_sizes, history, max_num, main_count, k=K_NEIGHBORS)
+
+    all_freq = Counter(r["counts_tuple"] for r in eligible)
+    recent = eligible[-MANUAL_RECENT_PROFILE_N:]
+    recent_freq = Counter(r["counts_tuple"] for r in recent)
+
+    print("\n" + "=" * 118)
+    print("PROFILE DECISION BOARD")
+    print("=" * 118)
+    print(
+        f"Current pool sizes EH/H/W/C = "
+        f"{current_pool_sizes[0]}/{current_pool_sizes[1]}/"
+        f"{current_pool_sizes[2]}/{current_pool_sizes[3]}"
+    )
+
+    if pool_size_predictions:
+        parts = []
+        for state in POOL_NAMES:
+            val = pool_size_predictions.get(state)
+            if isinstance(val, tuple):
+                parts.append(f"{state}=TIE:{'/'.join(map(str, val))}")
+            else:
+                parts.append(f"{state}={val}")
+        print("Pool-size common-hit evidence: " + " | ".join(parts))
+
+    print("\nExisting model votes:")
+    print(f"  Proportional       : {'/'.join(map(str, prop))}")
+    print(f"  Conditional mode   : {'/'.join(map(str, mode))}")
+    print(f"  Time-weighted rate : {'/'.join(map(str, tw))}")
+    print(f"  Ensemble           : {'/'.join(map(str, ens))}")
+
+    print(f"\nRecent {len(recent)} same-weekday profiles:")
+    for profile, n in recent_freq.most_common(8):
+        print(f"  {'/'.join(map(str, profile)):<10} {n:>2}/{len(recent)} = {n/len(recent):>6.1%}")
+
+    print(f"\nAll-history same-weekday profile leaders ({len(eligible)} draws):")
+    for profile, n in all_freq.most_common(8):
+        print(f"  {'/'.join(map(str, profile)):<10} {n:>3}/{len(eligible)} = {n/len(eligible):>6.1%}")
+
+    print(f"\nRecent {len(recent)} draw rows:")
+    print(f"  {'Date':<20} {'EH/H/W/C':<10} {'Pool sizes':<14} {'Legacy'}")
+    print("  " + "-" * 74)
+    for r in recent:
+        p = "/".join(map(str, r["counts_tuple"]))
+        s = "/".join(map(str, r["pools_tuple"]))
+        legacy = str(r["legacy"]) if r["legacy"] else "-"
+        print(f"  {r['date']:<20} {p:<10} {s:<14} {legacy}")
+
+    print(
+        "\nUse this board to LOCK the EH/H/W/C profile manually. "
+        "The transition board below analyses LOCKED_PROFILE only."
+    )
+
+    return {
+        "proportional": prop,
+        "mode": mode,
+        "time_weighted": tw,
+        "ensemble": ens,
+    }
+
+
+def _manual_history_records(
+    all_rows,
+    max_num,
+    main_count,
+    lottery_name,
+    target_day_abbr,
+    target_dt,
+):
+    return collect_all_history_locked_records(
+        all_rows=all_rows,
+        max_num=max_num,
+        cutoff_dt=target_dt,
+        target_day_abbr=target_day_abbr,
+        target_lottery_name=lottery_name,
+        target_main_count=main_count,
+        scope=MANUAL_HISTORY_SCOPE,
+        lookback_days=7,
+        require_target_main_count=True,
+    )
+
+
+def print_manual_transition_board(
+    locked_profile,
+    all_rows,
+    max_num,
+    main_count,
+    lottery_name,
+    target_day_abbr,
+    target_dt,
+    current_prev_dt,
+):
+    """
+    PRIMARY manual ticket evidence:
+      1) historical same-draw IMMEDIATE-transition combinations for each locked count
+      2) current numbers available in each transition family
+
+    The conditioning is independent per pool count:
+      EH=1 means historical Saturdays where EH actually contributed 1 winner,
+      regardless of H/W/C in those same draws.
+    """
+    if not isinstance(locked_profile, (tuple, list)) or len(locked_profile) != 4:
+        print("\nTransition board skipped: LOCKED_PROFILE must have four values.")
+        return [], None
+
+    locked_profile = tuple(int(x) for x in locked_profile)
+    if sum(locked_profile) != main_count:
+        print(
+            f"\nTransition board skipped: LOCKED_PROFILE={locked_profile} "
+            f"sums to {sum(locked_profile)}, expected {main_count}."
+        )
+        return [], None
+
+    records = _manual_history_records(
+        all_rows=all_rows,
+        max_num=max_num,
+        main_count=main_count,
+        lottery_name=lottery_name,
+        target_day_abbr=target_day_abbr,
+        target_dt=target_dt,
+    )
+
+    current_snapshots = build_daily_trajectory_snapshots(
+        prev_target_dt=current_prev_dt,
+        target_dt=target_dt,
+        all_rows=all_rows,
+        max_num=max_num,
+    )
+
+    current_by_move = defaultdict(list)
+    for number in range(1, max_num + 1):
+        states = number_trajectory(number, current_snapshots)
+        current_by_move[(states[-1], _move_text(states))].append(number)
+
+    exact_n = sum(1 for r in records if r["counts_tuple"] == locked_profile)
+
+    print("\n" + "=" * 118)
+    print("HISTORICAL IMMEDIATE-TRANSITION COMBINATIONS")
+    print("=" * 118)
+    print(
+        f"Locked profile EH/H/W/C = {'/'.join(map(str, locked_profile))} | "
+        f"same-weekday history={len(records)} | exact-profile matches={exact_n}"
+    )
+    print(
+        "PRIMARY rule: choose which immediate-transition COMBINATIONS deserve ticket coverage. "
+        "Candidate numbers are chosen afterwards."
+    )
+
+    combo_details = {}
+
+    for idx, state in enumerate(POOL_NAMES):
+        wanted = locked_profile[idx]
+        matching = [r for r in records if r["counts"][state] == wanted]
+
+        print(f"\n{state}={wanted} | matching historical draws={len(matching)}")
+
+        if wanted == 0:
+            print("  No winning transition required for this pool.")
+            combo_details[state] = {"matching": matching, "combos": Counter()}
+            continue
+
+        combo_freq = Counter()
+        for rec in matching:
+            moves = []
+            for winner in rec["winners"]:
+                if winner["final_state"] != state or len(winner["full_states"]) < 2:
+                    continue
+                moves.append(_move_text(winner["full_states"]))
+            if len(moves) == wanted:
+                combo_freq[tuple(sorted(moves))] += 1
+
+        ranked = combo_freq.most_common()
+        print(f"  {'Rank':<5} {'Winning transition combination':<58} {'Draws':>7} {'Share':>9} {'Current-feasible':>17}")
+        print("  " + "-" * 103)
+
+        for rank, (combo, count) in enumerate(ranked[:MANUAL_TRANSITION_COMBO_TOP_N], start=1):
+            need = Counter(combo)
+            feasible = all(
+                len(current_by_move.get((state, move), [])) >= qty
+                for move, qty in need.items()
+            )
+            combo_text = " + ".join(combo)
+            share = count / len(matching) if matching else 0.0
+            print(
+                f"  {rank:<5} {combo_text:<58} {count:>7} {share:>8.1%} "
+                f"{('YES' if feasible else 'NO'):>17}"
+            )
+
+        print("  Current immediate-transition families:")
+        state_moves = sorted(
+            (
+                move,
+                sorted(nums),
+            )
+            for (final_state, move), nums in current_by_move.items()
+            if final_state == state
+        )
+        for move, nums in state_moves:
+            print(f"    {move:<8} -> {nums}")
+
+        combo_details[state] = {"matching": matching, "combos": combo_freq}
+
+    return records, current_snapshots
+
+
+def print_manual_candidate_board(
+    locked_profile,
+    records,
+    current_snapshots,
+    max_num,
+):
+    """
+    SECONDARY number selection board.
+
+    Candidates are compared ONLY inside their current immediate-transition family.
+    Exact full trajectories are not printed or ranked.
+
+    Evidence:
+      * Immediate family historical rate = PRIMARY context
+      * Compressed trajectory rate, shrunk toward family rate
+      * Number-specific rate for this same current family, shrunk toward family rate
+
+    'Evidence' is a ranking score, not a true lottery probability.
+    """
+    if not records or current_snapshots is None:
+        return
+
+    locked_profile = tuple(int(x) for x in locked_profile)
+
+    current_info = {}
+    for number in range(1, max_num + 1):
+        states = number_trajectory(number, current_snapshots)
+        current_info[number] = {
+            "state": states[-1],
+            "move": _move_text(states),
+            "compressed": compress_trajectory(states),
+        }
+
+    print("\n" + "=" * 142)
+    print("CURRENT CANDIDATES BY IMMEDIATE FAMILY + COMPRESSED TRAJECTORY")
+    print("=" * 142)
+    print(
+        "Rank only WITHIN the same immediate family. "
+        "Compressed trajectory is secondary; exact 8-day path is intentionally hidden."
+    )
+
+    for idx, state in enumerate(POOL_NAMES):
+        wanted = locked_profile[idx]
+        if wanted == 0:
+            continue
+
+        matching = [r for r in records if r["counts"][state] == wanted]
+        if not matching:
+            continue
+
+        move_cand = Counter()
+        move_win = Counter()
+        comp_cand = Counter()
+        comp_win = Counter()
+        num_cand = Counter()
+        num_win = Counter()
+
+        total_state_candidates = 0
+        total_state_winners = 0
+
+        for rec in matching:
+            winners_here = {
+                w["number"]
+                for w in rec["winners"]
+                if w["final_state"] == state
+            }
+
+            for c in rec["candidates"]:
+                if c["final_state"] != state or len(c["full_states"]) < 2:
+                    continue
+                move = _move_text(c["full_states"])
+                comp = compress_trajectory(c["full_states"])
+                num = c["number"]
+
+                total_state_candidates += 1
+                move_cand[move] += 1
+                comp_cand[(move, comp)] += 1
+                num_cand[(num, move)] += 1
+
+                if num in winners_here:
+                    move_win[move] += 1
+                    comp_win[(move, comp)] += 1
+                    num_win[(num, move)] += 1
+                    total_state_winners += 1
+
+        state_baseline = (
+            total_state_winners / total_state_candidates
+            if total_state_candidates else 0.0
+        )
+
+        current_moves = defaultdict(list)
+        for num, info in current_info.items():
+            if info["state"] == state:
+                current_moves[info["move"]].append(num)
+
+        print(f"\n{state}={wanted} | conditional pool baseline={state_baseline:.2%} | matching draws={len(matching)}")
+
+        # Order families by candidate-normalized historical family rate.
+        move_order = []
+        for move, nums in current_moves.items():
+            cn = move_cand.get(move, 0)
+            wn = move_win.get(move, 0)
+            rate = wn / cn if cn else 0.0
+            move_order.append((move, nums, cn, wn, rate))
+        move_order.sort(key=lambda x: (-x[4], -x[2], x[0]))
+
+        for move, nums, family_n, family_w, family_rate in move_order:
+            lift = family_rate / state_baseline if state_baseline else 0.0
+            print(
+                f"\n  FAMILY {move} | current={sorted(nums)} | "
+                f"Hist {family_w}/{family_n}={family_rate:.2%} | lift={lift:.2f}x"
+            )
+            print(
+                f"  {'#':<3} {'No':<4} {'Compressed trajectory':<34} "
+                f"{'Comp N/W':>10} {'Comp shr':>10} {'Num N/W':>10} "
+                f"{'Num shr':>10} {'Evidence':>10}"
+            )
+            print("  " + "-" * 104)
+
+            rows = []
+            for num in nums:
+                comp = current_info[num]["compressed"]
+                comp_n = comp_cand.get((move, comp), 0)
+                comp_w = comp_win.get((move, comp), 0)
+                num_n = num_cand.get((num, move), 0)
+                num_w = num_win.get((num, move), 0)
+
+                comp_shr = _manual_shrunk_rate(comp_w, comp_n, family_rate)
+                num_shr = _manual_shrunk_rate(num_w, num_n, family_rate)
+                evidence = (
+                    MANUAL_COMPRESSED_WEIGHT * comp_shr
+                    + MANUAL_NUMBER_WEIGHT * num_shr
+                )
+
+                rows.append({
+                    "number": num,
+                    "compressed": comp,
+                    "comp_n": comp_n,
+                    "comp_w": comp_w,
+                    "comp_shr": comp_shr,
+                    "num_n": num_n,
+                    "num_w": num_w,
+                    "num_shr": num_shr,
+                    "evidence": evidence,
+                })
+
+            rows.sort(
+                key=lambda r: (
+                    -r["evidence"],
+                    -r["comp_n"],
+                    -r["num_n"],
+                    r["number"],
+                )
+            )
+
+            for rank, r in enumerate(rows, start=1):
+                comp_text = "→".join(r["compressed"])
+                print(
+                    f"  {rank:<3} {r['number']:<4} {comp_text:<34} "
+                    f"{f'{r['comp_n']}/{r['comp_w']}':>10} "
+                    f"{r['comp_shr']:>9.2%} "
+                    f"{f'{r['num_n']}/{r['num_w']}':>10} "
+                    f"{r['num_shr']:>9.2%} "
+                    f"{r['evidence']:>9.2%}"
+                )
+
+    print(
+        "\nInterpretation: Immediate-transition combination decides the SLOT/FAMILY first. "
+        "Use the compressed/number evidence only to rotate candidates inside that family. "
+        "Evidence is historical ranking information, not a true probability."
+    )
+
+
 # ---------- THURSDAY POWERBALL-BALL (1-20) ANALYSIS ----------
 def collect_powerball_ball_history(all_rows, cutoff_dt, pb_max=POWERBALL_BALL_MAX):
     """
@@ -3184,29 +3632,31 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             'legacy': legacy_hits
         })
 
-    # Print historical table
-    n = min(OUTPUT_LAST_N, len(results))
-    print(f"\nLast {n} {lottery_name} draws analysis:\n")
-    print(f"{'Date':<20} {'Profile':<10} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
-          f"{'EH-Pool':<8} {'H-Pool':<8} {'W-Pool':<8} {'C-Pool':<8} "
-          f"{'EH+H-Pool':<10} {'Legacy Hits'}")
-    print("-" * 90)
-    for r in results[-n:]:
-        eh, h, w, c = r['counts_tuple']
-        peh, ph, pw, pc = r['pools_tuple']
-        legacy_str = str(r['legacy']) if r['legacy'] else "None"
-        print(f"{r['date']:<20} {r['profile']:<10} {eh:<4} {h:<4} {w:<4} {c:<4} "
-              f"{peh:<8} {ph:<8} {pw:<8} {pc:<8} "
-              f"{r['eh_h_pool']:<10} {legacy_str}")
+    # Legacy verbose historical output is hidden in MANUAL_DECISION_MODE.
+    # The concise Profile Decision Board later prints only the useful recent rows
+    # and profile-frequency summaries strictly before the target date.
+    if not MANUAL_DECISION_MODE:
+        n = min(OUTPUT_LAST_N, len(results))
+        print(f"\nLast {n} {lottery_name} draws analysis:\n")
+        print(f"{'Date':<20} {'Profile':<10} {'EH':<4} {'H':<4} {'W':<4} {'C':<4} "
+              f"{'EH-Pool':<8} {'H-Pool':<8} {'W-Pool':<8} {'C-Pool':<8} "
+              f"{'EH+H-Pool':<10} {'Legacy Hits'}")
+        print("-" * 90)
+        for r in results[-n:]:
+            eh, h, w, c = r['counts_tuple']
+            peh, ph, pw, pc = r['pools_tuple']
+            legacy_str = str(r['legacy']) if r['legacy'] else "None"
+            print(f"{r['date']:<20} {r['profile']:<10} {eh:<4} {h:<4} {w:<4} {c:<4} "
+                  f"{peh:<8} {ph:<8} {pw:<8} {pc:<8} "
+                  f"{r['eh_h_pool']:<10} {legacy_str}")
 
-    # Frequency distribution
-    print("\n" + "="*80)
-    print(f"Outcome frequency distribution (all {lottery_name} draws):")
-    print("="*80)
-    outcome_freq = Counter(r['counts_tuple'] for r in results)
-    total_draws = len(results)
-    for outcome, freq in outcome_freq.most_common():
-        print(f"  {outcome}  ->  {freq} times  ({freq/total_draws:.1%})")
+        print("\n" + "="*80)
+        print(f"Outcome frequency distribution (all {lottery_name} draws):")
+        print("="*80)
+        outcome_freq = Counter(r['counts_tuple'] for r in results)
+        total_draws = len(results)
+        for outcome, freq in outcome_freq.most_common():
+            print(f"  {outcome}  ->  {freq} times  ({freq/total_draws:.1%})")
 
     # ---------- BACKTEST ----------
     if RUN_BACKTEST and len(results) >= BACKTEST_N:
@@ -3370,22 +3820,36 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
     # because Sunday has no "Others" target lottery draw to score.
     week_rows = []
     if future_date is not None:
-        week_rows = print_week_table(
-            future_dt=future_date,
-            all_rows=all_rows,
-            draws_by_day=draws_by_day,
-            target_max_num=max_num,
-            target_lottery_name=lottery_name,
-            table_days=WEEK_TABLE_DAYS,
-            pool_lookback_days=7,
-        )
+        if MANUAL_DECISION_MODE:
+            # Pool-size evidence still needs the Week Table rows, but the two
+            # verbose Week Table printouts are intentionally hidden.
+            with redirect_stdout(io.StringIO()):
+                week_rows = print_week_table(
+                    future_dt=future_date,
+                    all_rows=all_rows,
+                    draws_by_day=draws_by_day,
+                    target_max_num=max_num,
+                    target_lottery_name=lottery_name,
+                    table_days=WEEK_TABLE_DAYS,
+                    pool_lookback_days=7,
+                )
+        else:
+            week_rows = print_week_table(
+                future_dt=future_date,
+                all_rows=all_rows,
+                draws_by_day=draws_by_day,
+                target_max_num=max_num,
+                target_lottery_name=lottery_name,
+                table_days=WEEK_TABLE_DAYS,
+                pool_lookback_days=7,
+            )
 
     # ---------- CURRENT POOL-SIZE -> HISTORICAL COMMON HIT COUNTS ----------
     # Example:
     #   current EH size = 12
     #   search BOTH displayed history sources for ANY pool-size = 12,
     #   collect the corresponding actual hit count, then print its mode.
-    print_pool_size_common_hit_table(
+    pool_size_predictions, _pool_size_history = print_pool_size_common_hit_table(
         current_pools=target_pools,
         historical_results=results,
         week_rows=week_rows,
@@ -3393,7 +3857,37 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         recent_n=OUTPUT_LAST_N,
     )
 
-    # ---------- NEW DAILY SNAPSHOTS / TRAJECTORIES ----------
+    if MANUAL_DECISION_MODE:
+        current_pool_sizes = (eh_pool, h_pool, w_pool, c_pool)
+
+        print_manual_profile_board(
+            results=results,
+            current_pool_sizes=current_pool_sizes,
+            pool_size_predictions=pool_size_predictions,
+            target_dt=prediction_target_dt,
+            max_num=max_num,
+            main_count=main_count,
+        )
+
+        manual_records, manual_snapshots = print_manual_transition_board(
+            locked_profile=LOCKED_PROFILE,
+            all_rows=all_rows,
+            max_num=max_num,
+            main_count=main_count,
+            lottery_name=lottery_name,
+            target_day_abbr=day_abbr,
+            target_dt=prediction_target_dt,
+            current_prev_dt=prediction_prev_dt,
+        )
+
+        print_manual_candidate_board(
+            locked_profile=LOCKED_PROFILE,
+            records=manual_records,
+            current_snapshots=manual_snapshots,
+            max_num=max_num,
+        )
+
+    # ---------- LEGACY DAILY SNAPSHOTS / TRAJECTORIES ----------
     if PRINT_DAILY_SNAPSHOT_POOLS:
         print_daily_snapshot_pools(
             prev_target_dt=prediction_prev_dt,
@@ -3532,11 +4026,12 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         k=K_NEIGHBORS,
     )
 
-    print("\nProportional prediction:", prop_pred)
-    print("Conditional mode prediction:", mode_pred)
-    print("Time-Weighted Rate prediction:", twrate_pred)
-    print("Ensemble prediction:", ens_pred)
-    print("(Use the one that performed best in backtest)")
+    if not MANUAL_DECISION_MODE:
+        print("\nProportional prediction:", prop_pred)
+        print("Conditional mode prediction:", mode_pred)
+        print("Time-Weighted Rate prediction:", twrate_pred)
+        print("Ensemble prediction:", ens_pred)
+        print("(Use the one that performed best in backtest)")
 
 # ---------- MAIN ----------
 # Read all rows
