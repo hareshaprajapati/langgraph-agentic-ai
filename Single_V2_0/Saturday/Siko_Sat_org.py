@@ -43,18 +43,23 @@ import math
 # ============================================================
 
 CSV_PATH = "Tattslotto.csv"
-TARGET_DATE = "2026-3-21"
-REAL_DRAW_TARGET = [11,16,20,27,43,45]
+# Choose exactly one: "prediction" or "backtest".
+# Prediction mode refuses dates already present in the CSV, so it cannot reveal a
+# known result.  Backtest mode uses each known result only after its tickets have
+# been generated from earlier draws.
+RUN_MODE = "backtest"
 
-# TARGET_DATE = "2026-1-31"
-# REAL_DRAW_TARGET = [9, 20, 33, 34, 42, 45]
+# Used only when RUN_MODE = "prediction".  Set this to a future Saturday after
+# the latest date in Tattslotto.csv.
+PREDICTION_DATE = "2026-10-03"
 
-# Restrict ticket numbers to this list for TARGET_DATE only ([] disables).
-# ALLOWED_NUMBERS_FOR_TARGET_DATE = [3, 13, 25, 34, 45,6, 7, 8, 11, 18, 26, 36, 39, 40,1, 4, 9, 27, 29, 30, 44,]
+# Used only when RUN_MODE = "backtest".
+BACKTEST_DRAWS = 20
+BACKTEST_VERBOSE = False
+
+# Restrict numbers only in prediction mode ([] disables).  Backtesting always
+# ignores this setting so manual knowledge cannot influence its tickets.
 ALLOWED_NUMBERS_FOR_TARGET_DATE = []
-
-# Backtest: run on the last 5 available draws in the CSV.
-N = 21
 
 NUM_TICKETS = 20
 NUMBERS_PER_TICKET = 6
@@ -81,7 +86,7 @@ COLD_FORCE_COUNT = 2
 # Hard-force coverage mix
 FORCE_COVERAGE = False
 RANDOM_SEED = 57
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 
 # Score weights (date-agnostic)
 W_RECENT = 0.55
@@ -159,11 +164,6 @@ DIFFUSE_MAX_SPREAD = 0.28
 DIFFUSE_MAX_GAP = 12
 COHESIVE_DIVERSITY_PENALTY = 0.30
 DIFFUSE_DIVERSITY_PENALTY = 0.15
-
-# Optional: verify against a known real draw (set [] to disable)
-REAL_DRAW = [3, 5, 20, 26, 28, 40]
-# If TARGET_DATE is missing in CSV, optionally use REAL_DRAW for hit summary.
-USE_REAL_DRAW_FALLBACK = False
 
 # ============================================================
 # INTERNALS
@@ -1673,180 +1673,163 @@ def generate_portfolio_tickets(
 # ============================================================
 # MAIN
 # ============================================================
-if __name__ == "__main__":
-    df, main_cols = _load_csv(CSV_PATH)
-
-    # Run for the configured target date (prediction); if it exists in CSV, use it as a backtest draw.
-    t_target = pd.Timestamp(TARGET_DATE)
-    if pd.isna(t_target):
-        raise ValueError("TARGET_DATE must be parseable (YYYY-MM-DD)")
-    df_target = df[df["Date"] == t_target]
-
-    def _build_consensus_seed(scored_list: List[CandidateScore]) -> List[int]:
-        if not scored_list:
-            return []
-        seed = []
-        top_scores = [c.n for c in scored_list[:6]]
-        top_gap = max(scored_list, key=lambda x: x.gap_days).n
-        top_season = max(scored_list, key=lambda x: x.freq_season).n
-        for n in top_scores[:3] + [top_gap, top_season]:
-            if n not in seed:
-                seed.append(n)
-        if len(seed) < 4:
-            for n in top_scores:
-                if n not in seed:
-                    seed.append(n)
-                if len(seed) >= 4:
-                    break
-        return seed[:4]
-
-    run_date = t_target.strftime("%Y-%m-%d")
-    if not df_target.empty:
-        row = df_target.iloc[0]
-        real_draw = [int(row[c]) for c in main_cols]
-    else:
-        real_draw = REAL_DRAW if (USE_REAL_DRAW_FALLBACK and REAL_DRAW) else []
-        if real_draw:
-            print("TARGET_DATE not found in CSV; using REAL_DRAW override.")
-        else:
-            print("TARGET_DATE not found in CSV; generating prediction without hit summary.")
-
-    allowed_numbers = _normalize_allowed_numbers(ALLOWED_NUMBERS_FOR_TARGET_DATE)
-
-    scored = score_numbers(df, main_cols, run_date, DEBUG_PRINT)
-
-    strategies = _strategy_configs()
-    main_cfg = next((s["cohesion"] for s in strategies if s["name"] == DEFAULT_STRATEGY_NAME), None)
+def _main_cohesion_config() -> Dict[str, object]:
+    main_cfg = next(
+        (s["cohesion"] for s in _strategy_configs() if s["name"] == DEFAULT_STRATEGY_NAME),
+        None,
+    )
     if main_cfg is None:
         raise ValueError(f"Unknown DEFAULT_STRATEGY_NAME: {DEFAULT_STRATEGY_NAME}")
+    return main_cfg
 
+
+def _generate_from_history(
+    df: pd.DataFrame,
+    main_cols: List[str],
+    target_date: pd.Timestamp,
+    allowed_numbers: List[int] = None,
+    debug: bool = False,
+) -> Tuple[pd.DataFrame, List[CandidateScore], List[List[int]]]:
+    """Generate tickets using draws strictly before target_date.
+
+    The explicit history frame is a no-look-ahead guard: neither scoring nor
+    ticket construction receives the held-out draw or any later draw.
+    """
+    history = df[df["Date"] < target_date].copy()
+    if history.empty:
+        raise ValueError("No historical draws before target date")
+
+    run_date = target_date.strftime("%Y-%m-%d")
+    scored = score_numbers(history, main_cols, run_date, debug)
     if PORTFOLIO_MODE:
         tickets = generate_portfolio_tickets(
-            scored, df, main_cols, run_date, allowed_numbers=allowed_numbers
+            scored,
+            history,
+            main_cols,
+            run_date,
+            allowed_numbers=allowed_numbers,
         )
     else:
         tickets = generate_tickets(
-            scored, df, main_cols, run_date,
-            use_weights=True, seed_hot_overdue=False,
+            scored,
+            history,
+            main_cols,
+            run_date,
+            use_weights=True,
+            seed_hot_overdue=False,
             force_coverage=FORCE_COVERAGE,
-            cohesion_config=main_cfg,
+            cohesion_config=_main_cohesion_config(),
             allowed_numbers=allowed_numbers,
         )
+    return history, scored, tickets
+
+
+def _print_tickets(tickets: List[List[int]]) -> None:
+    for i, ticket in enumerate(tickets, 1):
+        print(f"Ticket #{i:02d}: {ticket}  decades={_decade_vector(ticket)}")
+
+
+def run_prediction(df: pd.DataFrame, main_cols: List[str]) -> None:
+    target_date = pd.Timestamp(PREDICTION_DATE)
+    if pd.isna(target_date):
+        raise ValueError("PREDICTION_DATE must be parseable as YYYY-MM-DD")
+
+    latest_known_date = df["Date"].max()
+    if target_date <= latest_known_date:
+        raise ValueError(
+            "Prediction mode only accepts a date later than the newest CSV result "
+            f"({latest_known_date:%Y-%m-%d}). Use RUN_MODE = 'backtest' for known draws."
+        )
+    if target_date.dayofweek != 5:
+        raise ValueError("PREDICTION_DATE must be a Saturday")
+
+    allowed_numbers = _normalize_allowed_numbers(ALLOWED_NUMBERS_FOR_TARGET_DATE)
+    history, _scored, tickets = _generate_from_history(
+        df,
+        main_cols,
+        target_date,
+        allowed_numbers=allowed_numbers,
+        debug=DEBUG_PRINT,
+    )
 
     mode_label = "HARD_FORCE" if FORCE_COVERAGE else "WEIGHTED"
-    print(f"\n=== {mode_label} STRATEGY ===")
-    print(f"Target: {run_date}")
-    print(f"Tickets: {NUM_TICKETS} | Pool size: {POOL_SIZE} + mid {MID_POOL_SIZE} + cold {COLD_POOL_SIZE}")
-    print(f"Decade bands: {DECADE_BANDS}")
-
-    for i, t in enumerate(tickets, 1):
-        vec = _decade_vector(t)
-        print(f"Ticket #{i:02d}: {t}  decades={vec}")
-
-    show_ticket_hits(real_draw, tickets)
-    show_ticket_hits(REAL_DRAW_TARGET, tickets)
+    print(f"\n=== PREDICTION MODE: {mode_label} STRATEGY ===")
+    print(f"Target date: {target_date:%Y-%m-%d}")
+    print(f"Latest known draw used: {history['Date'].max():%Y-%m-%d}")
+    print("No result is loaded or compared in prediction mode.")
+    print(f"Tickets generated: {len(tickets)}")
+    _print_tickets(tickets)
 
 
-    backtest_rows = df.sort_values("Date").tail(N)
-    bt_dates = [row["Date"] for _, row in backtest_rows.iterrows()]
+def run_backtest(df: pd.DataFrame, main_cols: List[str]) -> None:
+    if BACKTEST_DRAWS < 1:
+        raise ValueError("BACKTEST_DRAWS must be at least 1")
+    if len(df) < BACKTEST_DRAWS + 1:
+        raise ValueError("CSV needs at least one earlier draw for every backtest target")
 
-    strategies = _strategy_configs()
+    held_out_rows = df.sort_values("Date").tail(BACKTEST_DRAWS)
+    ticket_hit_counts = {hit: 0 for hit in range(NUMBERS_PER_TICKET + 1)}
+    best_hits: List[int] = []
+    total_tickets = 0
 
-    winner_blocks = []
-    band_stats = []
-    bt_hits_by_date: Dict[str, List[int]] = {}
+    print(f"\n=== BACKTEST MODE: LAST {BACKTEST_DRAWS} DRAWS ===")
+    print("No-look-ahead guard: tickets use only rows dated before each held-out draw.")
+    for _, held_out_row in held_out_rows.iterrows():
+        target_date = held_out_row["Date"]
 
-    print(f"\n=== BACKTEST (LAST {N} DRAWS) ===")
-    bt_weeks_lt3 = 0
-    bt_weeks_ge3 = 0
-    bt_weeks_ge4 = 0
-    bt_weeks_ge5 = 0
-    bt_weeks_ge6 = 0
-    bt_ticket_hit3 = 0
-    bt_ticket_hit4 = 0
-    bt_ticket_hit5 = 0
-    bt_ticket_hit6p = 0
-    bt_best_hit = 0
-    for d in bt_dates:
-        bt_date = d.strftime("%Y-%m-%d")
-        row = df[df["Date"] == d].iloc[0]
-        bt_draw = [int(row[c]) for c in main_cols]
-        bt_scored = score_numbers(df, main_cols, bt_date, DEBUG_PRINT)
-        if PORTFOLIO_MODE:
-            bt_tickets = generate_portfolio_tickets(bt_scored, df, main_cols, bt_date)
-        else:
-            bt_tickets = generate_tickets(bt_scored, df, main_cols, bt_date,
-                                          use_weights=True, seed_hot_overdue=False,
-                                          force_coverage=FORCE_COVERAGE, cohesion_config=main_cfg)
-        print(f"\nTarget: {bt_date}")
-        for i, t in enumerate(bt_tickets, 1):
-            vec = _decade_vector(t)
-            print(f"Ticket #{i:02d}: {t}  decades={vec}")
-        show_ticket_hits(bt_draw, bt_tickets)
-        best = 0
-        ge3_tickets = []
-        for idx, t in enumerate(bt_tickets, 1):
-            h = len(set(t).intersection(set(bt_draw)))
-            if h > best:
-                best = h
-            if h == 3:
-                bt_ticket_hit3 += 1
-            if h == 4:
-                bt_ticket_hit4 += 1
-            if h == 5:
-                bt_ticket_hit5 += 1
-            if h >= 6:
-                bt_ticket_hit6p += 1
-            if h >= 3:
-                ge3_tickets.append((idx, h))
-        if best < 3:
-            bt_weeks_lt3 += 1
-        if best >= 3:
-            bt_weeks_ge3 += 1
-        if best >= 4:
-            bt_weeks_ge4 += 1
-        if best >= 5:
-            bt_weeks_ge5 += 1
-        if best >= 6:
-            bt_weeks_ge6 += 1
-        if best > bt_best_hit:
-            bt_best_hit = best
-
-        bt_hits_by_date[bt_date] = ge3_tickets
-
-        collect_winner_tables_and_stats(
-            blocks=winner_blocks,
-            stats=band_stats,
-            target_date=bt_date,
-            real_draw=bt_draw,
-            scored=bt_scored
+        # The result is deliberately not read until ticket generation is complete.
+        history, _scored, tickets = _generate_from_history(
+            df,
+            main_cols,
+            target_date,
+            allowed_numbers=None,
+            debug=DEBUG_PRINT and BACKTEST_VERBOSE,
         )
+        actual_draw = [int(held_out_row[column]) for column in main_cols]
+        actual_set = set(actual_draw)
+        hits = [len(set(ticket).intersection(actual_set)) for ticket in tickets]
+        best_hit = max(hits, default=0)
+        high_hit_tickets = [(i + 1, hit) for i, hit in enumerate(hits) if hit >= 3]
 
-    print_all_winner_tables_at_end(winner_blocks)
-    print_date_by_date_band_counts_ascending(band_stats)
-    print_band_summary_at_end(band_stats)
+        for hit in hits:
+            ticket_hit_counts[hit] += 1
+        best_hits.append(best_hit)
+        total_tickets += len(tickets)
 
-    print("\n=== TICKETS WITH 3+ HITS BY DATE ===")
-    for d in bt_dates:
-        d_str = d.strftime("%Y-%m-%d")
-        tickets = bt_hits_by_date.get(d_str, [])
-        if tickets:
-            ticket_list = ", ".join(f"#{i:02d}" for i, _h in tickets)
-            hits_list = ", ".join(str(h) for _i, h in tickets)
-        else:
-            ticket_list = "none"
-            hits_list = "none"
-        print(f"{d_str} | {ticket_list} | {hits_list}")
+        high_hit_label = ", ".join(f"#{i:02d} ({hit})" for i, hit in high_hit_tickets) or "none"
+        print(
+            f"{target_date:%Y-%m-%d} | history={len(history)} | "
+            f"actual={sorted(actual_draw)} | best={best_hit} | 3+ tickets: {high_hit_label}"
+        )
+        if BACKTEST_VERBOSE:
+            _print_tickets(tickets)
 
-    print(f"\n=== BACKTEST SUMMARY (LAST {N} DRAWS) ===")
-    print(f"Weeks with <3 hits: {bt_weeks_lt3}")
-    print(f"Weeks with 3+ hits: {bt_weeks_ge3}")
-    print(f"Weeks with 4+ hits: {bt_weeks_ge4}")
-    print(f"Weeks with 5+ hits: {bt_weeks_ge5}")
-    print(f"Weeks with 6+ hits: {bt_weeks_ge6}")
-    print(f"Max hit observed : {bt_best_hit}")
-    print(f"Total tickets (hits=3): {bt_ticket_hit3}")
-    print(f"Total tickets (hits=4): {bt_ticket_hit4}")
-    print(f"Total tickets (hits=5): {bt_ticket_hit5}")
-    print(f"Total tickets (hits>=6): {bt_ticket_hit6p}")
-    print(f"Total tickets (hits>=3): {bt_ticket_hit3 + bt_ticket_hit4 + bt_ticket_hit5 + bt_ticket_hit6p}")
+    weeks_ge = {threshold: sum(best >= threshold for best in best_hits) for threshold in range(3, 7)}
+    jackpot_tickets = ticket_hit_counts[6]
+    print(f"\n=== BACKTEST SUMMARY (LAST {BACKTEST_DRAWS} DRAWS) ===")
+    print(f"Tickets generated: {total_tickets}")
+    print(f"Weeks with 3+ hits: {weeks_ge[3]}")
+    print(f"Weeks with 4+ hits: {weeks_ge[4]}")
+    print(f"Weeks with 5+ hits: {weeks_ge[5]}")
+    print(f"Weeks with 6+ hits: {weeks_ge[6]}")
+    print(f"Best ticket hit count: {max(best_hits, default=0)}")
+    print(f"Tickets with exactly 3 hits: {ticket_hit_counts[3]}")
+    print(f"Tickets with exactly 4 hits: {ticket_hit_counts[4]}")
+    print(f"Tickets with exactly 5 hits: {ticket_hit_counts[5]}")
+    print(f"Jackpot tickets (6 hits): {jackpot_tickets}")
+    print("Jackpot result: HIT" if jackpot_tickets else "Jackpot result: no jackpot hit")
+
+
+def main() -> None:
+    df, main_cols = _load_csv(CSV_PATH)
+    mode = RUN_MODE.strip().lower()
+    if mode == "prediction":
+        run_prediction(df, main_cols)
+    elif mode == "backtest":
+        run_backtest(df, main_cols)
+    else:
+        raise ValueError("RUN_MODE must be either 'prediction' or 'backtest'")
+
+
+if __name__ == "__main__":
+    main()
