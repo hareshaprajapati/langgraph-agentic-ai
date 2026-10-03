@@ -9,12 +9,27 @@ from contextlib import redirect_stdout
 # ---------- CONFIGURATION ----------
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto_data_backup.csv")
 OUTPUT_LAST_N = 30          # retained for pool-size evidence
-FUTURE_DATE_STR = "Sat 12-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+
+FUTURE_DATE_STR = "Sat 3-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+# LOCKED_PROFILE = (1, 2, 2, 1)
+LOCKED_PROFILE = (1, 2, 3, 0)
+
+
+# FUTURE_DATE_STR = "Sat 26-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+# LOCKED_PROFILE = (1, 2, 3, 0)
+
+# FUTURE_DATE_STR = "Sat 19-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+# LOCKED_PROFILE = (2, 1, 2, 1)
+
+# FUTURE_DATE_STR = "Sat 12-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+# LOCKED_PROFILE = (2, 1, 2, 1)
+
 # Locked EH/H/W/C profile for conditional winning-trajectory analysis.
 # Example: EH=2, H=1, W=3, C=0. (2, 1, 3, 0)
 # LOCKED_PROFILE = (1, 0, 5, 0)
 # LOCKED_PROFILE = (1, 2, 3, 0)
-LOCKED_PROFILE = (1, 1, 4, 0)
+
+# LOCKED_PROFILE = (2, 1, 2, 1)
 LOCKED_TRAJECTORY_TOP_N = 30
 
 # All-history locked-profile trajectory analysis.

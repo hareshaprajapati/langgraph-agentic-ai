@@ -1,5 +1,6 @@
 import csv
 import os
+import sys
 from collections import Counter, defaultdict
 from itertools import combinations, product
 from datetime import datetime, timedelta
@@ -7,33 +8,25 @@ import math
 import io
 from contextlib import redirect_stdout
 
-# ============================================================================
-# USER SETTINGS - CHANGE ONLY THESE VALUES FOR EACH RUN
-# ============================================================================
+# The evidence boards use Unicode arrows.  PowerShell may otherwise select the
+# legacy cp1252 stdout encoding and abort the run before tickets are reported.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-# 1) Target draw date. Keep the format exactly: "Sat DD-Mon-YYYY"
-TARGET_DATE = "Sat 26-Sep-2026"
-
-# 2) EH/H/W/C profile.
-#    FIRST / UNLOCKED RUN: PROFILE = ""
-#    LOCKED RUN:          PROFILE = (EH, H, W, C)
-#
-# Examples:
-# PROFILE = ""              # unlocked profile-only run
-# PROFILE = (1, 1, 3, 1)    # example locked profile
-# PROFILE = (2, 1, 2, 1)    # example locked profile
-PROFILE = (1, 2, 3, 0)
-
-# CSV file must be in the same folder as this script unless you change this name.
-CSV_FILENAME = "cross_lotto_data_backup.csv"
-
-# ============================================================================
-# INTERNAL CONFIGURATION - normally do not change
-# ============================================================================
-CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), CSV_FILENAME)
-FUTURE_DATE_STR = TARGET_DATE
-LOCKED_PROFILE = PROFILE
+# ---------- CONFIGURATION ----------
+CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto_data_backup.csv")
 OUTPUT_LAST_N = 30          # retained for pool-size evidence
+FUTURE_DATE_STR = "Sat 12-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+# Locked EH/H/W/C profile for conditional winning-trajectory analysis.
+# SAFE DEFAULT: keep blank for the first/profile-only run. After the profile is
+# predicted and frozen externally, set a 4-item tuple and rerun.
+# Example: LOCKED_PROFILE = (1, 2, 3, 0)
+# 26 sept
+# LOCKED_PROFILE = (1, 2, 3, 0)
+# 19 sep
+LOCKED_PROFILE = (2, 1, 2, 1)
+# 15 aug
+# LOCKED_PROFILE = (1, 1, 3, 1)
 LOCKED_TRAJECTORY_TOP_N = 30
 
 # V3 joint-evidence settings. These affect ONLY manual evidence output; they do
@@ -43,6 +36,23 @@ MANUAL_INDEPENDENT_CANDIDATE_WEIGHT = 0.65
 MANUAL_EXACT_CANDIDATE_SHRINKAGE_K = 20.0
 MANUAL_PAIR_SHRINKAGE_K = 12.0
 MANUAL_SCENARIO_PRIOR_STRENGTH = 8.0
+
+# V4 portfolio assembly settings. The profile remains external. When a valid
+# LOCKED_PROFILE is supplied, the script can build and audit the 20-ticket V4
+# portfolio automatically without using the target result.
+V4_BUILD_PORTFOLIO = True
+V4_INDEPENDENT_REPLAY = True
+V4_CORE_SLOTS = 8
+V4_COVERAGE_SLOTS = 8
+V4_DEEP_SLOTS = 4
+V4_CANDIDATE_WEIGHT = 0.50
+V4_SAME_PAIR_WEIGHT = 0.20
+V4_CROSS_PAIR_WEIGHT = 0.25
+V4_SAME_GROUP_FLOOR_WEIGHT = 0.05
+V4_COVERAGE_BAND = 0.95
+V4_DEEP_BAND = 0.90
+V4_PRIORITY_PAIR_MIN_EXPOSURES = 3
+V4_PRIORITY_PAIR_MIN_NORM = 0.90
 
 # All-history locked-profile trajectory analysis.
 # Scope options:
@@ -3677,6 +3687,10 @@ def print_manual_joint_evidence_board(
         max_signal = max((r["signal"] or 0.0 for r in concrete), default=0.0)
         for r in concrete:
             r["norm"] = (r["signal"] / max_signal) if (r["signal"] is not None and max_signal > 0) else None
+            # V4 reliability restoration: PairNorm is context-normalized and can
+            # equal 1.0 even for a tiny sample. PairStrength restores absolute
+            # concrete-exposure reliability for ticket scoring.
+            r["strength"] = (r["norm"] * r["confidence"]) if r["norm"] is not None else None
 
         concrete.sort(
             key=lambda r: (
@@ -3708,14 +3722,15 @@ def print_manual_joint_evidence_board(
             f"\n  CONTEXT {_format_family_key(key)} + {_format_family_key(key)} | "
             f"baseline={baseline_text} ({context_win}/{context_cand}) | current pairs={len(rows)}"
         )
-        print(f"  {'#':<4} {'Pair':<12} {'Cand N':>8} {'CoWins':>8} {'PairEvidence':>14} {'Conf':>7} {'PairNorm':>10}")
+        print(f"  {'#':<4} {'Pair':<12} {'Cand N':>8} {'CoWins':>8} {'PairEvidence':>14} {'Conf':>7} {'PairNorm':>10} {'PairStrength':>13}")
         print("  " + "-" * 64)
         for rank, r in enumerate(rows, start=1):
             ev_text = "N/A" if r["shr"] is None else f"{r['shr']:.4%}"
             norm_text = "N/A" if r["norm"] is None else f"{r['norm']:.3f}"
             print(
                 f"  {rank:<4} {f'{r['a']},{r['b']}':<12} {r['cand_n']:>8} {r['wins']:>8} "
-                f"{ev_text:>14} {r['confidence']:>7.3f} {norm_text:>10}"
+                f"{ev_text:>14} {r['confidence']:>7.3f} {norm_text:>10} "
+                f"{('N/A' if r['strength'] is None else f'{r['strength']:.3f}'):>13}"
             )
             pair_rows[(key, key, r["a"], r["b"])] = {**r, "rank": rank, "baseline": baseline}
 
@@ -3738,24 +3753,25 @@ def print_manual_joint_evidence_board(
                 f"\n  CONTEXT {_format_family_key(key_a)} + {_format_family_key(key_b)} | "
                 f"baseline={baseline_text} ({context_win}/{context_cand}) | current pairs={len(rows)}"
             )
-            print(f"  {'#':<4} {'Pair':<12} {'Cand N':>8} {'CoWins':>8} {'PairEvidence':>14} {'Conf':>7} {'PairNorm':>10}")
+            print(f"  {'#':<4} {'Pair':<12} {'Cand N':>8} {'CoWins':>8} {'PairEvidence':>14} {'Conf':>7} {'PairNorm':>10} {'PairStrength':>13}")
             print("  " + "-" * 64)
             for rank, r in enumerate(rows, start=1):
                 ev_text = "N/A" if r["shr"] is None else f"{r['shr']:.4%}"
                 norm_text = "N/A" if r["norm"] is None else f"{r['norm']:.3f}"
                 print(
                     f"  {rank:<4} {f'{r['a']},{r['b']}':<12} {r['cand_n']:>8} {r['wins']:>8} "
-                    f"{ev_text:>14} {norm_text:>10}"
+                    f"{ev_text:>14} {r['confidence']:>7.3f} {norm_text:>10} "
+                    f"{('N/A' if r['strength'] is None else f'{r['strength']:.3f}'):>13}"
                 )
                 pair_rows[(key_a, key_b, r["a"], r["b"])] = {**r, "rank": rank, "baseline": baseline}
 
     print("\n" + "-" * 170)
-    print("V3 JOINT-EVIDENCE INTERPRETATION")
+    print("V4 JOINT-EVIDENCE INTERPRETATION")
     print("  1. ScenarioScore ranks WHOLE transition structures using exact-profile history plus a shrunk marginal prior.")
     print("  2. CandidateJoint combines the existing independent candidate evidence with exact-profile candidate context.")
-    print("  3. PairNorm measures historical co-location compatibility within the relevant immediate-family pair context.")
+    print("  3. PairStrength = PairNorm * confidence and is the V4 ticket-scoring pair input.")
     print("  4. Missing/zero-sample contexts must be treated as UNAVAILABLE, never invented as positive evidence.")
-    print("  5. No ticket is generated here; this output is consumed by SikoSat Portfolio Assembly V3.0.")
+    print("  5. This evidence is consumed by SikoSat Portfolio Assembly V4.0.")
 
     return {
         "exact_profile_draws": len(exact_records),
@@ -3764,6 +3780,748 @@ def print_manual_joint_evidence_board(
         "pair_rows": pair_rows,
         "retained_transitions": retained,
     }
+
+
+# ---------- V4 AUTOMATED PORTFOLIO ASSEMBLY ----------
+def _v4_rank_tokens(scenario):
+    items = [
+        (POOL_NAMES[i], rank)
+        for i, rank in enumerate(scenario["rank_tuple"])
+        if rank != 0
+    ]
+    return set(items), set(combinations(items, 2)), set(combinations(items, 3))
+
+
+def _v4_scenario_family_counts(scenario):
+    counts = Counter()
+    for state, combo in zip(POOL_NAMES, scenario["signature"]):
+        for move in combo:
+            counts[(state, move)] += 1
+    return counts
+
+
+def _v4_allocate_scenarios(scenarios):
+    if len(scenarios) < 20:
+        raise RuntimeError(
+            f"V4 requires at least 20 distinct canonical scenarios; found {len(scenarios)}."
+        )
+
+    ranked = sorted(
+        scenarios,
+        key=lambda r: (
+            -r["scenario_score"],
+            -r["exact_count"],
+            -r["ssi"],
+            r["depth"],
+            r["rank_tuple"],
+        ),
+    )
+
+    core = [dict(s) for s in ranked[:V4_CORE_SLOTS]]
+    selected_ids = {s["scenario_id"] for s in core}
+
+    covered_ranks = set()
+    covered_pairs = set()
+    covered_triples = set()
+    for s in core:
+        a, b, c = _v4_rank_tokens(s)
+        covered_ranks |= a
+        covered_pairs |= b
+        covered_triples |= c
+
+    coverage = []
+    for _ in range(V4_COVERAGE_SLOTS):
+        choices = []
+        for s in scenarios:
+            if s["scenario_id"] in selected_ids:
+                continue
+            a, b, c = _v4_rank_tokens(s)
+            gain = (
+                100 * len(a - covered_ranks)
+                + 10 * len(b - covered_pairs)
+                + len(c - covered_triples)
+            )
+            choices.append((gain, s))
+
+        if not choices:
+            raise RuntimeError("V4 ran out of unused scenarios during COVERAGE allocation.")
+
+        choices.sort(
+            key=lambda x: (
+                -x[0],
+                -x[1]["scenario_score"],
+                -x[1]["exact_count"],
+                -x[1]["ssi"],
+                x[1]["depth"],
+                x[1]["rank_tuple"],
+            )
+        )
+        gain, chosen = choices[0]
+        chosen = {**chosen, "coverage_gain": gain}
+        coverage.append(chosen)
+        selected_ids.add(chosen["scenario_id"])
+        a, b, c = _v4_rank_tokens(chosen)
+        covered_ranks |= a
+        covered_pairs |= b
+        covered_triples |= c
+
+    deep = []
+    for _ in range(V4_DEEP_SLOTS):
+        choices = []
+        for s in scenarios:
+            if s["scenario_id"] in selected_ids:
+                continue
+            a, b, c = _v4_rank_tokens(s)
+            uncovered_deep_ranks = {x for x in a - covered_ranks if x[1] >= 3}
+            uncovered_deep_pairs = {
+                x for x in b - covered_pairs if any(token[1] >= 3 for token in x)
+            }
+            uncovered_deep_triples = {
+                x for x in c - covered_triples if any(token[1] >= 3 for token in x)
+            }
+            gain = (
+                100 * len(uncovered_deep_ranks)
+                + 10 * len(uncovered_deep_pairs)
+                + len(uncovered_deep_triples)
+                + s["depth"]
+            )
+            choices.append((gain, s))
+
+        if not choices:
+            raise RuntimeError("V4 ran out of unused scenarios during DEEP allocation.")
+
+        choices.sort(
+            key=lambda x: (
+                -x[0],
+                -x[1]["scenario_score"],
+                -x[1]["exact_count"],
+                -x[1]["ssi"],
+                x[1]["rank_tuple"],
+            )
+        )
+        gain, chosen = choices[0]
+        chosen = {**chosen, "deep_gain": gain}
+        deep.append(chosen)
+        selected_ids.add(chosen["scenario_id"])
+        a, b, c = _v4_rank_tokens(chosen)
+        covered_ranks |= a
+        covered_pairs |= b
+        covered_triples |= c
+
+    if len(core) + len(coverage) + len(deep) != 20:
+        raise RuntimeError("V4 scenario allocation did not produce exactly 20 slots.")
+    if len({s["scenario_id"] for s in core + coverage + deep}) != 20:
+        raise RuntimeError("V4 scenario allocation contains a duplicate Scenario ID.")
+
+    return core, coverage, deep
+
+
+def _v4_search_space(current_families, scenario):
+    space = 1
+    for family, qty in _v4_scenario_family_counts(scenario).items():
+        n = len(current_families[family])
+        if n < qty:
+            return 0
+        space *= math.comb(n, qty)
+    return space
+
+
+def _v4_exposure_plan(current_families, candidate_rows, slots):
+    family_slots = Counter()
+    for _role, scenario in slots:
+        family_slots.update(_v4_scenario_family_counts(scenario))
+
+    candidate_weights = {}
+    breadth_sets = {}
+    target_exposure = {}
+
+    for family, raw_nums in current_families.items():
+        nums = sorted(
+            raw_nums,
+            key=lambda n: candidate_rows[(family[0], family[1], n)]["rank"],
+        )
+        family_size = len(nums)
+        slots_n = family_slots[family]
+
+        for n in nums:
+            rank = candidate_rows[(family[0], family[1], n)]["rank"]
+            if family_size <= 4:
+                weight = 1
+            elif family_size <= 8:
+                weight = 2 if rank <= 4 else 1
+            else:
+                weight = 3 if rank <= 4 else (2 if rank <= 8 else 1)
+            candidate_weights[n] = weight
+
+        breadth_count = min(slots_n, family_size)
+        breadth_set = set(nums[:breadth_count])
+        breadth_sets[family] = breadth_set
+
+        remaining = slots_n - breadth_count
+        weight_total = sum(candidate_weights[n] for n in nums)
+        for n in nums:
+            base = 1.0 if n in breadth_set else 0.0
+            extra = (
+                remaining * candidate_weights[n] / weight_total
+                if remaining > 0 and weight_total > 0
+                else 0.0
+            )
+            target_exposure[n] = base + extra
+
+        if abs(sum(target_exposure[n] for n in nums) - slots_n) > 1e-9:
+            raise RuntimeError(f"V4 TargetExposure does not reconcile for family {family}.")
+
+    return family_slots, candidate_weights, breadth_sets, target_exposure
+
+
+def _v4_legal_tickets(current_families, scenario):
+    groups = []
+    for family, qty in sorted(_v4_scenario_family_counts(scenario).items()):
+        nums = sorted(current_families[family])
+        groups.append(list(combinations(nums, qty)))
+
+    for chosen in product(*groups):
+        ticket = tuple(sorted(n for group in chosen for n in group))
+        if len(ticket) == 6 and len(set(ticket)) == 6:
+            yield ticket
+
+
+def _v4_soft_structure(ticket):
+    odd_count = sum(n % 2 for n in ticket)
+    decade_counts = [
+        sum(1 <= n <= 9 for n in ticket),
+        sum(10 <= n <= 19 for n in ticket),
+        sum(20 <= n <= 29 for n in ticket),
+        sum(30 <= n <= 39 for n in ticket),
+        sum(40 <= n <= 45 for n in ticket),
+    ]
+    return (
+        1 if 2 <= odd_count <= 4 else 0,
+        1 if sum(c > 0 for c in decade_counts) >= 3 else 0,
+        1 if max(decade_counts) <= 3 else 0,
+    )
+
+
+def _v4_static_ticket_metrics(
+    ticket,
+    current_info,
+    candidate_rows,
+    pair_by_numbers,
+    candidate_weights,
+):
+    candidate_component = sum(
+        candidate_rows[(current_info[n]["state"], current_info[n]["move"], n)]["joint"]
+        for n in ticket
+    ) / 6.0
+
+    same_strengths = []
+    cross_strengths = []
+    by_family = defaultdict(list)
+    for n in ticket:
+        by_family[(current_info[n]["state"], current_info[n]["move"])].append(n)
+
+    for a, b in combinations(ticket, 2):
+        pair = (a, b) if a < b else (b, a)
+        row = pair_by_numbers.get(pair)
+        if row is None:
+            raise RuntimeError(f"SCRIPT OUTPUT INCOMPLETE: missing pair row {pair}.")
+        strength = row.get("strength")
+        family_a = (current_info[a]["state"], current_info[a]["move"])
+        family_b = (current_info[b]["state"], current_info[b]["move"])
+        if strength is not None:
+            if family_a == family_b:
+                same_strengths.append(strength)
+            else:
+                cross_strengths.append(strength)
+
+    same_pair = (
+        sum(same_strengths) / len(same_strengths) if same_strengths else None
+    )
+    cross_pair = (
+        sum(cross_strengths) / len(cross_strengths) if cross_strengths else None
+    )
+
+    floor_values = []
+    for _family, nums in by_family.items():
+        if len(nums) < 2:
+            continue
+        for a, b in combinations(nums, 2):
+            pair = (a, b) if a < b else (b, a)
+            strength = pair_by_numbers[pair].get("strength")
+            if strength is not None:
+                floor_values.append(strength)
+    same_group_floor = min(floor_values) if floor_values else None
+
+    components = [(candidate_component, V4_CANDIDATE_WEIGHT)]
+    if same_pair is not None:
+        components.append((same_pair, V4_SAME_PAIR_WEIGHT))
+    if cross_pair is not None:
+        components.append((cross_pair, V4_CROSS_PAIR_WEIGHT))
+    if same_group_floor is not None:
+        components.append((same_group_floor, V4_SAME_GROUP_FLOOR_WEIGHT))
+
+    joint_score = sum(v * w for v, w in components) / sum(w for _, w in components)
+    deep_count = sum(1 for n in ticket if candidate_weights[n] == 1)
+
+    return {
+        "candidate_component": candidate_component,
+        "same_pair_component": same_pair,
+        "cross_pair_component": cross_pair,
+        "same_group_floor": same_group_floor,
+        "joint_score": joint_score,
+        "deep_count": deep_count,
+    }
+
+
+def _v4_build_once(locked_profile, current_snapshots, joint_bundle, max_num):
+    if max_num != 45:
+        raise RuntimeError("V4.0 soft-structure rules currently require Saturday Lotto universe 1..45.")
+
+    scenarios = joint_bundle.get("scenario_rows") or []
+    candidate_rows = joint_bundle.get("candidate_rows") or {}
+    raw_pair_rows = joint_bundle.get("pair_rows") or {}
+
+    current_info = _manual_current_info(current_snapshots, max_num)
+    current_families = defaultdict(list)
+    for state, move, number in candidate_rows:
+        current_families[(state, move)].append(number)
+
+    pair_by_numbers = {}
+    for row in raw_pair_rows.values():
+        pair = (row["a"], row["b"]) if row["a"] < row["b"] else (row["b"], row["a"])
+        pair_by_numbers[pair] = row
+
+    core, coverage, deep = _v4_allocate_scenarios(scenarios)
+
+    core_slots = [
+        ("CORE", s)
+        for s in sorted(
+            core,
+            key=lambda s: (
+                _v4_search_space(current_families, s),
+                -s["scenario_score"],
+                -s["exact_count"],
+                s["scenario_id"],
+            ),
+        )
+    ]
+    coverage_slots = [
+        ("COVERAGE", s)
+        for s in sorted(
+            coverage,
+            key=lambda s: (
+                _v4_search_space(current_families, s),
+                -s["coverage_gain"],
+                -s["scenario_score"],
+                s["scenario_id"],
+            ),
+        )
+    ]
+    deep_slots = [
+        ("DEEP", s)
+        for s in sorted(
+            deep,
+            key=lambda s: (
+                _v4_search_space(current_families, s),
+                -s["deep_gain"],
+                -s["depth"],
+                -s["scenario_score"],
+                s["scenario_id"],
+            ),
+        )
+    ]
+    slots = core_slots + coverage_slots + deep_slots
+
+    family_slots, candidate_weights, breadth_sets, target_exposure = _v4_exposure_plan(
+        current_families, candidate_rows, slots
+    )
+
+    priority_pairs = set()
+    for pair, row in pair_by_numbers.items():
+        if (
+            row.get("cand_n", 0) >= V4_PRIORITY_PAIR_MIN_EXPOSURES
+            and row.get("norm") is not None
+            and row["norm"] >= V4_PRIORITY_PAIR_MIN_NORM
+        ):
+            priority_pairs.add(pair)
+
+    remaining_after = []
+    for i in range(len(slots)):
+        remaining = Counter()
+        for _role, scenario in slots[i + 1:]:
+            remaining.update(_v4_scenario_family_counts(scenario))
+        remaining_after.append(remaining)
+
+    exposure = Counter()
+    pair_ledger = Counter()
+    group_ledger = Counter()
+    covered_priority = set()
+    selected = []
+    used_tickets = set()
+    static_cache = {}
+
+    for slot_index, (role, scenario) in enumerate(slots):
+        candidates = []
+
+        for ticket in _v4_legal_tickets(current_families, scenario):
+            if ticket in used_tickets:
+                continue
+
+            ticket_counts = Counter(ticket)
+            breadth_feasible = True
+            for family, breadth_set in breadth_sets.items():
+                uncovered_after = sum(
+                    1 for n in breadth_set if exposure[n] + ticket_counts[n] == 0
+                )
+                if uncovered_after > remaining_after[slot_index][family]:
+                    breadth_feasible = False
+                    break
+            if not breadth_feasible:
+                continue
+
+            if ticket not in static_cache:
+                static_cache[ticket] = _v4_static_ticket_metrics(
+                    ticket,
+                    current_info,
+                    candidate_rows,
+                    pair_by_numbers,
+                    candidate_weights,
+                )
+            static = static_cache[ticket]
+
+            exposure_deficit = sum(
+                max(target_exposure[n] - exposure[n], 0.0) for n in ticket
+            )
+            priority_gain = sum(
+                1
+                for a, b in combinations(ticket, 2)
+                if ((a, b) if a < b else (b, a)) in priority_pairs - covered_priority
+            )
+
+            by_family = defaultdict(list)
+            for n in ticket:
+                by_family[(current_info[n]["state"], current_info[n]["move"])].append(n)
+
+            group_reuse = 0
+            for family, nums in by_family.items():
+                if len(nums) >= 2:
+                    group_reuse += group_ledger[(family, tuple(sorted(nums)))]
+
+            pair_reuse = sum(
+                pair_ledger[(a, b) if a < b else (b, a)]
+                for a, b in combinations(ticket, 2)
+            )
+
+            candidates.append({
+                "ticket": ticket,
+                **static,
+                "exposure_deficit": exposure_deficit,
+                "priority_gain": priority_gain,
+                "group_reuse": group_reuse,
+                "pair_reuse": pair_reuse,
+                "soft": _v4_soft_structure(ticket),
+            })
+
+        if not candidates:
+            raise RuntimeError(
+                f"V4 BREADTH CONSTRAINT INFEASIBLE at {role} {scenario['scenario_id']}."
+            )
+
+        if role == "CORE":
+            candidates.sort(
+                key=lambda x: (
+                    -x["joint_score"],
+                    -x["candidate_component"],
+                    -x["exposure_deficit"],
+                    x["group_reuse"],
+                    x["pair_reuse"],
+                    -x["soft"][0],
+                    -x["soft"][1],
+                    -x["soft"][2],
+                    x["ticket"],
+                )
+            )
+            choice = candidates[0]
+            best_joint = choice["joint_score"]
+            band_ratio = 1.0
+        elif role == "COVERAGE":
+            best_joint = max(x["joint_score"] for x in candidates)
+            band = [
+                x for x in candidates
+                if x["joint_score"] >= V4_COVERAGE_BAND * best_joint - 1e-15
+            ]
+            band.sort(
+                key=lambda x: (
+                    -x["priority_gain"],
+                    -x["exposure_deficit"],
+                    -x["joint_score"],
+                    -x["candidate_component"],
+                    x["group_reuse"],
+                    x["pair_reuse"],
+                    -x["soft"][0],
+                    -x["soft"][1],
+                    -x["soft"][2],
+                    x["ticket"],
+                )
+            )
+            choice = band[0]
+            band_ratio = choice["joint_score"] / best_joint if best_joint else 1.0
+        else:
+            best_joint = max(x["joint_score"] for x in candidates)
+            band = [
+                x for x in candidates
+                if x["joint_score"] >= V4_DEEP_BAND * best_joint - 1e-15
+            ]
+            band.sort(
+                key=lambda x: (
+                    -x["deep_count"],
+                    -x["priority_gain"],
+                    -x["exposure_deficit"],
+                    -x["joint_score"],
+                    -x["candidate_component"],
+                    x["group_reuse"],
+                    x["pair_reuse"],
+                    -x["soft"][0],
+                    -x["soft"][1],
+                    -x["soft"][2],
+                    x["ticket"],
+                )
+            )
+            choice = band[0]
+            band_ratio = choice["joint_score"] / best_joint if best_joint else 1.0
+
+        ticket = choice["ticket"]
+        used_tickets.add(ticket)
+        exposure.update(ticket)
+
+        by_family = defaultdict(list)
+        for n in ticket:
+            by_family[(current_info[n]["state"], current_info[n]["move"])].append(n)
+        for family, nums in by_family.items():
+            if len(nums) >= 2:
+                group_ledger[(family, tuple(sorted(nums)))] += 1
+        for a, b in combinations(ticket, 2):
+            pair = (a, b) if a < b else (b, a)
+            pair_ledger[pair] += 1
+            if pair in priority_pairs:
+                covered_priority.add(pair)
+
+        selected.append({
+            "role": role,
+            "scenario_id": scenario["scenario_id"],
+            "rank_tuple": scenario["rank_tuple"],
+            "ticket": ticket,
+            "joint_score": choice["joint_score"],
+            "candidate_component": choice["candidate_component"],
+            "band_ratio": band_ratio,
+            "search_space": _v4_search_space(current_families, scenario),
+        })
+
+    for family, breadth_set in breadth_sets.items():
+        missing = [n for n in breadth_set if exposure[n] == 0]
+        if missing:
+            raise RuntimeError(f"V4 breadth audit failed for {family}: {missing}")
+
+    if len(selected) != 20 or len({x["ticket"] for x in selected}) != 20:
+        raise RuntimeError("V4 general ticket-count/uniqueness audit failed.")
+    if sum(exposure.values()) != 120:
+        raise RuntimeError("V4 total-position audit failed.")
+
+    for item, (role, scenario) in zip(selected, slots):
+        if item["role"] != role or item["scenario_id"] != scenario["scenario_id"]:
+            raise RuntimeError("V4 build-order audit failed.")
+        expected_families = _v4_scenario_family_counts(scenario)
+        actual_families = Counter(
+            (current_info[n]["state"], current_info[n]["move"])
+            for n in item["ticket"]
+        )
+        if actual_families != expected_families:
+            raise RuntimeError(f"V4 family multiplicity audit failed for {item['scenario_id']}.")
+        state_counts = Counter(current_info[n]["state"] for n in item["ticket"])
+        actual_profile = tuple(state_counts[s] for s in POOL_NAMES)
+        if actual_profile != tuple(locked_profile):
+            raise RuntimeError(f"V4 profile audit failed for {item['scenario_id']}.")
+        for a, b in combinations(item["ticket"], 2):
+            pair = (a, b) if a < b else (b, a)
+            if pair not in pair_by_numbers:
+                raise RuntimeError(f"V4 pair-row audit failed for pair {pair}.")
+
+    return {
+        "tickets": selected,
+        "slots": slots,
+        "core": core,
+        "coverage": coverage,
+        "deep": deep,
+        "family_slots": family_slots,
+        "candidate_weights": candidate_weights,
+        "breadth_sets": breadth_sets,
+        "target_exposure": target_exposure,
+        "exposure": exposure,
+        "priority_pairs": priority_pairs,
+        "covered_priority": covered_priority,
+        "current_info": current_info,
+        "current_families": current_families,
+        "pair_by_numbers": pair_by_numbers,
+    }
+
+
+def assemble_v4_portfolio(locked_profile, current_snapshots, joint_bundle, max_num):
+    print("\n" + "=" * 170)
+    print("SIKOSAT PORTFOLIO ASSEMBLY V4.0 - AUTOMATED PRE-RESULT EXECUTION")
+    print("=" * 170)
+    print("TARGET RESULT USED = NO")
+    print(
+        "V4 rules: 20 distinct scenarios when possible, hard family BreadthSet minima, "
+        "and PairStrength = PairNorm * confidence."
+    )
+
+    first = _v4_build_once(locked_profile, current_snapshots, joint_bundle, max_num)
+
+    if V4_INDEPENDENT_REPLAY:
+        second = _v4_build_once(locked_profile, current_snapshots, joint_bundle, max_num)
+        a = [(x["role"], x["scenario_id"], x["ticket"]) for x in first["tickets"]]
+        b = [(x["role"], x["scenario_id"], x["ticket"]) for x in second["tickets"]]
+        if a != b:
+            raise RuntimeError("V4 independent replay mismatch. DO NOT FREEZE.")
+        replay_text = "PASS - identical from zero ledgers"
+    else:
+        replay_text = "SKIPPED BY CONFIG"
+
+    print("\nScenario allocation summary:")
+    for role_name, group in (
+        ("CORE", first["core"]),
+        ("COVERAGE", first["coverage"]),
+        ("DEEP", first["deep"]),
+    ):
+        print(f"  {role_name:<8}: " + ", ".join(
+            f"{s['scenario_id']}({'/'.join(map(str, s['rank_tuple']))})" for s in group
+        ))
+
+    print("\nCandidate breadth / exposure audit:")
+    for family in sorted(first["current_families"]):
+        nums = sorted(
+            first["current_families"][family],
+            key=lambda n: joint_bundle["candidate_rows"][(family[0], family[1], n)]["rank"],
+        )
+        breadth = first["breadth_sets"][family]
+        coverage_text = f"{sum(first['exposure'][n] > 0 for n in breadth)}/{len(breadth)}"
+        exposure_text = ", ".join(
+            f"{n}:{first['exposure'][n]}/{first['target_exposure'][n]:.2f}" for n in nums
+        )
+        print(
+            f"  {_format_family_key(family):<14} slots={first['family_slots'][family]:<3} "
+            f"breadth={coverage_text:<7} {exposure_text}"
+        )
+
+    same_priority = 0
+    cross_priority = 0
+    same_covered = 0
+    cross_covered = 0
+    for a, b in first["priority_pairs"]:
+        fa = (first["current_info"][a]["state"], first["current_info"][a]["move"])
+        fb = (first["current_info"][b]["state"], first["current_info"][b]["move"])
+        if fa == fb:
+            same_priority += 1
+            same_covered += int((a, b) in first["covered_priority"])
+        else:
+            cross_priority += 1
+            cross_covered += int((a, b) in first["covered_priority"])
+
+    print(
+        f"\nPriority Pair Coverage: {len(first['covered_priority'])}/{len(first['priority_pairs'])} "
+        f"| same-family {same_covered}/{same_priority} "
+        f"| cross-family {cross_covered}/{cross_priority}"
+    )
+
+    print("\nFrozen build-order tickets:")
+    print(f"  {'#':<3} {'Role':<9} {'Scenario':<8} {'Ranks':<12} {'Ticket':<28} {'Joint':>9} {'Band':>8}")
+    role_scores = defaultdict(list)
+    for i, item in enumerate(first["tickets"], start=1):
+        role_scores[item["role"]].append(item["joint_score"])
+        ranks = "/".join(map(str, item["rank_tuple"]))
+        print(
+            f"  {i:<3} {item['role']:<9} {item['scenario_id']:<8} {ranks:<12} "
+            f"{str(item['ticket']):<28} {item['joint_score']:>9.6f} {item['band_ratio']:>8.4f}"
+        )
+
+    print("\nJointTicketScore ranges:")
+    for role in ("CORE", "COVERAGE", "DEEP"):
+        values = role_scores[role]
+        print(
+            f"  {role:<9} min={min(values):.6f} max={max(values):.6f} "
+            f"mean={sum(values)/len(values):.6f}"
+        )
+
+    numeric_contexts = set()
+    na_contexts = set()
+    for row in joint_bundle.get("pair_rows", {}).values():
+        context = (row.get("baseline"),)
+        key = tuple(sorted((str(row.get("a")), str(row.get("b")))))
+        if row.get("norm") is None:
+            na_contexts.add(key)
+        else:
+            numeric_contexts.add(key)
+    print(f"\nIndependent deterministic replay: {replay_text}")
+    print("PRE-RESULT AUDIT: PASS")
+    print("20 TICKETS FROZEN.")
+
+    return first
+
+
+def print_v4_ticket_hit_report(portfolio, target_main, target_date_str):
+    """
+    Score a completed V4 portfolio against an already-known target result.
+
+    This function is intentionally separate from the portfolio builder.  It is
+    called only after ticket selection, so the target numbers cannot affect the
+    evidence, scenario allocation, candidate ranking, or generated tickets.
+    """
+    print("\n" + "=" * 120)
+    print("V4 POST-RESULT TICKET HIT REPORT")
+    print("=" * 120)
+    print("Target result used for scoring only; it was not used to build the tickets.")
+
+    tickets = portfolio.get("tickets", []) if portfolio else []
+    if not tickets:
+        print("No generated tickets are available to score.")
+        return
+
+    if not target_main:
+        print(
+            f"No main-number result for {target_date_str} exists in the CSV; "
+            "tickets were generated but hits cannot be shown."
+        )
+        return
+
+    actual_set = set(target_main)
+    print(f"Actual main numbers for {target_date_str}: {sorted(actual_set)}")
+    print(f"{'#':<4} {'Role':<9} {'Scenario':<9} {'Ticket':<28} {'Hits':<30}")
+    print("-" * 120)
+
+    hit_counts = []
+    for index, item in enumerate(tickets, start=1):
+        hits = sorted(actual_set.intersection(item["ticket"]))
+        hit_counts.append(len(hits))
+        print(
+            f"{index:<4} {item['role']:<9} {item['scenario_id']:<9} "
+            f"{str(item['ticket']):<28} {len(hits)} {hits}"
+        )
+
+    distribution = Counter(hit_counts)
+    summary = ", ".join(
+        f"{hits} hit{'s' if hits != 1 else ''}: {count}"
+        for hits, count in sorted(distribution.items(), reverse=True)
+    )
+    best_hits = max(hit_counts)
+    best_indices = [
+        index
+        for index, count in enumerate(hit_counts, start=1)
+        if count == best_hits
+    ]
+    print("-" * 120)
+    print(f"Hit summary: {summary}")
+    print(f"Best result: {best_hits} hits on ticket(s) {best_indices}")
+
 
 
 # ---------- THURSDAY POWERBALL-BALL (1-20) ANALYSIS ----------
@@ -4478,10 +5236,10 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             max_num=max_num,
         )
 
-        # V3: print exact-profile whole-scenario support, exact-profile candidate
-        # context, and candidate-normalized same-/cross-family pair compatibility.
-        # This section is skipped automatically during the unlocked/profile-only run.
-        print_manual_joint_evidence_board(
+        # V4: print exact-profile whole-scenario support, exact-profile candidate
+        # context, reliability-weighted pair compatibility, then optionally build
+        # the deterministic 20-ticket V4 portfolio. Target results are never read.
+        v4_joint_bundle = print_manual_joint_evidence_board(
             locked_profile=LOCKED_PROFILE,
             records=manual_records,
             current_snapshots=manual_snapshots,
@@ -4489,6 +5247,29 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             candidate_details=manual_candidate_details,
             max_num=max_num,
         )
+
+        if V4_BUILD_PORTFOLIO and v4_joint_bundle:
+            v4_portfolio = assemble_v4_portfolio(
+                locked_profile=LOCKED_PROFILE,
+                current_snapshots=manual_snapshots,
+                joint_bundle=v4_joint_bundle,
+                max_num=max_num,
+            )
+            # Look up the result only after the pre-result portfolio is frozen.
+            # It is not passed to any evidence or ticket-generation function.
+            target_main = next(
+                (
+                    main_nums
+                    for _date, dt, main_nums in draws
+                    if dt == prediction_target_dt
+                ),
+                None,
+            )
+            print_v4_ticket_hit_report(
+                portfolio=v4_portfolio,
+                target_main=target_main,
+                target_date_str=target_date_str,
+            )
 
     # ---------- LEGACY DAILY SNAPSHOTS / TRAJECTORIES ----------
     if PRINT_DAILY_SNAPSHOT_POOLS:
