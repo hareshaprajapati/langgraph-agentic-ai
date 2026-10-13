@@ -11,7 +11,7 @@ CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto
 OUTPUT_LAST_N = 30          # retained for pool-size evidence
 
 RUN_SATURDAY_ORACLE_PROFILE_BACKTEST = True
-SATURDAY_ORACLE_BACKTEST_N = 1
+SATURDAY_ORACLE_BACKTEST_N = 3
 FUTURE_DATE_STR = "Sat 10-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # LOCKED_PROFILE = (1, 2, 2, 1)
 LOCKED_PROFILE = (1, 1, 4, 0)
@@ -45,9 +45,7 @@ K_NEIGHBORS = 10            # for conditional mode predictor
 
 
 SATURDAY_ORACLE_BACKTEST_PRINT_FULL_TO_CONSOLE = True
-SATURDAY_ORACLE_BACKTEST_OUTPUT_DIR = "saturday_oracle_profile_backtest"
-SATURDAY_ORACLE_BACKTEST_COMBINED_FILE = "Saturday_Oracle_Profile_Backtest_ALL.txt"
-SATURDAY_ORACLE_BACKTEST_SUMMARY_CSV = "Saturday_Oracle_Profile_Backtest_Summary.csv"
+# Oracle backtests print to the console only; no output files are generated.
 
 # ---------- MANUAL DECISION OUTPUT ----------
 # True = concise evidence-only output for manually building tickets.
@@ -2896,6 +2894,7 @@ def print_manual_transition_board(
     target_day_abbr,
     target_dt,
     current_prev_dt,
+    rank_details=None,
 ):
     """
     PRIMARY manual ticket evidence:
@@ -2954,6 +2953,8 @@ def print_manual_transition_board(
     )
 
     combo_details = {}
+    if rank_details is not None:
+        rank_details["transition_combinations"] = {}
 
     for idx, state in enumerate(POOL_NAMES):
         wanted = locked_profile[idx]
@@ -2977,6 +2978,13 @@ def print_manual_transition_board(
                 combo_freq[tuple(sorted(moves))] += 1
 
         ranked = combo_freq.most_common()
+        if rank_details is not None:
+            # Preserve the exact order (including ties) used by the printed table.
+            # Retain ranks beyond the displayed top N for winner diagnostics.
+            rank_details["transition_combinations"][state] = {
+                combo: rank
+                for rank, (combo, _count) in enumerate(ranked, start=1)
+            }
         print(f"  {'Rank':<5} {'Winning transition combination':<58} {'Draws':>7} {'Share':>9} {'Current-feasible':>17}")
         print("  " + "-" * 103)
 
@@ -3015,6 +3023,7 @@ def print_manual_candidate_board(
     records,
     current_snapshots,
     max_num,
+    rank_details=None,
 ):
     """
     SECONDARY number selection board.
@@ -3029,6 +3038,9 @@ def print_manual_candidate_board(
 
     'Evidence' is a ranking score, not a true lottery probability.
     """
+    if rank_details is not None:
+        rank_details["candidates"] = {}
+
     if not records or current_snapshots is None:
         return
 
@@ -3166,6 +3178,11 @@ def print_manual_candidate_board(
             )
 
             for rank, r in enumerate(rows, start=1):
+                if rank_details is not None:
+                    rank_details["candidates"][r["number"]] = {
+                        "rank": rank,
+                        "family_size": len(rows),
+                    }
                 comp_text = "→".join(r["compressed"])
                 print(
                     f"  {rank:<3} {r['number']:<4} {comp_text:<34} "
@@ -3581,7 +3598,7 @@ def predict_counts_ensemble(pools, history, total_numbers, main_count, k=K_NEIGH
 
 # ---------- PROCESSING FUNCTION FOR A GIVEN LOTTERY ----------
 def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name,
-                    future_date=None, locked_profile_override=None):
+                    future_date=None, locked_profile_override=None, rank_details=None):
     """
     Process one lottery type.
     If future_date is None, predict the next occurrence.
@@ -3883,6 +3900,8 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             main_count=main_count,
         )
 
+    # Oracle reveals need ranks from these same tables even in verbose mode.
+    if MANUAL_DECISION_MODE or rank_details is not None:
         manual_records, manual_snapshots = print_manual_transition_board(
             locked_profile=effective_locked_profile,
             all_rows=all_rows,
@@ -3892,6 +3911,7 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             target_day_abbr=day_abbr,
             target_dt=prediction_target_dt,
             current_prev_dt=prediction_prev_dt,
+            rank_details=rank_details,
         )
 
         print_manual_candidate_board(
@@ -3899,6 +3919,7 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
             records=manual_records,
             current_snapshots=manual_snapshots,
             max_num=max_num,
+            rank_details=rank_details,
         )
 
     # ---------- LEGACY DAILY SNAPSHOTS / TRAJECTORIES ----------
@@ -4152,7 +4173,7 @@ def _format_profile(profile):
     return "/".join(str(x) for x in profile)
 
 
-def _print_oracle_target_reveal(diag):
+def _print_oracle_target_reveal(diag, rank_details):
     """Print target diagnostics only AFTER the locked historical analysis."""
     print("\n" + "=" * 150)
     print("BACKTEST TARGET REVEAL / DIAGNOSTIC (AFTER LOCKED ANALYSIS)")
@@ -4164,12 +4185,40 @@ def _print_oracle_target_reveal(diag):
     print("Actual winners by pool:")
     for state in POOL_NAMES:
         print(f"  {state:<2}: {diag['winners_by_pool'][state]}")
+
+    print("Winning transition-combination ranks (one combination per FINAL pool):")
+    transition_ranks = {}
+    for state in POOL_NAMES:
+        combo = tuple(sorted(
+            row["move"] for row in diag["winner_details"] if row["pool"] == state
+        ))
+        if not combo:
+            continue
+        rank = rank_details.get("transition_combinations", {}).get(state, {}).get(combo)
+        if rank is None:
+            rank_text = "UNSEEN (not seen in historical combinations)"
+        else:
+            rank_text = str(rank)
+            if rank > MANUAL_TRANSITION_COMBO_TOP_N:
+                rank_text += f" (outside displayed top {MANUAL_TRANSITION_COMBO_TOP_N})"
+        transition_ranks[state] = str(rank) if rank is not None else "UNSEEN"
+        print(f"  {state:<2}: {' + '.join(combo)}  transition_rank={rank_text}")
+
     print("Winner immediate-transition families:")
+    print("  transition_rank = the whole pool's winning combination rank in HISTORICAL IMMEDIATE-TRANSITION COMBINATIONS.")
+    print("  candidate_rank = the # row within its family in CURRENT CANDIDATES BY IMMEDIATE FAMILY + COMPRESSED TRAJECTORY.")
     for row in diag["winner_details"]:
         comp = "→".join(row["compressed"])
+        candidate = rank_details.get("candidates", {}).get(row["number"])
+        candidate_rank = (
+            f"{candidate['rank']}/{candidate['family_size']}"
+            if candidate else "N/A (no matching historical draws)"
+        )
         print(
             f"  {row['number']:>2}  pool={row['pool']:<2}  "
-            f"move={row['move']:<8}  compressed={comp}"
+            f"move={row['move']:<8}  compressed={comp}  "
+            f"transition_rank={transition_ranks[row['pool']]}  "
+            f"candidate_rank={candidate_rank}"
         )
     print("=" * 150)
 
@@ -4204,11 +4253,6 @@ def run_saturday_oracle_profile_backtest(
     eligible = saturday_draws[1:]  # each target needs a previous Saturday
     targets = eligible[-max(1, int(n)):]
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    out_dir = os.path.join(base_dir, SATURDAY_ORACLE_BACKTEST_OUTPUT_DIR)
-    os.makedirs(out_dir, exist_ok=True)
-
-    combined_parts = []
     summary_rows = []
     profile_freq = Counter()
     winner_move_freq = Counter()
@@ -4243,6 +4287,7 @@ def run_saturday_oracle_profile_backtest(
         if max_analysis_dt is not None and max_analysis_dt >= target_dt:
             raise RuntimeError(f"Data firewall failed for {target_date_str}.")
 
+        rank_details = {}
         buf = io.StringIO()
         with redirect_stdout(buf):
             print("\n" + "#" * 150)
@@ -4268,27 +4313,21 @@ def run_saturday_oracle_profile_backtest(
                 lottery_name,
                 future_date=target_dt,
                 locked_profile_override=diag["profile"],
+                rank_details=rank_details,
             )
 
-            _print_oracle_target_reveal(diag)
+            _print_oracle_target_reveal(diag, rank_details)
 
         run_text = buf.getvalue()
-        combined_parts.append(run_text)
-
-        per_file = os.path.join(
-            out_dir,
-            target_dt.strftime("Sat_%Y-%m-%d_ORACLE_PROFILE_BACKTEST.txt"),
-        )
-        with open(per_file, "w", encoding="utf-8") as f:
-            f.write(run_text)
 
         if print_full_to_console:
             print(run_text, end="")
         else:
             print(
                 f"[{run_no:>2}/{len(targets)}] {target_date_str}  "
-                f"profile={_format_profile(diag['profile'])}  output={os.path.basename(per_file)}"
+                f"profile={_format_profile(diag['profile'])}"
             )
+            _print_oracle_target_reveal(diag, rank_details)
 
         profile_freq[diag["profile"]] += 1
         for wd in diag["winner_details"]:
@@ -4308,20 +4347,7 @@ def run_saturday_oracle_profile_backtest(
             "WinnerImmediateMoves": " | ".join(
                 f"{w['number']}:{w['move']}" for w in diag["winner_details"]
             ),
-            "OutputFile": os.path.basename(per_file),
         })
-
-    combined_path = os.path.join(out_dir, SATURDAY_ORACLE_BACKTEST_COMBINED_FILE)
-    with open(combined_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(combined_parts))
-
-    summary_path = os.path.join(out_dir, SATURDAY_ORACLE_BACKTEST_SUMMARY_CSV)
-    fieldnames = list(summary_rows[0].keys()) if summary_rows else []
-    if fieldnames:
-        with open(summary_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(summary_rows)
 
     print("\n" + "=" * 150)
     print("ORACLE-PROFILE BACKTEST AGGREGATE SUMMARY")
@@ -4345,10 +4371,6 @@ def run_saturday_oracle_profile_backtest(
             pct = count / total_state if total_state else 0.0
             print(f"    {move:<10} {count:>4}/{total_state} = {pct:>6.1%}")
 
-    print("\nOutput files:")
-    print(f"  Combined full output : {combined_path}")
-    print(f"  Compact summary CSV  : {summary_path}")
-    print(f"  Per-Saturday outputs : {out_dir}")
     print("=" * 150)
 
     return summary_rows
