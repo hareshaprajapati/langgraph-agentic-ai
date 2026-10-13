@@ -10,26 +10,13 @@ from contextlib import redirect_stdout
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto_data_backup.csv")
 OUTPUT_LAST_N = 30          # retained for pool-size evidence
 
-FUTURE_DATE_STR = "Sat 3-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+RUN_SATURDAY_ORACLE_PROFILE_BACKTEST = True
+SATURDAY_ORACLE_BACKTEST_N = 1
+FUTURE_DATE_STR = "Sat 10-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # LOCKED_PROFILE = (1, 2, 2, 1)
-LOCKED_PROFILE = (1, 2, 3, 0)
+LOCKED_PROFILE = (1, 1, 4, 0)
 
 
-# FUTURE_DATE_STR = "Sat 26-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
-# LOCKED_PROFILE = (1, 2, 3, 0)
-
-# FUTURE_DATE_STR = "Sat 19-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
-# LOCKED_PROFILE = (2, 1, 2, 1)
-
-# FUTURE_DATE_STR = "Sat 12-Sep-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
-# LOCKED_PROFILE = (2, 1, 2, 1)
-
-# Locked EH/H/W/C profile for conditional winning-trajectory analysis.
-# Example: EH=2, H=1, W=3, C=0. (2, 1, 3, 0)
-# LOCKED_PROFILE = (1, 0, 5, 0)
-# LOCKED_PROFILE = (1, 2, 3, 0)
-
-# LOCKED_PROFILE = (2, 1, 2, 1)
 LOCKED_TRAJECTORY_TOP_N = 30
 
 # All-history locked-profile trajectory analysis.
@@ -55,6 +42,12 @@ POOL_LOOKBACK_DAYS = 30
 RUN_BACKTEST = False
 BACKTEST_N = 10             # number of most recent draws to backtest (per lottery)
 K_NEIGHBORS = 10            # for conditional mode predictor
+
+
+SATURDAY_ORACLE_BACKTEST_PRINT_FULL_TO_CONSOLE = True
+SATURDAY_ORACLE_BACKTEST_OUTPUT_DIR = "saturday_oracle_profile_backtest"
+SATURDAY_ORACLE_BACKTEST_COMBINED_FILE = "Saturday_Oracle_Profile_Backtest_ALL.txt"
+SATURDAY_ORACLE_BACKTEST_SUMMARY_CSV = "Saturday_Oracle_Profile_Backtest_Summary.csv"
 
 # ---------- MANUAL DECISION OUTPUT ----------
 # True = concise evidence-only output for manually building tickets.
@@ -3588,7 +3581,7 @@ def predict_counts_ensemble(pools, history, total_numbers, main_count, k=K_NEIGH
 
 # ---------- PROCESSING FUNCTION FOR A GIVEN LOTTERY ----------
 def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name,
-                    future_date=None):
+                    future_date=None, locked_profile_override=None):
     """
     Process one lottery type.
     If future_date is None, predict the next occurrence.
@@ -3597,6 +3590,12 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
     if len(draws) < 2:
         print(f"\n{lottery_name} ({day_abbr}): Not enough draws (need at least 2). Skipping.")
         return
+
+    effective_locked_profile = (
+        locked_profile_override
+        if locked_profile_override is not None
+        else LOCKED_PROFILE
+    )
 
     print(f"\n{'='*80}")
     print(f"Processing {lottery_name} ({day_abbr}) – numbers 1–{max_num}, {main_count} main numbers")
@@ -3885,7 +3884,7 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         )
 
         manual_records, manual_snapshots = print_manual_transition_board(
-            locked_profile=LOCKED_PROFILE,
+            locked_profile=effective_locked_profile,
             all_rows=all_rows,
             max_num=max_num,
             main_count=main_count,
@@ -3896,7 +3895,7 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         )
 
         print_manual_candidate_board(
-            locked_profile=LOCKED_PROFILE,
+            locked_profile=effective_locked_profile,
             records=manual_records,
             current_snapshots=manual_snapshots,
             max_num=max_num,
@@ -3965,7 +3964,7 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         # printed sources above: Last-N Saturday analysis + Week Table.
         # Overlapping target-day rows are deduplicated by calendar date.
         print_locked_profile_winning_trajectories_from_tables(
-            locked_profile=LOCKED_PROFILE,
+            locked_profile=effective_locked_profile,
             historical_results=results,
             week_rows=week_rows,
             all_rows=all_rows,
@@ -3985,7 +3984,7 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         #   4) same-draw trajectory combinations
         #   5) current target candidates mapped to those conditional statistics
         print_all_history_locked_profile_analysis(
-            locked_profile=LOCKED_PROFILE,
+            locked_profile=effective_locked_profile,
             all_rows=all_rows,
             max_num=max_num,
             main_count=main_count,
@@ -4048,6 +4047,313 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
         print("Ensemble prediction:", ens_pred)
         print("(Use the one that performed best in backtest)")
 
+
+# ---------- SATURDAY ORACLE-PROFILE WALK-FORWARD BACKTEST HELPERS ----------
+def derive_known_target_profile_and_diagnostics(
+    target_dt,
+    saturday_draws,
+    all_rows,
+    max_num=45,
+    main_count=6,
+):
+    """
+    Derive the ACTUAL EH/H/W/C profile for one known Saturday result.
+
+    CONTROLLED HINDSIGHT:
+      - The target's real main numbers are used here ONLY to determine the oracle
+        LOCKED_PROFILE and, after analysis, to print diagnostics.
+      - The pool itself is built strictly from [previous Saturday, target Saturday).
+      - No target or later row is needed to build the target pool.
+    """
+    saturday_draws = sorted(saturday_draws, key=lambda x: x[1])
+
+    target_idx = None
+    for i, (_date_str, dt, _main) in enumerate(saturday_draws):
+        if dt == target_dt:
+            target_idx = i
+            break
+
+    if target_idx is None:
+        raise ValueError(f"No known Saturday result found for {target_dt:%d-%b-%Y}.")
+    if target_idx == 0:
+        raise ValueError(f"No previous Saturday draw exists before {target_dt:%d-%b-%Y}.")
+
+    target_date_str, _dt, target_main = saturday_draws[target_idx]
+    prev_date_str, prev_dt, _prev_main = saturday_draws[target_idx - 1]
+
+    if len(target_main) != main_count:
+        raise ValueError(
+            f"Target {target_date_str} has {len(target_main)} main numbers; expected {main_count}."
+        )
+
+    # Build the target pool from information available strictly before target_dt.
+    window_nums = []
+    for _date_str, dt, _day, all_nums, _others_cell in all_rows:
+        if prev_dt <= dt < target_dt:
+            window_nums.extend(n for n in all_nums if 1 <= n <= max_num)
+
+    counter = Counter(window_nums)
+    pools = build_pools(counter, max_num)
+
+    # Structural audit of the pre-draw pool.
+    union = set().union(*(pools[state] for state in POOL_NAMES))
+    if union != set(range(1, max_num + 1)):
+        raise RuntimeError(f"Pool union audit failed for {target_date_str}.")
+    for i, state_a in enumerate(POOL_NAMES):
+        for state_b in POOL_NAMES[i + 1:]:
+            if pools[state_a] & pools[state_b]:
+                raise RuntimeError(
+                    f"Pool overlap audit failed for {target_date_str}: {state_a}/{state_b}."
+                )
+
+    winners_by_pool = {state: [] for state in POOL_NAMES}
+    for n in target_main:
+        winners_by_pool[pool_state(n, pools)].append(n)
+    for state in POOL_NAMES:
+        winners_by_pool[state].sort()
+
+    profile = tuple(len(winners_by_pool[state]) for state in POOL_NAMES)
+    if sum(profile) != main_count:
+        raise RuntimeError(f"Actual profile does not sum to {main_count} for {target_date_str}.")
+
+    # Winner immediate-transition moves are diagnostic only. Snapshots themselves
+    # still use pre-target data because build_rolling_snapshot excludes snapshot_dt.
+    snapshots = build_daily_trajectory_snapshots(
+        prev_target_dt=prev_dt,
+        target_dt=target_dt,
+        all_rows=all_rows,
+        max_num=max_num,
+    )
+    winner_details = []
+    for n in sorted(target_main):
+        states = number_trajectory(n, snapshots)
+        winner_details.append({
+            "number": n,
+            "pool": states[-1],
+            "move": _move_text(states),
+            "compressed": compress_trajectory(states),
+        })
+
+    return {
+        "target_date_str": target_date_str,
+        "target_dt": target_dt,
+        "previous_date_str": prev_date_str,
+        "previous_dt": prev_dt,
+        "main_numbers": tuple(sorted(target_main)),
+        "pools": pools,
+        "pool_sizes": tuple(len(pools[state]) for state in POOL_NAMES),
+        "winners_by_pool": winners_by_pool,
+        "profile": profile,
+        "winner_details": winner_details,
+    }
+
+
+def _format_profile(profile):
+    return "/".join(str(x) for x in profile)
+
+
+def _print_oracle_target_reveal(diag):
+    """Print target diagnostics only AFTER the locked historical analysis."""
+    print("\n" + "=" * 150)
+    print("BACKTEST TARGET REVEAL / DIAGNOSTIC (AFTER LOCKED ANALYSIS)")
+    print("=" * 150)
+    print(f"Target               : {diag['target_date_str']}")
+    print(f"Actual main numbers  : {list(diag['main_numbers'])}")
+    print(f"Actual/locked profile: {_format_profile(diag['profile'])}")
+    print(f"Pre-draw pool sizes  : {_format_profile(diag['pool_sizes'])}")
+    print("Actual winners by pool:")
+    for state in POOL_NAMES:
+        print(f"  {state:<2}: {diag['winners_by_pool'][state]}")
+    print("Winner immediate-transition families:")
+    for row in diag["winner_details"]:
+        comp = "→".join(row["compressed"])
+        print(
+            f"  {row['number']:>2}  pool={row['pool']:<2}  "
+            f"move={row['move']:<8}  compressed={comp}"
+        )
+    print("=" * 150)
+
+
+def run_saturday_oracle_profile_backtest(
+    all_rows,
+    draws_by_day,
+    n=10,
+    print_full_to_console=True,
+):
+    """
+    Walk-forward oracle-profile backtest for the last N KNOWN Saturday Lotto draws.
+
+    IMPORTANT SEPARATION:
+      1) target result -> derive ACTUAL LOCKED_PROFILE only;
+      2) create a FIREWALLED analysis dataset containing rows STRICTLY BEFORE target;
+      3) run the ordinary analysis engine with that locked profile;
+      4) only after the analysis output is complete, reveal target winners for diagnostics.
+
+    This is NOT a profile-prediction backtest. It intentionally asks:
+      "If the correct EH/H/W/C profile were known, what did the historical evidence
+       available before each Saturday look like?"
+    """
+    sat_day = "Sat"
+    lottery_name, max_num, main_count = LOTTERY_CONFIG[sat_day]
+    saturday_draws = sorted(draws_by_day.get(sat_day, []), key=lambda x: x[1])
+
+    if len(saturday_draws) < 2:
+        print("Not enough known Saturday draws for oracle-profile backtesting.")
+        return []
+
+    eligible = saturday_draws[1:]  # each target needs a previous Saturday
+    targets = eligible[-max(1, int(n)):]
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = os.path.join(base_dir, SATURDAY_ORACLE_BACKTEST_OUTPUT_DIR)
+    os.makedirs(out_dir, exist_ok=True)
+
+    combined_parts = []
+    summary_rows = []
+    profile_freq = Counter()
+    winner_move_freq = Counter()
+    winner_move_by_pool = defaultdict(Counter)
+
+    print("\n" + "#" * 150)
+    print("SATURDAY LOTTO ORACLE-PROFILE WALK-FORWARD BACKTEST")
+    print("#" * 150)
+    print(f"Targets: last {len(targets)} known Saturdays")
+    print("CONTROLLED HINDSIGHT: target result is used ONLY to derive LOCKED_PROFILE and for final diagnostics.")
+    print("DATA FIREWALL: every analysis call receives only rows and draws STRICTLY BEFORE its target Saturday.")
+    print("This mode evaluates locked-profile statistics/trajectories; it does NOT validate profile prediction skill.")
+    print("#" * 150)
+
+    for run_no, (target_date_str, target_dt, _target_main) in enumerate(targets, start=1):
+        diag = derive_known_target_profile_and_diagnostics(
+            target_dt=target_dt,
+            saturday_draws=saturday_draws,
+            all_rows=all_rows,
+            max_num=max_num,
+            main_count=main_count,
+        )
+
+        # HARD FIREWALL: target row AND every future row are absent from all analysis inputs.
+        safe_all_rows = [row for row in all_rows if row[1] < target_dt]
+        safe_draws_by_day = defaultdict(list)
+        for day, day_draws in draws_by_day.items():
+            safe_draws_by_day[day] = [d for d in day_draws if d[1] < target_dt]
+        safe_sat_draws = safe_draws_by_day.get(sat_day, [])
+
+        max_analysis_dt = max((row[1] for row in safe_all_rows), default=None)
+        if max_analysis_dt is not None and max_analysis_dt >= target_dt:
+            raise RuntimeError(f"Data firewall failed for {target_date_str}.")
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print("\n" + "#" * 150)
+            print(f"ORACLE BACKTEST {run_no}/{len(targets)} - {target_date_str}")
+            print("#" * 150)
+            print(f"Oracle LOCKED_PROFILE : {_format_profile(diag['profile'])}")
+            print("Profile source         : REAL TARGET RESULT (intentional backtest-only oracle input)")
+            print(f"Analysis cutoff        : strictly before {target_date_str}")
+            print(
+                "Analysis data max date : "
+                + (max_analysis_dt.strftime("%a %d-%b-%Y") if max_analysis_dt else "NONE")
+            )
+            print("Target/future rows in analysis dataset: 0")
+            print("Target main numbers are withheld from the analysis body below.")
+
+            process_lottery(
+                sat_day,
+                safe_sat_draws,
+                safe_all_rows,
+                safe_draws_by_day,
+                max_num,
+                main_count,
+                lottery_name,
+                future_date=target_dt,
+                locked_profile_override=diag["profile"],
+            )
+
+            _print_oracle_target_reveal(diag)
+
+        run_text = buf.getvalue()
+        combined_parts.append(run_text)
+
+        per_file = os.path.join(
+            out_dir,
+            target_dt.strftime("Sat_%Y-%m-%d_ORACLE_PROFILE_BACKTEST.txt"),
+        )
+        with open(per_file, "w", encoding="utf-8") as f:
+            f.write(run_text)
+
+        if print_full_to_console:
+            print(run_text, end="")
+        else:
+            print(
+                f"[{run_no:>2}/{len(targets)}] {target_date_str}  "
+                f"profile={_format_profile(diag['profile'])}  output={os.path.basename(per_file)}"
+            )
+
+        profile_freq[diag["profile"]] += 1
+        for wd in diag["winner_details"]:
+            winner_move_freq[wd["move"]] += 1
+            winner_move_by_pool[wd["pool"]][wd["move"]] += 1
+
+        summary_rows.append({
+            "TargetDate": target_date_str,
+            "PreviousSaturday": diag["previous_date_str"],
+            "ActualLockedProfile": _format_profile(diag["profile"]),
+            "PoolSizes_EH_H_W_C": _format_profile(diag["pool_sizes"]),
+            "ActualMainNumbers": " ".join(map(str, diag["main_numbers"])),
+            "EH_Winners": " ".join(map(str, diag["winners_by_pool"]["EH"])),
+            "H_Winners": " ".join(map(str, diag["winners_by_pool"]["H"])),
+            "W_Winners": " ".join(map(str, diag["winners_by_pool"]["W"])),
+            "C_Winners": " ".join(map(str, diag["winners_by_pool"]["C"])),
+            "WinnerImmediateMoves": " | ".join(
+                f"{w['number']}:{w['move']}" for w in diag["winner_details"]
+            ),
+            "OutputFile": os.path.basename(per_file),
+        })
+
+    combined_path = os.path.join(out_dir, SATURDAY_ORACLE_BACKTEST_COMBINED_FILE)
+    with open(combined_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(combined_parts))
+
+    summary_path = os.path.join(out_dir, SATURDAY_ORACLE_BACKTEST_SUMMARY_CSV)
+    fieldnames = list(summary_rows[0].keys()) if summary_rows else []
+    if fieldnames:
+        with open(summary_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(summary_rows)
+
+    print("\n" + "=" * 150)
+    print("ORACLE-PROFILE BACKTEST AGGREGATE SUMMARY")
+    print("=" * 150)
+    print(f"Saturday targets analysed: {len(summary_rows)}")
+    print("\nActual profile frequency:")
+    for profile, count in sorted(profile_freq.items(), key=lambda kv: (-kv[1], kv[0])):
+        print(f"  {_format_profile(profile):<10} {count:>3}/{len(summary_rows)} = {count/len(summary_rows):>6.1%}")
+
+    print("\nWinning immediate-transition frequency (all winning numbers):")
+    total_winners = sum(winner_move_freq.values())
+    for move, count in sorted(winner_move_freq.items(), key=lambda kv: (-kv[1], kv[0])):
+        pct = count / total_winners if total_winners else 0.0
+        print(f"  {move:<10} {count:>4}/{total_winners} = {pct:>6.1%}")
+
+    print("\nWinning immediate transitions by FINAL pool:")
+    for state in POOL_NAMES:
+        total_state = sum(winner_move_by_pool[state].values())
+        print(f"  {state}: total winners={total_state}")
+        for move, count in sorted(winner_move_by_pool[state].items(), key=lambda kv: (-kv[1], kv[0])):
+            pct = count / total_state if total_state else 0.0
+            print(f"    {move:<10} {count:>4}/{total_state} = {pct:>6.1%}")
+
+    print("\nOutput files:")
+    print(f"  Combined full output : {combined_path}")
+    print(f"  Compact summary CSV  : {summary_path}")
+    print(f"  Per-Saturday outputs : {out_dir}")
+    print("=" * 150)
+
+    return summary_rows
+
+
 # ---------- MAIN ----------
 # Read all rows
 all_rows = []
@@ -4079,8 +4385,19 @@ for date_str, dt, day_abbr, _, others_cell in all_rows:
             draws_by_day[day_abbr].append((date_str, dt, main_nums))
 
 # Determine what to process
-if FUTURE_DATE_STR:
-    # Parse the future date
+if RUN_SATURDAY_ORACLE_PROFILE_BACKTEST:
+    # Dedicated walk-forward research mode for the last N KNOWN Saturdays.
+    # FUTURE_DATE_STR and the manually configured LOCKED_PROFILE are ignored here.
+    run_saturday_oracle_profile_backtest(
+        all_rows=all_rows,
+        draws_by_day=draws_by_day,
+        n=SATURDAY_ORACLE_BACKTEST_N,
+        print_full_to_console=SATURDAY_ORACLE_BACKTEST_PRINT_FULL_TO_CONSOLE,
+    )
+elif FUTURE_DATE_STR:
+    # Normal single-target/future mode.
+    # For a genuinely future draw, LOCKED_PROFILE must be supplied from your
+    # separate profile-prediction decision; no target result exists to derive it.
     future_dt = parse_date(FUTURE_DATE_STR)
     day_abbr = FUTURE_DATE_STR[:3]
     if day_abbr not in LOTTERY_CONFIG:
@@ -4091,13 +4408,21 @@ if FUTURE_DATE_STR:
         if not draws:
             print(f"No draws found for {day_abbr}.")
         else:
-            process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name, future_dt)
+            process_lottery(
+                day_abbr, draws, all_rows, draws_by_day,
+                max_num, main_count, lottery_name,
+                future_dt, locked_profile_override=LOCKED_PROFILE,
+            )
 else:
-    # Process all lotteries and predict the next draw for each
+    # Process all lotteries and predict the next draw for each.
     for day_abbr, config in LOTTERY_CONFIG.items():
         lottery_name, max_num, main_count = config
         draws = draws_by_day.get(day_abbr, [])
         if draws:
-            process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name, future_date=None)
+            process_lottery(
+                day_abbr, draws, all_rows, draws_by_day,
+                max_num, main_count, lottery_name,
+                future_date=None, locked_profile_override=LOCKED_PROFILE,
+            )
         else:
             print(f"\n{lottery_name} ({day_abbr}): No draws found. Skipping.")
