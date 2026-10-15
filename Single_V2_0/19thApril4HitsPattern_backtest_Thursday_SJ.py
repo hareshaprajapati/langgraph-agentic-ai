@@ -10,8 +10,13 @@ from contextlib import redirect_stdout
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto_data_backup.csv")
 OUTPUT_LAST_N = 30          # retained for pool-size evidence
 
-RUN_THURSDAY_ORACLE_PROFILE_BACKTEST = True
+RUN_THURSDAY_ORACLE_PROFILE_BACKTEST = False
 THURSDAY_ORACLE_BACKTEST_N = 3
+# Optional actual EH/H/W/C profile filters. Main counts must sum to 7;
+# the separate Powerball counts must sum to 1. Empty = no filter.
+# Filters select the latest N matching targets from the full known history.
+BACKTEST_LOCKED_PROFILE = ""  # Example: (1, 1, 5, 0)
+BACKTEST_POWERBALL_LOCKED_PROFILE = ""  # Example: (0, 0, 1, 0)
 FUTURE_DATE_STR = "Thu 15-Oct-2026"   # Used when oracle backtesting is disabled.
 # LOCKED_PROFILE = (1, 2, 3, 1)  # Example manual profile: counts must sum to 7.
 LOCKED_PROFILE = ""
@@ -4414,6 +4419,49 @@ def _print_oracle_target_reveal(diag, rank_details):
     print("=" * 150)
 
 
+def _validate_backtest_profile(profile, total, setting_name):
+    """Normalize an optional profile filter without changing prediction locks."""
+    if profile is None or profile == "":
+        return None
+    if (
+        not isinstance(profile, (tuple, list)) or len(profile) != 4
+        or any(type(count) is not int or count < 0 for count in profile)
+        or sum(profile) != total
+    ):
+        raise ValueError(
+            f"{setting_name} must be empty or four non-negative integer EH/H/W/C "
+            f"counts summing to {total}; got {profile!r}."
+        )
+    return tuple(profile)
+
+
+def _select_oracle_backtest_targets(
+    eligible, day_draws, all_rows, max_num, main_count, n,
+    main_profile=None, powerball_profile=None,
+):
+    """Filter targets before taking N, retaining all earlier analysis history."""
+    count = max(1, int(n))
+    if main_profile is None and powerball_profile is None:
+        return eligible[-count:], {}
+    matches = []
+    diagnostics = {}
+    for draw in reversed(eligible):
+        diag = derive_known_target_profile_and_diagnostics(
+            draw[1], day_draws, all_rows, max_num, main_count
+        )
+        if main_profile is not None and diag["profile"] != main_profile:
+            continue
+        if powerball_profile is not None:
+            pb = diag.get("powerball")
+            if pb is None or pb["profile"] != powerball_profile:
+                continue
+        matches.append(draw)
+        diagnostics[draw[1]] = diag
+        if len(matches) == count:
+            break
+    return list(reversed(matches)), diagnostics
+
+
 def run_thursday_oracle_profile_backtest(
     all_rows,
     draws_by_day,
@@ -4435,6 +4483,12 @@ def run_thursday_oracle_profile_backtest(
     """
     thu_day = "Thu"
     lottery_name, max_num, main_count = LOTTERY_CONFIG[thu_day]
+    profile_filter = _validate_backtest_profile(
+        BACKTEST_LOCKED_PROFILE, main_count, "BACKTEST_LOCKED_PROFILE"
+    )
+    powerball_filter = _validate_backtest_profile(
+        BACKTEST_POWERBALL_LOCKED_PROFILE, 1, "BACKTEST_POWERBALL_LOCKED_PROFILE"
+    )
     thursday_draws = sorted(draws_by_day.get(thu_day, []), key=lambda x: x[1])
 
     if len(thursday_draws) < 2:
@@ -4450,7 +4504,10 @@ def run_thursday_oracle_profile_backtest(
     if not eligible:
         print(f"No eligible Thursday results with {main_count} main numbers inside 1..{max_num}.")
         return []
-    targets = eligible[-max(1, int(n)):]
+    targets, target_diagnostics = _select_oracle_backtest_targets(
+        eligible, thursday_draws, all_rows, max_num, main_count, n,
+        main_profile=profile_filter, powerball_profile=powerball_filter,
+    )
 
     summary_rows = []
     profile_freq = Counter()
@@ -4460,7 +4517,16 @@ def run_thursday_oracle_profile_backtest(
     print("\n" + "#" * 150)
     print("POWERBALL THURSDAY ORACLE-PROFILE WALK-FORWARD BACKTEST")
     print("#" * 150)
-    print(f"Targets: last {len(targets)} eligible known Thursdays ({main_count} main numbers inside 1..{max_num})")
+    print(f"BACKTEST_LOCKED_PROFILE: {_format_profile(profile_filter) if profile_filter is not None else 'ANY'}")
+    print(f"BACKTEST_POWERBALL_LOCKED_PROFILE: {_format_profile(powerball_filter) if powerball_filter is not None else 'ANY'}")
+    filtering = profile_filter is not None or powerball_filter is not None
+    print(f"Targets: last {len(targets)} {'matching ' if filtering else ''}eligible known Thursdays ({main_count} main numbers inside 1..{max_num})")
+    if not targets:
+        print("No known Thursday draws match the backtest profile filters.")
+        return []
+    if len(targets) < max(1, int(n)):
+        print(f"Only {len(targets)} eligible matches available (requested {max(1, int(n))}); analysing all available matches.")
+    print("Profile filters select target draws only; all earlier history remains available for analysis.")
     excluded = sum(
         not main_result_fits_universe(draw[2], max_num, main_count)
         for draw in thursday_draws
@@ -4473,13 +4539,15 @@ def run_thursday_oracle_profile_backtest(
     print("#" * 150)
 
     for run_no, (target_date_str, target_dt, _target_main) in enumerate(targets, start=1):
-        diag = derive_known_target_profile_and_diagnostics(
-            target_dt=target_dt,
-            thursday_draws=thursday_draws,
-            all_rows=all_rows,
-            max_num=max_num,
-            main_count=main_count,
-        )
+        diag = target_diagnostics.get(target_dt)
+        if diag is None:
+            diag = derive_known_target_profile_and_diagnostics(
+                target_dt=target_dt,
+                thursday_draws=thursday_draws,
+                all_rows=all_rows,
+                max_num=max_num,
+                main_count=main_count,
+            )
 
         # HARD FIREWALL: target row AND every future row are absent from all analysis inputs.
         safe_all_rows = [row for row in all_rows if row[1] < target_dt]

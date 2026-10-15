@@ -12,6 +12,9 @@ OUTPUT_LAST_N = 30          # retained for pool-size evidence
 
 RUN_SATURDAY_ORACLE_PROFILE_BACKTEST = True
 SATURDAY_ORACLE_BACKTEST_N = 3
+# Optional actual EH/H/W/C profile filter; counts must sum to 6.
+# Empty = latest N draws of any profile; tuple = latest N matching draws.
+BACKTEST_LOCKED_PROFILE = ""  # Example: (2, 1, 2, 1)
 FUTURE_DATE_STR = "Sat 10-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # LOCKED_PROFILE = (1, 2, 2, 1)
 LOCKED_PROFILE = (1, 1, 4, 0)
@@ -4223,6 +4226,49 @@ def _print_oracle_target_reveal(diag, rank_details):
     print("=" * 150)
 
 
+def _validate_backtest_profile(profile, total, setting_name):
+    """Normalize an optional profile filter without changing prediction locks."""
+    if profile is None or profile == "":
+        return None
+    if (
+        not isinstance(profile, (tuple, list)) or len(profile) != 4
+        or any(type(count) is not int or count < 0 for count in profile)
+        or sum(profile) != total
+    ):
+        raise ValueError(
+            f"{setting_name} must be empty or four non-negative integer EH/H/W/C "
+            f"counts summing to {total}; got {profile!r}."
+        )
+    return tuple(profile)
+
+
+def _select_oracle_backtest_targets(
+    eligible, day_draws, all_rows, max_num, main_count, n,
+    main_profile=None, powerball_profile=None,
+):
+    """Filter targets before taking N, retaining all earlier analysis history."""
+    count = max(1, int(n))
+    if main_profile is None and powerball_profile is None:
+        return eligible[-count:], {}
+    matches = []
+    diagnostics = {}
+    for draw in reversed(eligible):
+        diag = derive_known_target_profile_and_diagnostics(
+            draw[1], day_draws, all_rows, max_num, main_count
+        )
+        if main_profile is not None and diag["profile"] != main_profile:
+            continue
+        if powerball_profile is not None:
+            pb = diag.get("powerball")
+            if pb is None or pb["profile"] != powerball_profile:
+                continue
+        matches.append(draw)
+        diagnostics[draw[1]] = diag
+        if len(matches) == count:
+            break
+    return list(reversed(matches)), diagnostics
+
+
 def run_saturday_oracle_profile_backtest(
     all_rows,
     draws_by_day,
@@ -4244,6 +4290,9 @@ def run_saturday_oracle_profile_backtest(
     """
     sat_day = "Sat"
     lottery_name, max_num, main_count = LOTTERY_CONFIG[sat_day]
+    profile_filter = _validate_backtest_profile(
+        BACKTEST_LOCKED_PROFILE, main_count, "BACKTEST_LOCKED_PROFILE"
+    )
     saturday_draws = sorted(draws_by_day.get(sat_day, []), key=lambda x: x[1])
 
     if len(saturday_draws) < 2:
@@ -4251,7 +4300,10 @@ def run_saturday_oracle_profile_backtest(
         return []
 
     eligible = saturday_draws[1:]  # each target needs a previous Saturday
-    targets = eligible[-max(1, int(n)):]
+    targets, target_diagnostics = _select_oracle_backtest_targets(
+        eligible, saturday_draws, all_rows, max_num, main_count, n,
+        main_profile=profile_filter,
+    )
 
     summary_rows = []
     profile_freq = Counter()
@@ -4261,20 +4313,29 @@ def run_saturday_oracle_profile_backtest(
     print("\n" + "#" * 150)
     print("SATURDAY LOTTO ORACLE-PROFILE WALK-FORWARD BACKTEST")
     print("#" * 150)
-    print(f"Targets: last {len(targets)} known Saturdays")
+    print(f"BACKTEST_LOCKED_PROFILE: {_format_profile(profile_filter) if profile_filter is not None else 'ANY'}")
+    print(f"Targets: last {len(targets)} {'matching ' if profile_filter is not None else ''}known Saturdays")
+    if not targets:
+        print("No known Saturday draws match the backtest profile filter.")
+        return []
+    if len(targets) < max(1, int(n)):
+        print(f"Only {len(targets)} eligible matches available (requested {max(1, int(n))}); analysing all available matches.")
+    print("Profile filters select target draws only; all earlier history remains available for analysis.")
     print("CONTROLLED HINDSIGHT: target result is used ONLY to derive LOCKED_PROFILE and for final diagnostics.")
     print("DATA FIREWALL: every analysis call receives only rows and draws STRICTLY BEFORE its target Saturday.")
     print("This mode evaluates locked-profile statistics/trajectories; it does NOT validate profile prediction skill.")
     print("#" * 150)
 
     for run_no, (target_date_str, target_dt, _target_main) in enumerate(targets, start=1):
-        diag = derive_known_target_profile_and_diagnostics(
-            target_dt=target_dt,
-            saturday_draws=saturday_draws,
-            all_rows=all_rows,
-            max_num=max_num,
-            main_count=main_count,
-        )
+        diag = target_diagnostics.get(target_dt)
+        if diag is None:
+            diag = derive_known_target_profile_and_diagnostics(
+                target_dt=target_dt,
+                saturday_draws=saturday_draws,
+                all_rows=all_rows,
+                max_num=max_num,
+                main_count=main_count,
+            )
 
         # HARD FIREWALL: target row AND every future row are absent from all analysis inputs.
         safe_all_rows = [row for row in all_rows if row[1] < target_dt]
