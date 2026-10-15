@@ -15,7 +15,10 @@ THURSDAY_ORACLE_BACKTEST_N = 3
 FUTURE_DATE_STR = "Thu 15-Oct-2026"   # Used when oracle backtesting is disabled.
 # LOCKED_PROFILE = (1, 2, 3, 1)  # Example manual profile: counts must sum to 7.
 LOCKED_PROFILE = ""
-
+# Separate from the seven main-number slots. Leave empty to show all four
+# possible pools in normal prediction mode, or set one slot, e.g. (0, 1, 0, 0).
+# Oracle backtests derive this profile from the known Powerball for diagnostics.
+POWERBALL_LOCKED_PROFILE = ""
 
 LOCKED_TRAJECTORY_TOP_N = 30
 
@@ -82,6 +85,7 @@ POWERBALL_BALL_TOP_N = 5
 POWERBALL_BALL_BACKTEST_N = 80
 POWERBALL_BALL_DECAY = 0.92
 POWERBALL_BALL_PRIOR_STRENGTH = 20.0
+
 
 
 
@@ -184,7 +188,7 @@ def extract_powerball_ball(cell, pb_max=20):
     Returns None if a valid 1..pb_max Powerball cannot be found.
     """
     groups = extract_bracket_groups(cell)
-    if len(groups) < 2 or not groups[1]:
+    if len(groups) < 2 or len(groups[1]) != 1:
         return None
 
     pb = groups[1][0]
@@ -2916,6 +2920,7 @@ def print_manual_transition_board(
     target_dt,
     current_prev_dt,
     rank_details=None,
+    history_records=None,
 ):
     """
     PRIMARY manual ticket evidence:
@@ -2938,13 +2943,16 @@ def print_manual_transition_board(
         )
         return [], None
 
-    records = _manual_history_records(
-        all_rows=all_rows,
-        max_num=max_num,
-        main_count=main_count,
-        lottery_name=lottery_name,
-        target_day_abbr=target_day_abbr,
-        target_dt=target_dt,
+    records = (
+        history_records if history_records is not None
+        else _manual_history_records(
+            all_rows=all_rows,
+            max_num=max_num,
+            main_count=main_count,
+            lottery_name=lottery_name,
+            target_day_abbr=target_day_abbr,
+            target_dt=target_dt,
+        )
     )
 
     current_snapshots = build_daily_trajectory_snapshots(
@@ -3533,6 +3541,81 @@ def print_powerball_ball_prediction(
     return ranked
 
 
+def print_powerball_ball_trajectory_analysis(
+    target_dt,
+    previous_dt,
+    all_rows,
+    locked_profile=None,
+):
+    """Apply the same pool/trajectory rules to one separate 1..20 Powerball.
+
+    Frequency windows retain the main analysis's combined daily numbers,
+    restricted to 1..20. Only the scored Thursday winner is replaced by the
+    single Powerball from the second bracket. Target/future rows are excluded.
+    """
+    pb_rows = []
+    for date_str, dt, day, all_nums, others_cell in all_rows:
+        if dt >= target_dt:
+            continue
+        pb = extract_powerball_ball(others_cell) if day == "Thu" and others_cell else None
+        pb_rows.append((date_str, dt, day, all_nums, f"[{pb}]" if pb is not None else None))
+
+    snapshots = build_daily_trajectory_snapshots(previous_dt, target_dt, pb_rows, POWERBALL_BALL_MAX)
+    pools = snapshots[-1]["pools"]
+    print("\n" + "=" * 142)
+    print(f"POWERBALL SINGLE-BALL POOLS / TRANSITIONS / COMPRESSED TRAJECTORIES (1-{POWERBALL_BALL_MAX})")
+    print("=" * 142)
+    print("Select ONE Powerball separately from the seven main numbers.")
+    print("Pools use the same combined daily frequency windows, restricted to 1..20; historical winners use only Thursday's second bracket.")
+    for state in POOL_NAMES:
+        print(f"  PB {state:<2}: {sorted(pools[state])}  Pool size={len(pools[state])}")
+
+    profile = POWERBALL_LOCKED_PROFILE if locked_profile is None else locked_profile
+    if profile:
+        if (
+            not isinstance(profile, (tuple, list)) or len(profile) != 4
+            or any(value not in (0, 1) for value in profile) or sum(profile) != 1
+        ):
+            print("Powerball trajectory board skipped: POWERBALL_LOCKED_PROFILE must have four 0/1 counts summing to 1.")
+            return {"transition_combinations": {}, "candidates": {}}
+        profiles = [tuple(profile)]
+    else:
+        profiles = [tuple(int(i == j) for i in range(4)) for j in range(4)]
+        print("No Powerball profile locked: showing each possible final pool for comparison.")
+
+    records = collect_all_history_locked_records(
+        all_rows=pb_rows,
+        max_num=POWERBALL_BALL_MAX,
+        cutoff_dt=target_dt,
+        target_day_abbr="Thu",
+        target_lottery_name="Powerball",
+        target_main_count=1,
+        scope="same_weekday",
+        lookback_days=7,
+        require_target_main_count=True,
+    )
+    details = {"transition_combinations": {}, "candidates": {}}
+    for profile in profiles:
+        print(f"\nPOWERBALL one-ball profile EH/H/W/C = {_format_profile(profile)}")
+        ranks = {}
+        board_records, board_snapshots = print_manual_transition_board(
+            locked_profile=profile,
+            all_rows=pb_rows,
+            max_num=POWERBALL_BALL_MAX,
+            main_count=1,
+            lottery_name="Powerball",
+            target_day_abbr="Thu",
+            target_dt=target_dt,
+            current_prev_dt=previous_dt,
+            rank_details=ranks,
+            history_records=records,
+        )
+        print_manual_candidate_board(profile, board_records, board_snapshots, POWERBALL_BALL_MAX, rank_details=ranks)
+        details["transition_combinations"].update(ranks.get("transition_combinations", {}))
+        details["candidates"].update(ranks.get("candidates", {}))
+    return details
+
+
 # ---------- PREDICTION FUNCTIONS ----------
 def predict_counts_proportional(pools, total_numbers, main_count):
     sizes = pools
@@ -3619,7 +3702,8 @@ def predict_counts_ensemble(pools, history, total_numbers, main_count, k=K_NEIGH
 
 # ---------- PROCESSING FUNCTION FOR A GIVEN LOTTERY ----------
 def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count, lottery_name,
-                    future_date=None, locked_profile_override=None, rank_details=None):
+                    future_date=None, locked_profile_override=None, rank_details=None,
+                    powerball_locked_profile_override=None):
     """
     Process one lottery type.
     If future_date is None, predict the next occurrence.
@@ -3866,12 +3950,21 @@ def process_lottery(day_abbr, draws, all_rows, draws_by_day, max_num, main_count
     # The Powerball is a separate draw from the seven 1-35 main numbers.
     # Run this module only when the prediction target itself is Thursday.
     if day_abbr == "Thu":
-        print_powerball_ball_prediction(
+        powerball_ranking = print_powerball_ball_prediction(
             target_dt=prediction_target_dt,
             all_rows=all_rows,
             pb_max=POWERBALL_BALL_MAX,
             top_n=POWERBALL_BALL_TOP_N,
         )
+        powerball_trajectory = print_powerball_ball_trajectory_analysis(
+            prediction_target_dt,
+            prediction_prev_dt,
+            all_rows,
+            locked_profile=powerball_locked_profile_override,
+        )
+        if rank_details is not None:
+            rank_details["powerball_ranking"] = powerball_ranking
+            rank_details["powerball_trajectory"] = powerball_trajectory
 
     # ---------- EXISTING NATIVE-GAME WEEK TABLE ----------
     # This keeps your original table and its actual historical hits.
@@ -4189,6 +4282,23 @@ def derive_known_target_profile_and_diagnostics(
             "compressed": compress_trajectory(states),
         })
 
+    target_cell = next(
+        (row[4] for row in all_rows if row[1] == target_dt and row[2] == "Thu"), None
+    )
+    actual_pb = extract_powerball_ball(target_cell) if target_cell else None
+    powerball = None
+    if actual_pb is not None:
+        pb_snapshots = build_daily_trajectory_snapshots(prev_dt, target_dt, all_rows, POWERBALL_BALL_MAX)
+        pb_states = number_trajectory(actual_pb, pb_snapshots)
+        pb_pool = pb_states[-1]
+        powerball = {
+            "number": actual_pb,
+            "pool": pb_pool,
+            "move": _move_text(pb_states),
+            "compressed": compress_trajectory(pb_states),
+            "profile": tuple(int(state == pb_pool) for state in POOL_NAMES),
+        }
+
     return {
         "target_date_str": target_date_str,
         "target_dt": target_dt,
@@ -4200,11 +4310,31 @@ def derive_known_target_profile_and_diagnostics(
         "winners_by_pool": winners_by_pool,
         "profile": profile,
         "winner_details": winner_details,
+        "powerball": powerball,
     }
 
 
 def _format_profile(profile):
     return "/".join(str(x) for x in profile)
+
+
+def _powerball_target_rank_summary(diag, rank_details):
+    """Look up the revealed Powerball in rankings built before its draw."""
+    pb = diag.get("powerball")
+    if pb is None:
+        return {"ActualPowerball": None, "PowerballProfile": None,
+                "PowerballTransitionRank": None, "PowerballCandidateRank": None,
+                "PowerballFrequencyRank": None}
+    trajectory = rank_details.get("powerball_trajectory", {})
+    candidate = trajectory.get("candidates", {}).get(pb["number"])
+    frequency = next((r for r in rank_details.get("powerball_ranking", []) if r["number"] == pb["number"]), None)
+    return {
+        "ActualPowerball": pb["number"],
+        "PowerballProfile": _format_profile(pb["profile"]),
+        "PowerballTransitionRank": trajectory.get("transition_combinations", {}).get(pb["pool"], {}).get((pb["move"],)),
+        "PowerballCandidateRank": candidate["rank"] if candidate else None,
+        "PowerballFrequencyRank": frequency["rank"] if frequency else None,
+    }
 
 
 def _print_oracle_target_reveal(diag, rank_details):
@@ -4254,6 +4384,33 @@ def _print_oracle_target_reveal(diag, rank_details):
             f"transition_rank={transition_ranks[row['pool']]}  "
             f"candidate_rank={candidate_rank}"
         )
+
+    print("\nSeparate Powerball winner (ONE number from 1-20):")
+    pb = diag.get("powerball")
+    if pb is None:
+        print("  N/A: target has no valid single Powerball in its second bracket.")
+    else:
+        summary = _powerball_target_rank_summary(diag, rank_details)
+        candidate = rank_details.get("powerball_trajectory", {}).get("candidates", {}).get(pb["number"])
+        candidate_rank = f"{candidate['rank']}/{candidate['family_size']}" if candidate else "N/A (no matching historical draws)"
+        transition_rank = summary["PowerballTransitionRank"]
+        print(f"  Actual Powerball: {pb['number']}  PB profile EH/H/W/C={summary['PowerballProfile']}")
+        print(
+            f"  PB {pb['number']:>2}  pool={pb['pool']:<2}  move={pb['move']:<8}  "
+            f"compressed={'→'.join(pb['compressed'])}  "
+            f"transition_rank={transition_rank if transition_rank is not None else 'UNSEEN'}  "
+            f"candidate_rank={candidate_rank}"
+        )
+        frequency_rank = summary["PowerballFrequencyRank"]
+        if frequency_rank is None:
+            print("  Historical-frequency rank: N/A (at least 20 prior Powerball results required).")
+        else:
+            print(
+                f"  Historical-frequency rank={frequency_rank}/{POWERBALL_BALL_MAX}  "
+                f"top-1={'YES' if frequency_rank == 1 else 'NO'}  "
+                f"top-3={'YES' if frequency_rank <= 3 else 'NO'}  "
+                f"top-5={'YES' if frequency_rank <= 5 else 'NO'}"
+            )
     print("=" * 150)
 
 
@@ -4310,7 +4467,7 @@ def run_thursday_oracle_profile_backtest(
     )
     if excluded:
         print(f"Excluded {excluded} known Thursday results from winner scoring because they do not fit this universe.")
-    print("CONTROLLED HINDSIGHT: target result is used ONLY to derive LOCKED_PROFILE and for final diagnostics.")
+    print("CONTROLLED HINDSIGHT: target results supply only the main and Powerball locked profiles and final diagnostics.")
     print("DATA FIREWALL: every analysis call receives only rows and draws STRICTLY BEFORE its target Thursday.")
     print("This mode evaluates locked-profile statistics/trajectories; it does NOT validate profile prediction skill.")
     print("#" * 150)
@@ -4342,6 +4499,8 @@ def run_thursday_oracle_profile_backtest(
             print(f"ORACLE BACKTEST {run_no}/{len(targets)} - {target_date_str}")
             print("#" * 150)
             print(f"Oracle LOCKED_PROFILE : {_format_profile(diag['profile'])}")
+            if diag["powerball"] is not None:
+                print(f"Oracle POWERBALL_LOCKED_PROFILE : {_format_profile(diag['powerball']['profile'])}")
             print("Profile source         : REAL TARGET RESULT (intentional backtest-only oracle input)")
             print(f"Analysis cutoff        : strictly before {target_date_str}")
             print(
@@ -4349,7 +4508,7 @@ def run_thursday_oracle_profile_backtest(
                 + (max_analysis_dt.strftime("%a %d-%b-%Y") if max_analysis_dt else "NONE")
             )
             print("Target/future rows in analysis dataset: 0")
-            print("Target main numbers are withheld from the analysis body below.")
+            print("Target main numbers and the actual Powerball are withheld from the analysis body below.")
 
             process_lottery(
                 thu_day,
@@ -4362,6 +4521,9 @@ def run_thursday_oracle_profile_backtest(
                 future_date=target_dt,
                 locked_profile_override=diag["profile"],
                 rank_details=rank_details,
+                powerball_locked_profile_override=(
+                    diag["powerball"]["profile"] if diag["powerball"] is not None else None
+                ),
             )
 
             _print_oracle_target_reveal(diag, rank_details)
@@ -4395,12 +4557,28 @@ def run_thursday_oracle_profile_backtest(
             "WinnerImmediateMoves": " | ".join(
                 f"{w['number']}:{w['move']}" for w in diag["winner_details"]
             ),
+            **_powerball_target_rank_summary(diag, rank_details),
         })
 
     print("\n" + "=" * 150)
     print("ORACLE-PROFILE BACKTEST AGGREGATE SUMMARY")
     print("=" * 150)
     print(f"Thursday targets analysed: {len(summary_rows)}")
+    print("\nSeparate Powerball backtest results (1-20):")
+    for row in summary_rows:
+        rank = row["PowerballFrequencyRank"]
+        print(
+            f"  {row['TargetDate']}: PB={row['ActualPowerball']}  "
+            f"profile={row['PowerballProfile']}  "
+            f"transition_rank={row['PowerballTransitionRank'] if row['PowerballTransitionRank'] is not None else 'UNSEEN'}  "
+            f"candidate_rank={row['PowerballCandidateRank'] if row['PowerballCandidateRank'] is not None else 'N/A'}  "
+            f"frequency_rank={str(rank) + '/20' if rank is not None else 'N/A'}"
+        )
+    ranked_powerballs = [row for row in summary_rows if row["PowerballFrequencyRank"] is not None]
+    if ranked_powerballs:
+        for top_n in (1, 3, 5):
+            hits = sum(row["PowerballFrequencyRank"] <= top_n for row in ranked_powerballs)
+            print(f"  Powerball top-{top_n}: {hits}/{len(ranked_powerballs)} = {hits / len(ranked_powerballs):.1%}")
     print("\nActual profile frequency:")
     for profile, count in sorted(profile_freq.items(), key=lambda kv: (-kv[1], kv[0])):
         print(f"  {_format_profile(profile):<10} {count:>3}/{len(summary_rows)} = {count/len(summary_rows):>6.1%}")
