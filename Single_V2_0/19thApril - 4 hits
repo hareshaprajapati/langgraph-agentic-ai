@@ -37,7 +37,7 @@ This prediction determines the Dual‑Track Core/Backup split in Section 6, but 
 The prediction is data‑driven and must be re‑calculated fresh for every target Saturday based on the current 7‑day window. There is no “High Certainty” special case.
 
 3. Decade Sacrifice (The Kill Rule)
-Rationale: 96% of historical Saturday draws miss at least one decade. Tickets that do not exclude a decade are structurally misaligned with this reality. Therefore, every ticket must explicitly exclude one decade — no numbers may be drawn from it.
+Rationale: 87.36% of historical Saturday draws miss at least one decade. Tickets that do not exclude a decade are structurally misaligned with this reality. Therefore, every ticket must explicitly exclude one decade — no numbers may be drawn from it.
 Mid‑Week Decade Volume (Sun–Fri):
 Count all occurrences of numbers 1–45 in the main and supplementary draws of both “Set for Life” and “Others” from Sunday to Friday of the target week. Group by decade:
 0s: 1–9
@@ -51,10 +51,12 @@ Highest‑volume decade (H)
 Lowest‑volume decade (L)
 Middle decades: any decade that is neither H nor L.
 
-Sacrifice Allocation (all 50 tickets):
+{NO_OF_TICKTETS} = 10 tickets.
+
+Sacrifice Allocation (all {NO_OF_TICKTETS} tickets):
 Group	Tickets	Excluded Decade
-B – 40s Kill	15 tickets (30%)	The 40s (40–45) unconditionally
-C – Middle Reversion Kill	35 tickets (70%)	A randomly selected middle‑volume decade
+B – 40s Kill	Round(30% × {NO_OF_TICKTETS}) tickets (30%)	The 40s (40–45) unconditionally
+C – Middle Reversion Kill	{NO_OF_TICKTETS} − 40s sacrifice tickets (70%)	A randomly selected middle‑volume decade
 Group B matches the 35% historical absence rate of the 40s.
 Group C covers all other missing decades, which are always middle‑volume decades in the historical data.
 No ticket may contain a number from its excluded decade. This constraint is applied after the ticket’s profile (Depth/Breadth) and pool counts are satisfied, and before the Collision Shield and ratio audits.
@@ -66,7 +68,7 @@ Profile A: Predicted Depth Draw ($W = 2$ or $3$ hits)
 EH Pool: 0-2 number (Maximum 2).
 H Pool: 0-3 number numbers (The primary anchors).
 W Pool: 2-3 numbers.
-C Pool: 1 (50% of tickets) or 0 (50% of tickets).
+C Pool: For Depth-profile tickets only, 50% must contain one Cold number and 50% must contain zero Cold numbers. All Breadth-profile tickets must contain zero Cold numbers.
 
 Profile B: Predicted Breadth Draw ($W = 4$ or $5$ hits)
 EH Pool: 0-1 number (Maximum 1).
@@ -85,17 +87,26 @@ The Decade Concentration Cap:
 No ticket may contain more than 3 numbers from any single decade (0s, 10s, 20s, 30s, or 40s).
 No ticket may contain more than 2 numbers from the 40s decade.
 
-The Consecutive Pair Mandate:
-At least 80% of the 50 tickets (40 tickets) must contain at least one consecutive pair (n, n+1).
+### The Consecutive Pair Selection Rule (Optional — No Mandatory Quota)
 
-Use the following hierarchical selection logic to source the pair:
-Tier Bridge (Priority 1): Pair an H-Pool number with its n-1 or n+1 neighbour from the W-Pool.
-40s Breadth‑Maker (Priority 2): If the prediction is Breadth (W ≥ 4), force a consecutive pair in the 40s range (40‑41 or 44‑45).
-Mid‑Week Vibration (Priority 3): If any consecutive pair appeared together in a single draw during the Sun–Fri period (main numbers, either game), that pair becomes a compulsory glue pair for that week and must appear in at least 15 tickets.
-Legacy Hook (Priority 4): Pair one number from the previous Saturday’s winning set (Legacy) with its n±1 neighbour from the current H or W pools.
+Consecutive pairs are optional, not mandatory.
+
+**Selection hierarchy (when choosing a consecutive pair):**
+
+1. **Tier Bridge (Priority 1):** Prefer an H-Pool number with an adjacent W-Pool number (n−1 or n+1).
+2. **40s Breadth-Maker (Priority 2):** Consider 40–41 or 44–45 in Breadth tickets only when permitted by pool counts, decade sacrifice and other constraints.
+3. **Mid-Week Vibration (Priority 3):** Use historical Sun–Fri consecutive pairs as optional candidates. No compulsory 15-ticket appearance quota.
+4. **Legacy Hook (Priority 4):** Consider pairing one previous Saturday winning number with an adjacent current H or W number, respecting the legacy cap.
+
+**Final conditions:**
+- No minimum or maximum percentage of tickets must contain consecutive pairs.
+- Tickets without consecutive pairs are equally eligible.
+- Do not deliberately create three consecutive numbers solely to satisfy multiple pair priorities.
+- Never violate pool counts, ratios, decade sacrifice, legacy restrictions or the Collision Shield to introduce a consecutive pair.
+- Report the final percentage of tickets containing consecutive pairs for diagnostic purposes only.
 
 The Mirror Pair Mandate:
-At least 70% of the 50 tickets (35 tickets) must contain at least one mirror pair (two numbers sharing the same last digit, e.g., 8 and 18).
+At least 70% of the {NO_OF_TICKTETS} tickets  must contain at least one mirror pair (two numbers sharing the same last digit, e.g., 8 and 18).
 Selection logic:
 Select a primary anchor n from the H-Pool.
 Identify a mirror m in the W-Pool or Legacy set where m % 10 == n % 10.
@@ -108,20 +119,20 @@ Odd / Even: 3:3 (Primary) or 2:4 / 4:2.
 High / Low (Expanded):
 Primary: 3:3 or 2:4 (High-Heavy)
 Additionally allow 4:2 (Low-Heavy) without restriction.
-5:1 (Low-Heavy) is permitted in at most 6% of tickets (3 tickets).
+5:1 (Low-Heavy) is permitted in at most 6% of tickets Floor(6% × {NO_OF_TICKTETS}).
 1:5 (High‑Heavy) is not allowed.
 
-5.1 The Collision Shield (Overlap Cap): No two tickets in the 50-set may share more than 3 numbers. If a generated ticket shares 4 or more numbers with any previously generated ticket in the current strike, it must be discarded and re-rolled. This ensures maximum "Surface Area" coverage across the number field.
+5.1 The Collision Shield (Overlap Cap): No two tickets in the {NO_OF_TICKTETS}-set may share more than 3 numbers. If a generated ticket shares 4 or more numbers with any previously generated ticket in the current strike, it must be discarded and re-rolled. This ensures maximum "Surface Area" coverage across the number field.
 
-6. The Pure Dual-Track Protocol (N=30/20)
+6. The Pure Dual-Track Protocol (N=60%/40%)
 
-The strategy now splits the 50-ticket budget into two distinct, non-overlapping strikes to ensure a win regardless of the Oscillation Flip.
+The strategy now splits the {NO_OF_TICKTETS}-ticket budget into two distinct, non-overlapping strikes to ensure a win regardless of the Oscillation Flip.
 
 6.1 Mirror Determination (using W‑Pool Saturation Predictor):
 
-If W‑Pool Size ≥ 28 → CORE (30 tickets) = Profile B (Breadth), BACKUP (20 tickets) = Profile A (Depth).
+If W‑Pool Size ≥ 28 → CORE (Round(60% × NO_OF_TICKTETS)) = Profile B (Breadth), BACKUP (Round(40% × NO_OF_TICKTETS) tickets) = Profile A (Depth).
 
-If W‑Pool Size < 28 → CORE (30 tickets) = Profile A (Depth), BACKUP (20 tickets) = Profile B (Breadth).
+If W‑Pool Size < 28 → CORE (Round(60% × NO_OF_TICKTETS)) = Profile A (Depth), BACKUP (Round(40% × NO_OF_TICKTETS) = Profile B (Breadth).
 
 6.2 Automated Profile Locking:
 
@@ -134,15 +145,16 @@ Apply the appropriate strictness to CORE and BACKUP based on the profile assigne
 Validation Step: Every ticket must pass a "Pool Census" check (EH count, H count, W count, C count) before being finalized.
 
 7: The Master Verification Protocol (The "Audit" Step)
-7.1 The Three-Point Audit: After generating all 50 tickets, perform a final scan for:
+7.1 The Three-Point Audit: After generating all {NO_OF_TICKTETS} tickets, perform a final scan for:
 
 The Saturation Check: Ensure no single number appears in more than 25% of the total tickets (preventing over-reliance on one "Hot" number).
 
 The Ratio Audit:
 Odd/Even: Every ticket must be 3:3, 2:4, or 4:2. No other splits are permitted.
+Note: Low = 1–22. High = 23–45. All High/Low ratios are expressed as Low:High.
 High/Low: Every ticket must be 3:3, 2:4 (High‑Heavy), or 4:2 (Low‑Heavy).
-Additionally, up to 3 tickets (6%) may be 5:1 (Low‑Heavy). 1:5 is forbidden.
+Additionally, up to Floor(6% × {NO_OF_TICKTETS}) tickets may be 5:1 (Low‑Heavy). 1:5 is forbidden.
 No other High/Low splits are permitted.
-Exactly 100% of the 50 tickets must comply with both constraints.
+Exactly 100% of the {NO_OF_TICKTETS} tickets must comply with both constraints.
 
-The Legacy Sweep: Cross-reference the final 50 against the Previous Saturday's Main 6. Ensure no ticket has >1 hit.
+The Legacy Sweep: Cross-reference the final {NO_OF_TICKTETS} against the Previous Saturday's Main 6. Ensure no ticket has >1 hit.

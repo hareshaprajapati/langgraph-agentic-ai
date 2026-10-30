@@ -11,14 +11,14 @@ CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto
 OUTPUT_LAST_N = 30          # retained for pool-size evidence
 
 RUN_TUESDAY_ORACLE_PROFILE_BACKTEST = False
-TUESDAY_ORACLE_BACKTEST_N = 3
+TUESDAY_ORACLE_BACKTEST_N = 6
 # Optional actual EH/H/W/C profile filter; counts must sum to 7.
 # Empty = latest N draws of any profile; tuple = latest N matching draws.
 BACKTEST_LOCKED_PROFILE = ""  # Example: (2, 1, 3, 1)
-FUTURE_DATE_STR = "Tue 13-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+FUTURE_DATE_STR = "Tue 27-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # LOCKED_PROFILE = (1, 2, 3, 1)  # Example: all four counts must sum to 7.
-# LOCKED_PROFILE = (3, 1, 3, 0)
 LOCKED_PROFILE = (2, 1, 3, 1)
+# LOCKED_PROFILE = ""
 # LOCKED_PROFILE = (3, 1, 3, 0)
 # LOCKED_PROFILE = (3, 1, 3, 0)
 
