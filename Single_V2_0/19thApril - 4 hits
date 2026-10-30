@@ -51,7 +51,7 @@ Highest‑volume decade (H)
 Lowest‑volume decade (L)
 Middle decades: any decade that is neither H nor L.
 
-{NO_OF_TICKTETS} = 10 tickets.
+{NO_OF_TICKTETS} = 12 tickets.
 
 Sacrifice Allocation (all {NO_OF_TICKTETS} tickets):
 Group	Tickets	Excluded Decade
@@ -60,6 +60,30 @@ C – Middle Reversion Kill	{NO_OF_TICKTETS} − 40s sacrifice tickets (70%)	A r
 Group B matches the 35% historical absence rate of the 40s.
 Group C covers all other missing decades, which are always middle‑volume decades in the historical data.
 No ticket may contain a number from its excluded decade. This constraint is applied after the ticket’s profile (Depth/Breadth) and pool counts are satisfied, and before the Collision Shield and ratio audits.
+
+### Mandatory Ticket Generation Method — Manual Selection + Independent Python Validation
+
+**STRICT MODE: Manual ticket generation is mandatory.**
+
+1. **Manual Ticket Selection:** ChatGPT must personally analyse the supplied EH, H, W and C pools, the W-Pool Saturation Predictor, Sun–Fri decade volumes, previous Saturday's winning numbers, and all applicable rules in Sections 1–6.
+
+2. **Handpick Every Ticket:** ChatGPT must manually construct each 6-number ticket using the algorithm's selection logic, priorities and restrictions. The Python script must not generate, choose, optimise, shuffle, rank or automatically replace ticket numbers.
+
+3. **Apply All Selection Rules:** During manual construction, follow the assigned Depth/Breadth profile, decade sacrifice, Cold allocation, mirror-pair priorities, optional consecutive-pair priorities, mathematical ratios, legacy restriction, number saturation and Collision Shield.
+
+4. **Python Validation Only:** After all tickets have been manually selected, use an independent Python script exclusively to validate them against every mandatory constraint in the algorithm.
+
+5. **Failure Handling:** If any ticket or portfolio-level constraint fails, ChatGPT must manually revise the affected ticket or tickets and run the independent validation again. Python must never automatically repair or regenerate tickets.
+
+6. **Final Verification:** Display tickets only after the entire portfolio passes validation. Include the per-ticket pool census and the final portfolio audit. Explicitly report any permitted rounding exceptions or unresolved restrictions.
+
+**Mandatory execution sequence:**
+
+Manual Analysis → Manual Ticket Selection → Independent Python Validation → Manual Correction (if required) → Revalidation → Final Tickets.
+
+**Prohibited:** Using Python or another automated generator to select or optimise ticket combinations.
+
+**Required:** ChatGPT handpicks the tickets; Python independently verifies their compliance.
 
 4. The Magnet Merge (The Selection Strike)
 This section merges the pools into a 6-number ticket based on the predicted momentum.

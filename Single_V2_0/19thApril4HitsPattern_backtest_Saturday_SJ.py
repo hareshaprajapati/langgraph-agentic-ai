@@ -10,16 +10,16 @@ from contextlib import redirect_stdout
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cross_lotto_data_backup.csv")
 OUTPUT_LAST_N = 30          # retained for pool-size evidence
 
-RUN_SATURDAY_ORACLE_PROFILE_BACKTEST = False
-SATURDAY_ORACLE_BACKTEST_N = 10
+RUN_SATURDAY_ORACLE_PROFILE_BACKTEST = True
+SATURDAY_ORACLE_BACKTEST_N = 6
 # Optional actual EH/H/W/C profile filter; counts must sum to 6.
 # Empty = latest N draws of any profile; tuple = latest N matching draws.
 BACKTEST_LOCKED_PROFILE = ""  # Example: (2, 1, 2, 1)
-FUTURE_DATE_STR = "Sat 24-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+FUTURE_DATE_STR = "Sat 31-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 # LOCKED_PROFILE = (1, 2, 2, 1)
-LOCKED_PROFILE = (1, 2, 3, 0)
+# LOCKED_PROFILE = (1, 2, 3, 0)
 # LOCKED_PROFILE = (1, 1, 4, 0)
-# LOCKED_PROFILE = ""
+LOCKED_PROFILE = ""
 
 
 LOCKED_TRAJECTORY_TOP_N = 30
