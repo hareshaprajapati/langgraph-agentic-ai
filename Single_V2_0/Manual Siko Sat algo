@@ -1,0 +1,1087 @@
+# SikoSat Portfolio Assembly V3.0
+## Profile-External / Joint-Evidence-First / No-Leakage Version
+
+============================================================
+CRITICAL EXECUTION & INVESTMENT-RISK GUARDRAIL
+============================================================
+
+This section governs every step.
+
+- Follow the algorithm exactly as written and in the specified order.
+- Do not skip, modify, reinterpret, weaken, replace, or add a rule during an execution.
+- Do not silently resolve missing information or ambiguity.
+- Never use the target result or future information before Step 19.
+- Recheck every pool, transition, scenario, candidate, pair score, ticket metric, count, and final selection independently.
+- Never fabricate evidence, statistics, scenario support, pair compatibility, or validation results.
+- If required data are missing, mark the affected item UNAVAILABLE and follow only the fallback explicitly defined here.
+- If two rules conflict, stop the affected conclusion and report the conflict.
+- Never retune this version after seeing one dry-run result.
+
+Mandatory verification rule:
+
+CALCULATE -> CHECK -> INDEPENDENTLY RECHECK -> CONTINUE
+
+A result may be called VALIDATED only when every applicable rule passes the final audit.
+
+============================================================
+PURPOSE OF V3.0
+============================================================
+
+V3.0 does NOT predict the EH/H/W/C profile.
+
+Profile prediction remains a separate pre-process.
+
+V3.0 starts only after:
+
+1. the script is run with `LOCKED_PROFILE = ""`;
+2. one profile is predicted manually using only the unlocked pre-target output;
+3. that profile is frozen externally;
+4. the script is rerun using the frozen profile;
+5. the locked rerun prints the V3 joint-evidence sections.
+
+V3.0 changes the portfolio objective from:
+
+`individual evidence + artificial pair diversity`
+
+to:
+
+`whole-scenario support + candidate evidence + historically observed co-location compatibility`.
+
+No Evidence, ScenarioScore, CandidateJoint, PairEvidence, PairNorm, or JointTicketScore is a true lottery probability.
+
+============================================================
+PRE-PROCESS - OUTSIDE V3.0
+============================================================
+
+FIRST RUN:
+
+`LOCKED_PROFILE = ""`
+
+The script must print:
+
+- current EH/H/W/C pools;
+- pool sizes;
+- pool-size historical evidence;
+- Profile Decision Board;
+- model votes;
+- recent same-weekday profiles;
+- all-history same-weekday profiles;
+- recent draw rows.
+
+The transition board and V3 joint-evidence board must be skipped.
+
+Using ONLY that output, predict one profile.
+
+Record:
+
+`PROFILE_FROZEN = e/h/w/c`
+
+The target result remains hidden.
+
+SECOND RUN:
+
+Set:
+
+`LOCKED_PROFILE = (e, h, w, c)`
+
+and rerun the script.
+
+If the profile changes after viewing transition, candidate, scenario, or pair evidence:
+
+`RUN INVALID = YES`
+
+Stop the run.
+
+============================================================
+STEP 1 - FREEZE TARGET + VERIFY LOCKED RERUN
+============================================================
+
+Record:
+
+- target draw date D;
+- previous same-game draw date;
+- pool window `[previous_target, D)`;
+- number universe;
+- main-number count;
+- `PROFILE_FROZEN`.
+
+State:
+
+`TARGET RESULT USED = NO`
+
+Verify the locked output prints exactly:
+
+`Locked profile EH/H/W/C = PROFILE_FROZEN`
+
+If not, STOP.
+
+Freeze Step 1.
+
+============================================================
+STEP 2 - VERIFY CURRENT POOLS
+============================================================
+
+Verify:
+
+- EH = frequency >= 4;
+- H = frequency == 3;
+- W = frequency 1..2;
+- C = frequency == 0;
+- pools are pairwise disjoint;
+- union equals the complete target universe;
+- pool sizes sum to the universe size.
+
+Record every member and pool size.
+
+Freeze Step 2.
+
+============================================================
+STEP 3 - READ LOCKED-COUNT TRANSITION TABLES
+============================================================
+
+For every non-zero pool count in `PROFILE_FROZEN`, read:
+
+`HISTORICAL IMMEDIATE-TRANSITION COMBINATIONS`
+
+Record every printed combination:
+
+- original historical rank;
+- draw count;
+- share;
+- current feasibility;
+- required immediate-transition families.
+
+Candidate numbers are NOT selected here.
+
+Freeze Step 3.
+
+============================================================
+STEP 4 - RETAIN TOP FOUR FEASIBLE TRANSITIONS
+============================================================
+
+For each non-zero pool:
+
+- inspect historical ranks in original order;
+- retain the first four FEASIBLE ranks;
+- when a rank is infeasible, skip it and continue downward;
+- if fewer than four feasible ranks exist, retain all feasible ranks;
+- preserve the original historical rank numbers.
+
+Do not renumber ranks.
+
+Zero-count pools contribute one rank value:
+
+`0`
+
+with no transition requirement.
+
+Freeze Step 4.
+
+============================================================
+STEP 5 - ENUMERATE THE COMPLETE CURRENT SCENARIO UNIVERSE
+============================================================
+
+Form the Cartesian product of the retained ranks in EH/H/W/C order.
+
+Every scenario must exactly satisfy `PROFILE_FROZEN`.
+
+Canonical rank tuple:
+
+`(EH-rank, H-rank, W-rank, C-rank)`
+
+A zero-count pool uses rank `0`.
+
+Canonical Scenario IDs are assigned BEFORE any ranking:
+
+1. sort every scenario lexicographically by the four-value rank tuple;
+2. assign `S001`, `S002`, `S003`, ... in that order.
+
+This is the ONLY Scenario-ID rule.
+
+Now verify this locally enumerated universe against the script section:
+
+`EXACT-PROFILE WHOLE-SCENARIO SUPPORT`
+
+The number of rows and every rank tuple must match exactly.
+
+For every scenario record the script fields:
+
+- Scenario ID;
+- rank tuple;
+- ExactDraws;
+- ExactShare;
+- SSI;
+- DepthScore;
+- Prior;
+- ScenarioScore;
+- exact transition signature.
+
+The script defines:
+
+`ScenarioScore = (ExactDraws + K * normalized marginal-product prior) / (ExactProfileDraws + K)`
+
+with the script's printed K.
+
+ScenarioScore is a ranking score only.
+
+If the script scenario universe differs from the independently enumerated universe:
+
+STOP - RUN INVALID.
+
+Freeze Step 5.
+
+============================================================
+STEP 6 - ALLOCATE 20 SCENARIO SLOTS
+============================================================
+
+The role allocation remains fixed:
+
+`8 CORE`
+`8 COVERAGE`
+`4 DEEP`
+
+No candidate number may affect scenario allocation.
+
+-------------------------
+CORE - 8 slots
+-------------------------
+
+Rank all scenarios by:
+
+1. higher ScenarioScore;
+2. higher ExactDraws;
+3. higher SSI;
+4. lower DepthScore;
+5. lexicographically smaller rank tuple.
+
+Take the top four scenarios.
+
+Each receives TWO CORE slots.
+
+`4 scenarios x 2 = 8 CORE tickets`
+
+-------------------------
+COVERAGE - 8 slots
+-------------------------
+
+Start with transition ranks and cross-pool rank-pairs already represented by CORE.
+
+For every remaining scenario:
+
+`CoverageGain =`
+
+`100 * new individual transition ranks`
+
+`+ 10 * new cross-pool rank pairs`
+
+Cross-pool rank pairs are all pairs among non-zero pool ranks, for example:
+
+- EH-rank / H-rank;
+- EH-rank / W-rank;
+- EH-rank / C-rank;
+- H-rank / W-rank;
+- H-rank / C-rank;
+- W-rank / C-rank.
+
+Repeatedly choose one unused scenario using:
+
+1. higher CoverageGain;
+2. higher ScenarioScore;
+3. higher ExactDraws;
+4. higher SSI;
+5. lower DepthScore;
+6. lexicographically smaller rank tuple.
+
+Update covered ranks/rank-pairs after every selection.
+
+Select eight distinct COVERAGE scenarios whenever possible.
+
+-------------------------
+DEEP - 4 slots
+-------------------------
+
+From scenarios not already selected, calculate:
+
+`DeepGain =`
+
+`100 * previously-uncovered ranks >= 3`
+
+`+ 10 * previously-uncovered cross-pool rank pairs containing at least one rank >= 3`
+
+`+ DepthScore`
+
+Choose four using:
+
+1. higher DeepGain;
+2. higher ScenarioScore;
+3. higher ExactDraws;
+4. higher SSI;
+5. lexicographically smaller rank tuple.
+
+If fewer than four unused scenarios remain, use the deepest already-selected scenarios not already repeated beyond their existing allocation.
+
+Freeze all 20 scenario slots.
+
+============================================================
+STEP 7 - MAP EVERY SCENARIO TO EXACT IMMEDIATE FAMILIES
+============================================================
+
+Translate each selected transition rank into exact required immediate-transition families.
+
+Example:
+
+`EH-R3 = H->EH + H->EH`
+
+`H-R2 = W->H`
+
+`W-R4 = C->W + W->W + W->W`
+
+becomes exact slot requirements:
+
+- 2 x H->EH;
+- 1 x W->H;
+- 1 x C->W;
+- 2 x W->W.
+
+Candidate evidence can NEVER move a number into another family.
+
+If a selected scenario is no longer feasible under the current family membership:
+
+STOP and audit Step 4/5.
+
+Do not silently replace it.
+
+Freeze Step 7.
+
+============================================================
+STEP 8 - FREEZE CANDIDATE EVIDENCE
+============================================================
+
+Use both script sections:
+
+1. `CURRENT CANDIDATES BY IMMEDIATE FAMILY + COMPRESSED TRAJECTORY`
+2. `EXACT-PROFILE CURRENT-CANDIDATE CONTEXT`
+
+For every current candidate record:
+
+- immediate family;
+- original Independent Evidence;
+- IndependentEvidenceNorm;
+- exact-profile candidate exposure N;
+- exact-profile wins;
+- exact-profile shrunk rate;
+- exact exposure confidence;
+- ExactProfileEvidenceNorm;
+- `CandidateJoint`;
+- CandidateJoint rank inside that immediate family.
+
+Use `CandidateJoint` exactly as printed by the script.
+
+Do not recompute it with different weights.
+
+Zero exact-profile exposure must produce zero exact-context adjustment; it must not be treated as positive exact evidence.
+
+No candidate may be removed because it is deep-ranked.
+
+Freeze Step 8.
+
+============================================================
+STEP 9 - FREEZE HISTORICAL PAIR COMPATIBILITY
+============================================================
+
+Use BOTH:
+
+- `EXACT-PROFILE SAME-FAMILY PAIR COMPATIBILITY`
+- `EXACT-PROFILE CROSS-FAMILY PAIR COMPATIBILITY`
+
+For every printed concrete pair record:
+
+- family-pair context;
+- candidate-pair exposure N;
+- co-wins;
+- PairEvidence;
+- confidence;
+- PairNorm.
+
+Interpretation:
+
+- `PairNorm = N/A` means that context has no positive above-baseline concrete compatibility evidence.
+- `PairNorm = 0` means the context has some positive evidence elsewhere, but this pair contributes no positive above-baseline signal.
+- positive PairNorm values are comparable ONLY within the printed immediate-family-pair context.
+
+Never invent a PairNorm for a missing row.
+
+The V3 script is required to print every concrete pair that can occur among retained immediate families.
+
+If a legal ticket contains a pair whose required script row is missing:
+
+STOP - SCRIPT OUTPUT INCOMPLETE.
+
+Define a PRIORITY PAIR as a pair satisfying BOTH:
+
+- concrete pair exposure N > 0;
+- PairNorm >= 0.90.
+
+Create:
+
+`PriorityPairCoverageLedger`
+
+Every priority pair starts UNCOVERED.
+
+Freeze Step 9.
+
+============================================================
+STEP 10 - ASSIGN CANDIDATE EXPOSURE WEIGHTS
+============================================================
+
+Rank candidates inside each immediate family by CandidateJoint.
+
+Family size <= 4:
+
+`all weights = 1`
+
+Family size 5..8:
+
+`CandidateJoint ranks 1..4 -> weight 2`
+`remaining -> weight 1`
+
+Family size >= 9:
+
+`CandidateJoint ranks 1..4 -> weight 3`
+`ranks 5..8 -> weight 2`
+`rank 9+ -> weight 1`
+
+For each family F calculate total required slots across all 20 frozen scenarios:
+
+`FamilySlots(F)`
+
+Then:
+
+`WeightTotal(F) = sum(candidate weights in F)`
+
+For candidate i:
+
+`TargetExposure(i) = FamilySlots(F) * weight(i) / WeightTotal(F)`
+
+TargetExposure is a portfolio-balance guide only.
+
+Freeze Step 10.
+
+============================================================
+STEP 11 - ENUMERATE LEGAL WHOLE TICKETS
+============================================================
+
+For every frozen scenario slot, enumerate every legal six-number ticket satisfying the exact immediate-family multiplicities.
+
+Evaluate the WHOLE ticket.
+
+Do not select EH/H/W/C or families sequentially.
+
+For every legal ticket T calculate:
+
+-------------------------
+A. CandidateComponent
+-------------------------
+
+`CandidateComponent(T) = mean(CandidateJoint of all six numbers)`
+
+-------------------------
+B. SamePairComponent
+-------------------------
+
+Take every same-immediate-family unordered pair inside T.
+
+Use its PairNorm when PairNorm is numeric.
+
+Ignore N/A PairNorm rows in this mean.
+
+If no numeric same-family PairNorm exists:
+
+`SamePairComponent = UNAVAILABLE`
+
+-------------------------
+C. CrossPairComponent
+-------------------------
+
+Take every unordered pair in T whose two numbers belong to different immediate families.
+
+Use numeric PairNorm values only.
+
+If no numeric cross-family PairNorm exists:
+
+`CrossPairComponent = UNAVAILABLE`
+
+-------------------------
+D. SameGroupFloor
+-------------------------
+
+For every immediate family contributing at least two numbers to T, collect numeric PairNorm values among members of that same-family group.
+
+If at least one numeric same-family PairNorm exists:
+
+`SameGroupFloor = minimum of those numeric PairNorm values`
+
+Otherwise:
+
+`SameGroupFloor = UNAVAILABLE`
+
+This prevents a multi-number family group from looking strong solely because one pair is strong while another available pair is weak.
+
+-------------------------
+E. JointTicketScore
+-------------------------
+
+Base component weights:
+
+`CandidateComponent = 0.40`
+`SamePairComponent  = 0.25`
+`CrossPairComponent = 0.30`
+`SameGroupFloor     = 0.05`
+
+If one of B/C/D is UNAVAILABLE, remove that component and renormalize the remaining weights to sum to 1.00.
+
+CandidateComponent is never removed.
+
+Then:
+
+`JointTicketScore = weighted mean of available components`
+
+This is a ranking score, not a probability.
+
+-------------------------
+F. ExposureDeficit
+-------------------------
+
+For every selected number i:
+
+`Deficit(i) = max(TargetExposure(i) - CurrentExposure(i), 0)`
+
+`ExposureDeficit(T) = sum(Deficit(i))`
+
+-------------------------
+G. PriorityPairCoverageGain
+-------------------------
+
+Count PRIORITY PAIRS inside T that are still UNCOVERED:
+
+`PriorityPairCoverageGain(T)`
+
+Only pairs defined in Step 9 can count.
+
+-------------------------
+H. DeepCount
+-------------------------
+
+A candidate is DEEP when its Step-10 exposure weight equals 1.
+
+`DeepCount(T) = number of weight-1 candidates in T`
+
+-------------------------
+I. GroupReuse
+-------------------------
+
+For every repeated immediate family in T, form the exact selected number group.
+
+`GroupReuse(T) = sum(previous uses of those exact same-family groups)`
+
+-------------------------
+J. PairReuse
+-------------------------
+
+For every unordered number pair inside T:
+
+`PairReuse(T) = sum(previous appearances of those exact pairs)`
+
+Freeze every metric definition before selecting any ticket.
+
+============================================================
+STEP 12 - FIX BUILD ORDER
+============================================================
+
+For each selected scenario calculate exact candidate search-space size from family combinations.
+
+Process roles in this order:
+
+1. CORE;
+2. COVERAGE;
+3. DEEP.
+
+Within CORE order scenario slots by:
+
+1. smaller candidate search space;
+2. higher ScenarioScore;
+3. higher ExactDraws;
+4. canonical Scenario ID.
+
+Within COVERAGE order by:
+
+1. smaller candidate search space;
+2. higher CoverageGain;
+3. higher ScenarioScore;
+4. canonical Scenario ID.
+
+Within DEEP order by:
+
+1. smaller candidate search space;
+2. higher DeepGain;
+3. higher DepthScore;
+4. higher ScenarioScore;
+5. canonical Scenario ID.
+
+Freeze build order.
+
+============================================================
+STEP 13 - BUILD 8 CORE TICKETS
+============================================================
+
+For each CORE slot, among legal UNUSED tickets choose by:
+
+1. higher JointTicketScore;
+2. higher CandidateComponent;
+3. higher ExposureDeficit;
+4. lower GroupReuse;
+5. lower PairReuse;
+6. soft-structure tie-break from Step 16;
+7. lower sorted numeric ticket tuple.
+
+CORE does NOT penalize historically supported repeated pairs.
+
+For the second ticket belonging to the same CORE scenario:
+
+- it must be a different six-number ticket;
+- when possible, at least one repeated-family number group must differ from that scenario's first CORE ticket.
+
+After each ticket update:
+
+- candidate exposures;
+- exact group ledger;
+- exact pair ledger;
+- PriorityPairCoverageLedger.
+
+Freeze 8 CORE tickets.
+
+============================================================
+STEP 14 - BUILD 8 COVERAGE TICKETS
+============================================================
+
+For the current COVERAGE scenario:
+
+1. enumerate all legal unused tickets;
+2. find `BestJoint = maximum JointTicketScore`;
+3. create the Evidence-Safe Band:
+
+`JointTicketScore >= 0.95 * BestJoint`
+
+Only tickets inside this band remain eligible.
+
+Within the Evidence-Safe Band choose by:
+
+1. higher PriorityPairCoverageGain;
+2. higher ExposureDeficit;
+3. higher JointTicketScore;
+4. higher CandidateComponent;
+5. lower GroupReuse;
+6. lower PairReuse;
+7. soft-structure tie-break;
+8. lower sorted numeric tuple.
+
+This means COVERAGE may diversify only when the ticket remains within 5% of the best available joint-evidence score for that scenario.
+
+Update every ledger immediately.
+
+Freeze 8 COVERAGE tickets.
+
+============================================================
+STEP 15 - BUILD 4 DEEP TICKETS
+============================================================
+
+For the current DEEP scenario:
+
+1. enumerate legal unused tickets;
+2. find `BestJoint = maximum JointTicketScore`;
+3. create the Deep Evidence-Safe Band:
+
+`JointTicketScore >= 0.90 * BestJoint`
+
+Only tickets inside this band remain eligible.
+
+Within that band choose by:
+
+1. higher DeepCount;
+2. higher PriorityPairCoverageGain;
+3. higher ExposureDeficit;
+4. higher JointTicketScore;
+5. higher CandidateComponent;
+6. lower GroupReuse;
+7. lower PairReuse;
+8. soft-structure tie-break;
+9. lower sorted numeric tuple.
+
+Thus DEEP coverage cannot sacrifice more than 10% of the best available JointTicketScore for that scenario.
+
+Update every ledger immediately.
+
+Freeze 4 DEEP tickets.
+
+============================================================
+STEP 16 - SOFT STRUCTURE TIE-BREAK
+============================================================
+
+Soft structure is used ONLY when every higher-priority metric is tied.
+
+Define decades explicitly for Saturday Lotto 1..45:
+
+- D1 = 1..9
+- D2 = 10..19
+- D3 = 20..29
+- D4 = 30..39
+- D5 = 40..45
+
+Preference order:
+
+1. 2..4 odd numbers;
+2. at least 3 represented decades;
+3. no more than 3 numbers from one decade;
+4. lower sorted numeric tuple.
+
+No hard sum rule.
+No ban on consecutive numbers.
+No forced legacy number.
+No decade kill.
+
+============================================================
+STEP 17 - COMPLETE PRE-RESULT AUDIT
+============================================================
+
+Before seeing the target result verify ALL of the following:
+
+GENERAL
+- exactly 20 tickets;
+- exactly 8 CORE / 8 COVERAGE / 4 DEEP;
+- 20 unique tickets;
+- six unique numbers in every ticket;
+- every number inside target universe;
+- total positions = 120.
+
+PROFILE / SCENARIO
+- every ticket exactly matches PROFILE_FROZEN;
+- every ticket matches its frozen canonical Scenario ID;
+- every scenario rank tuple matches the script scenario board;
+- all family multiplicities are exact;
+- no family substitution;
+- scenario slot allocation independently reproduced.
+
+CANDIDATES
+- every selected candidate has a printed CandidateJoint row;
+- CandidateJoint ranks/weights independently reproduced;
+- TargetExposure calculations reconcile;
+- actual portfolio exposures reconcile.
+
+PAIRS
+- every pair occurring in every ticket has the required script pair row;
+- N/A versus numeric PairNorm status is preserved exactly;
+- PriorityPair definition is applied exactly;
+- PriorityPairCoverageLedger reconciles;
+- GroupReuse and PairReuse ledgers reconcile.
+
+TICKET SCORING
+- CandidateComponent reproduced;
+- SamePairComponent reproduced;
+- CrossPairComponent reproduced;
+- SameGroupFloor reproduced;
+- component-weight renormalization reproduced;
+- JointTicketScore reproduced;
+- CORE 100% best-choice hierarchy reproduced;
+- COVERAGE 95% Evidence-Safe Band reproduced;
+- DEEP 90% Evidence-Safe Band reproduced.
+
+NO LEAKAGE
+- target result not opened, searched, used, or inferred;
+- no target-result-specific rule was introduced.
+
+Before reveal report:
+
+1. Candidate Exposure Report: ActualExposure / TargetExposure for every candidate used or expected by the family weighting.
+2. Priority Pair Coverage: covered / total priority pairs overall and by same-family vs cross-family.
+3. Scenario allocation summary.
+4. JointTicketScore range by CORE / COVERAGE / DEEP.
+5. Any N/A pair-evidence contexts.
+
+If one required check fails:
+
+DO NOT FREEZE.
+
+Correct the mechanical error, rebuild from zero ledgers, and rerun the full audit.
+
+If the problem is missing/ambiguous source evidence rather than a mechanical error:
+
+STOP - RESULT UNVALIDATED.
+
+============================================================
+STEP 18 - FREEZE PORTFOLIO
+============================================================
+
+Only after Step 17 passes state exactly:
+
+**20 TICKETS FROZEN.**
+
+After this statement:
+
+- no profile changes;
+- no scenario changes;
+- no candidate changes;
+- no ticket changes;
+- no metric changes;
+- no rule changes.
+
+Only then may the target result be revealed.
+
+============================================================
+STEP 19 - RESULT REVEAL + DEFINED CEILING DIAGNOSIS
+============================================================
+
+Reveal the target result.
+
+Calculate actual EH/H/W/C.
+
+Report:
+
+- predicted/frozen profile;
+- actual profile;
+- exact profile YES/NO;
+- each winner's immediate-transition family;
+- actual transition rank in each pool;
+- actual canonical whole-scenario rank tuple;
+- whether that exact scenario was selected;
+- each winner's Independent Evidence rank;
+- each winner's CandidateJoint rank;
+- each winner's portfolio exposure;
+- every winning same-family pair/group and whether it appeared;
+- every winning cross-family pair and whether it appeared;
+- each ticket's hits;
+- hit distribution;
+- maximum hit;
+- tickets >=3, >=4, >=5, and 6/6;
+- union coverage for diagnosis only.
+
+Calculate ceilings EXACTLY as follows.
+
+-------------------------
+A. Profile Ceiling
+-------------------------
+
+Number of actual winners whose EH/H/W/C pool can be accommodated by PROFILE_FROZEN, respecting the frozen pool counts.
+
+For each pool, at most the frozen count from that pool can survive.
+
+Sum across pools.
+
+-------------------------
+B. Transition Scenario Ceiling
+-------------------------
+
+For every SELECTED scenario, calculate the maximum number of actual winners whose immediate-transition families can fit that scenario's exact family multiplicities.
+
+This is a maximum bipartite/multiset fit problem inside each final pool.
+
+Take the maximum across selected scenarios.
+
+This ceiling can never exceed Profile Ceiling.
+
+-------------------------
+C. Candidate Exposure Ceiling
+-------------------------
+
+Starting from the best surviving selected scenario(s) from B, count only actual winners that:
+
+1. fit that selected scenario's family multiplicities; AND
+2. appeared at least once anywhere in the frozen 20-ticket portfolio in their correct immediate family.
+
+Take the maximum achievable count across selected scenarios.
+
+-------------------------
+D. Same-Family Co-Location Ceiling
+-------------------------
+
+Starting from subsets that survive C:
+
+For each immediate family independently, all selected actual winners from that family must have appeared TOGETHER in at least one frozen ticket.
+
+Ignore cross-family relationships at this stage.
+
+Find the largest surviving actual-winner subset satisfying that rule while remaining compatible with at least one selected scenario.
+
+-------------------------
+E. Cross-Family Assembly Ceiling
+-------------------------
+
+Starting from subsets that survive D:
+
+For every pair of selected winners belonging to DIFFERENT immediate families, that exact pair must have co-occurred in at least one frozen ticket.
+
+The cross-family pairs do NOT need to have occurred in the same historical/frozen ticket as each other for this diagnostic ceiling.
+
+Find the largest surviving actual-winner subset satisfying:
+
+- selected-scenario compatibility;
+- candidate exposure;
+- same-family group co-location;
+- every required cross-family pair co-location.
+
+This is the official V3 definition of Cross-Family Assembly Ceiling.
+
+-------------------------
+F. Final Ticket Hit
+-------------------------
+
+The largest number of actual winning main numbers contained in any ONE frozen ticket.
+
+This is the actual portfolio result.
+
+Report the chain:
+
+`Profile Ceiling`
+`-> Transition Scenario Ceiling`
+`-> Candidate Exposure Ceiling`
+`-> Same-Family Co-Location Ceiling`
+`-> Cross-Family Assembly Ceiling`
+`-> Final Ticket Hit`
+
+Identify the FIRST stage where the ceiling falls.
+
+Never blame a later layer for an earlier loss.
+
+============================================================
+STEP 20 - GOVERNANCE / ANTI-OVERFITTING
+============================================================
+
+The following are DESIGN DATA for V3.0 because their failures influenced this version:
+
+- 15-Aug-2026;
+- 19-Sep-2026;
+- 26-Sep-2026.
+
+Any other target inspected while constructing or debugging V3 must also be added to the design-data list.
+
+Design dates may be used for debugging and illustration only.
+
+They may NOT be used to claim V3 predictive performance.
+
+Freeze the V3 script and V3 algorithm BEFORE testing untouched historical targets.
+
+For every untouched test:
+
+1. run unlocked;
+2. predict/freeze profile without target result;
+3. rerun locked;
+4. execute V3 Steps 1..18;
+5. state **20 TICKETS FROZEN.**;
+6. reveal result;
+7. execute Step 19;
+8. record all ceilings and hit metrics;
+9. make NO modelling change during the validation batch.
+
+Minimum validation batch:
+
+`20 untouched Saturday draws`
+
+Record for every draw:
+
+- profile exact YES/NO;
+- Profile Ceiling;
+- actual scenario selected YES/NO;
+- Transition Scenario Ceiling;
+- winning candidates exposed /6;
+- Candidate Exposure Ceiling;
+- winning same-family groups represented YES/NO;
+- Same-Family Co-Location Ceiling;
+- Cross-Family Assembly Ceiling;
+- Final maximum hit;
+- tickets >=3;
+- tickets >=4;
+- tickets >=5;
+- tickets 6/6.
+
+Do not claim V3 is better merely because one or more design dates improve.
+
+A lottery remains random; historical ranking evidence does not alter the true mathematical probability of a fair draw.
+
+============================================================
+V3.0 - KEY CHANGES FROM V2.0
+============================================================
+
+V2:
+`Scenario strength = marginal transition SSI`
+
+V3:
+`Scenario strength = exact-profile whole-scenario history shrunk toward marginal prior`
+
+V2:
+`candidate evidence mainly independent per number/family`
+
+V3:
+`CandidateJoint = independent evidence plus confidence-weighted exact-profile context`
+
+V2:
+`pair diversity = whether the portfolio has already used a pair`
+
+V3:
+`pair compatibility = historical candidate-normalized co-win evidence under the exact profile`
+
+V2:
+`coverage could dominate ticket quality`
+
+V3:
+`COVERAGE must stay within 95% of the best JointTicketScore for its scenario`
+
+V2:
+`DEEP could select weak tickets merely to reach weight-1 candidates`
+
+V3:
+`DEEP must stay within 90% of the best JointTicketScore for its scenario`
+
+V2:
+`scenario ID ordering was implicit`
+
+V3:
+`scenario IDs are explicitly lexicographic EH/H/W/C rank tuples`
+
+V2:
+`Cross-Family Assembly Ceiling was undefined`
+
+V3:
+`Cross-Family Assembly Ceiling has an exact pairwise frozen-portfolio definition`
+
+============================================================
+V3.0 HIERARCHY
+============================================================
+
+`UNLOCKED PROFILE OUTPUT`
+
+-> `PROFILE PREDICTED + FROZEN EXTERNALLY`
+
+-> `LOCKED SCRIPT RERUN`
+
+-> `TOP FOUR FEASIBLE TRANSITIONS`
+
+-> `CANONICAL SCENARIO UNIVERSE`
+
+-> `EXACT-PROFILE SCENARIO SCORE`
+
+-> `8 CORE / 8 COVERAGE / 4 DEEP`
+
+-> `CANDIDATE JOINT EVIDENCE`
+
+-> `SAME-FAMILY + CROSS-FAMILY PAIR EVIDENCE`
+
+-> `WHOLE-TICKET JOINT SCORE`
+
+-> `EVIDENCE-SAFE PORTFOLIO DIVERSIFICATION`
+
+-> `FULL PRE-RESULT AUDIT`
+
+-> **20 TICKETS FROZEN.**
+
+-> `RESULT REVEAL`
+
+-> `PROFILE -> TRANSITION -> CANDIDATE -> SAME-FAMILY -> CROSS-FAMILY -> FINAL HIT`
