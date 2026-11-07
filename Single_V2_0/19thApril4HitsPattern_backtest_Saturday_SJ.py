@@ -15,7 +15,7 @@ SATURDAY_ORACLE_BACKTEST_N = 6
 # Optional actual EH/H/W/C profile filter; counts must sum to 6.
 # Empty = latest N draws of any profile; tuple = latest N matching draws.
 BACKTEST_LOCKED_PROFILE = ""  # Example: (2, 1, 2, 1)
-FUTURE_DATE_STR = "Sat 31-Oct-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
+FUTURE_DATE_STR = "Sat 07-Nov-2026"   # example: "Fri 04-Sep-2026", "Tue 01-Sep-2026", etc.
 LOCKED_PROFILE = (2, 1, 3, 0)
 # LOCKED_PROFILE = (1, 2, 3, 0)
 # LOCKED_PROFILE = (1, 1, 4, 0)

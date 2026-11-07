@@ -1,0 +1,13 @@
+Ticket,Track,Kill_Group,Excluded_Decade,Numbers
+1,CORE-Depth,B,40s,"7,13,21,22,28,37"
+2,CORE-Depth,C,10s,"2,8,24,38,41,45"
+3,CORE-Depth,C,0s,"15,17,27,28,32,45"
+4,CORE-Depth,C,20s,"5,11,12,31,36,41"
+5,CORE-Depth,B,40s,"8,9,15,24,29,30"
+6,CORE-Depth,C,10s,"6,21,22,31,33,35"
+7,CORE-Depth,C,0s,"18,20,27,29,32,37"
+8,BACKUP-Breadth,B,40s,"5,17,26,27,31,34"
+9,BACKUP-Breadth,C,20s,"6,7,14,17,32,37"
+10,BACKUP-Breadth,C,20s,"1,4,5,14,35,44"
+11,BACKUP-Breadth,B,40s,"9,16,19,23,26,29"
+12,BACKUP-Breadth,C,10s,"2,8,23,26,35,43"
